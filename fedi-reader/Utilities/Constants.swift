@@ -1,0 +1,230 @@
+//
+//  Constants.swift
+//  fedi-reader
+//
+//  App-wide constants and configuration
+//
+
+import Foundation
+
+enum Constants {
+    // MARK: - App Info
+    
+    static let appName = "Fedi Reader"
+    static let appBundleId = "app.fedi-reader"
+    static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    static let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    
+    // MARK: - OAuth
+    
+    enum OAuth {
+        static let redirectScheme = "fedi-reader"
+        static let redirectHost = "oauth"
+        static let redirectURI = "\(redirectScheme)://\(redirectHost)/callback"
+        
+        static let scopes = "read write follow push"
+        
+        static let appWebsite = "https://github.com/fedi-reader/fedi-reader"
+    }
+    
+    // MARK: - API
+    
+    enum API {
+        static let defaultTimeout: TimeInterval = 30
+        static let uploadTimeout: TimeInterval = 120
+        
+        // Mastodon API paths
+        static let apps = "/api/v1/apps"
+        static let oauthAuthorize = "/oauth/authorize"
+        static let oauthToken = "/oauth/token"
+        static let oauthRevoke = "/oauth/revoke"
+        
+        static let verifyCredentials = "/api/v1/accounts/verify_credentials"
+        static let homeTimeline = "/api/v1/timelines/home"
+        static let publicTimeline = "/api/v1/timelines/public"
+        static let notifications = "/api/v1/notifications"
+        static let conversations = "/api/v1/conversations"
+        
+        static let statuses = "/api/v1/statuses"
+        static let accounts = "/api/v1/accounts"
+        static let search = "/api/v2/search"
+        
+        static let instance = "/api/v1/instance"
+        static let instanceV2 = "/api/v2/instance"
+        
+        static let trendingStatuses = "/api/v1/trends/statuses"
+        static let trendingTags = "/api/v1/trends/tags"
+        static let trendingLinks = "/api/v1/trends/links"
+        
+        // Rate limiting
+        static let defaultRateLimit = 300 // requests per 5 minutes
+        static let rateLimitWindow: TimeInterval = 300 // 5 minutes
+    }
+    
+    // MARK: - Pagination
+    
+    enum Pagination {
+        static let defaultLimit = 40
+        static let maxLimit = 80
+        static let prefetchThreshold = 10 // Load more when this many items from end
+    }
+    
+    // MARK: - Cache
+    
+    enum Cache {
+        static let maxStatusAge: TimeInterval = 60 * 60 * 24 * 7 // 7 days
+        static let maxCachedStatuses = 1000
+        static let imageMemoryCacheLimit = 100 * 1024 * 1024 // 100 MB
+        static let imageDiskCacheLimit = 500 * 1024 * 1024 // 500 MB
+    }
+    
+    // MARK: - UI
+    
+    enum UI {
+        static let defaultAnimationDuration: Double = 0.3
+        static let hapticFeedbackEnabled = true
+        static let maxContentPreviewLines = 6
+        static let avatarSize: CGFloat = 44
+        static let avatarCornerRadius: CGFloat = 8
+        static let cardImageHeight: CGFloat = 180
+        static let cardCornerRadius: CGFloat = 12
+    }
+    
+    // MARK: - Read Later Services
+    
+    enum ReadLater {
+        // Pocket
+        static let pocketConsumerKey = "" // User must provide their own
+        static let pocketAuthURL = "https://getpocket.com/v3/oauth/request"
+        static let pocketAuthorizeURL = "https://getpocket.com/auth/authorize"
+        static let pocketAccessTokenURL = "https://getpocket.com/v3/oauth/authorize"
+        static let pocketAddURL = "https://getpocket.com/v3/add"
+        
+        // Instapaper
+        static let instapaperAuthURL = "https://www.instapaper.com/api/1/oauth/access_token"
+        static let instapaperAddURL = "https://www.instapaper.com/api/1/bookmarks/add"
+        
+        // Omnivore
+        static let omnivoreAPIURL = "https://api-prod.omnivore.app/api/graphql"
+        
+        // Readwise Reader
+        static let readwiseAPIURL = "https://readwise.io/api/v3"
+        static let readwiseSaveURL = "https://readwise.io/api/v3/save/"
+        
+        // Raindrop.io
+        static let raindropAuthURL = "https://raindrop.io/oauth/authorize"
+        static let raindropTokenURL = "https://raindrop.io/oauth/access_token"
+        static let raindropAPIURL = "https://api.raindrop.io/rest/v1"
+    }
+    
+    // MARK: - Author Attribution Headers
+    
+    enum Attribution {
+        static let linkHeaderRel = "author"
+        static let metaAuthor = "author"
+        static let ogAuthor = "og:article:author"
+        static let ogSiteName = "og:site_name"
+        static let twitterCreator = "twitter:creator"
+        static let articleAuthor = "article:author"
+        
+        static let jsonLDTypes = ["Person", "Organization"]
+        
+        // Headers to check in HEAD request
+        static let headersToCheck = [
+            "Link",
+            "X-Author",
+            "Author"
+        ]
+    }
+    
+    // MARK: - User Agent
+    
+    static var userAgent: String {
+        "\(appName)/\(appVersion) (+\(OAuth.appWebsite))"
+    }
+    
+    // MARK: - ActivityPub
+    
+    enum ActivityPub {
+        static let acceptHeader = "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\""
+        static let contentType = "application/activity+json"
+    }
+}
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    static let accountDidChange = Notification.Name("accountDidChange")
+    static let accountDidLogin = Notification.Name("accountDidLogin")
+    static let accountDidLogout = Notification.Name("accountDidLogout")
+    static let timelineDidRefresh = Notification.Name("timelineDidRefresh")
+    static let statusDidUpdate = Notification.Name("statusDidUpdate")
+    static let readLaterDidSave = Notification.Name("readLaterDidSave")
+}
+
+// MARK: - Error Types
+
+enum FediReaderError: Error, LocalizedError, Equatable {
+    case invalidURL
+    case invalidResponse
+    case unauthorized
+    case rateLimited(retryAfter: TimeInterval?)
+    case serverError(statusCode: Int, message: String?)
+    case networkError(Error)
+    case decodingError(Error)
+    case noActiveAccount
+    case oauthError(String)
+    case readLaterError(String)
+    
+    static func == (lhs: FediReaderError, rhs: FediReaderError) -> Bool {
+        switch (lhs, rhs) {
+        case (.invalidURL, .invalidURL),
+             (.invalidResponse, .invalidResponse),
+             (.unauthorized, .unauthorized),
+             (.noActiveAccount, .noActiveAccount):
+            return true
+        case (.rateLimited(let lhsRetry), .rateLimited(let rhsRetry)):
+            return lhsRetry == rhsRetry
+        case (.serverError(let lhsCode, let lhsMessage), .serverError(let rhsCode, let rhsMessage)):
+            return lhsCode == rhsCode && lhsMessage == rhsMessage
+        case (.networkError(let lhsError), .networkError(let rhsError)):
+            return lhsError.localizedDescription == rhsError.localizedDescription
+        case (.decodingError(let lhsError), .decodingError(let rhsError)):
+            return lhsError.localizedDescription == rhsError.localizedDescription
+        case (.oauthError(let lhsMessage), .oauthError(let rhsMessage)):
+            return lhsMessage == rhsMessage
+        case (.readLaterError(let lhsMessage), .readLaterError(let rhsMessage)):
+            return lhsMessage == rhsMessage
+        default:
+            return false
+        }
+    }
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "Invalid URL"
+        case .invalidResponse:
+            return "Invalid response from server"
+        case .unauthorized:
+            return "Authentication required. Please log in again."
+        case .rateLimited(let retryAfter):
+            if let retry = retryAfter {
+                return "Rate limited. Please try again in \(Int(retry)) seconds."
+            }
+            return "Rate limited. Please try again later."
+        case .serverError(let code, let message):
+            return "Server error (\(code)): \(message ?? "Unknown error")"
+        case .networkError(let error):
+            return "Network error: \(error.localizedDescription)"
+        case .decodingError(let error):
+            return "Failed to parse response: \(error.localizedDescription)"
+        case .noActiveAccount:
+            return "No active account. Please log in."
+        case .oauthError(let message):
+            return "Authentication error: \(message)"
+        case .readLaterError(let message):
+            return "Read later error: \(message)"
+        }
+    }
+}
