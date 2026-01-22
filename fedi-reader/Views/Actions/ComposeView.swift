@@ -99,7 +99,14 @@ struct ComposeView: View {
                 setupInitialContent()
                 isContentFocused = true
             }
-            .alert("Error", isPresented: .constant(error != nil)) {
+            .alert("Error", isPresented: Binding(
+                get: { error != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        error = nil
+                    }
+                }
+            )) {
                 Button("OK") {
                     error = nil
                 }
@@ -243,7 +250,7 @@ struct ComposeView: View {
     }
     
     private func post() async {
-        guard let service = timelineWrapper.service, canPost else { return }
+        guard canPost else { return }
         
         isPosting = true
         defer { isPosting = false }
@@ -251,9 +258,15 @@ struct ComposeView: View {
         do {
             if let replyTo {
                 // Reply
+                guard let service = timelineWrapper.service else {
+                    throw FediReaderError.noActiveAccount
+                }
                 _ = try await service.reply(to: replyTo.displayStatus, content: content)
             } else if let quote {
                 // Quote boost
+                guard let service = timelineWrapper.service else {
+                    throw FediReaderError.noActiveAccount
+                }
                 _ = try await service.quoteBoost(status: quote, content: content)
             } else {
                 // New post (would need to add postStatus to TimelineService)

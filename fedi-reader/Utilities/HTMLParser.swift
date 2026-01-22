@@ -167,6 +167,25 @@ struct HTMLParser: Sendable {
                 searchRange = NSRange(result.startIndex..., in: result)
             }
         }
+
+        // Numeric entities (decimal) without semicolon
+        let decimalNoSemicolonPattern = #"&#(\d+)(?!;)"#
+        if let regex = try? NSRegularExpression(pattern: decimalNoSemicolonPattern, options: []) {
+            var searchRange = NSRange(result.startIndex..., in: result)
+
+            while let match = regex.firstMatch(in: result, options: [], range: searchRange) {
+                guard let codeRange = Range(match.range(at: 1), in: result),
+                      let codePoint = Int(result[codeRange]),
+                      let scalar = Unicode.Scalar(codePoint) else {
+                    break
+                }
+
+                let character = String(Character(scalar))
+                let fullRange = Range(match.range, in: result)!
+                result.replaceSubrange(fullRange, with: character)
+                searchRange = NSRange(result.startIndex..., in: result)
+            }
+        }
         
         // Numeric entities (hexadecimal)
         let hexPattern = #"&#x([0-9A-Fa-f]+);"#
@@ -180,6 +199,25 @@ struct HTMLParser: Sendable {
                     break
                 }
                 
+                let character = String(Character(scalar))
+                let fullRange = Range(match.range, in: result)!
+                result.replaceSubrange(fullRange, with: character)
+                searchRange = NSRange(result.startIndex..., in: result)
+            }
+        }
+
+        // Numeric entities (hexadecimal) without semicolon
+        let hexNoSemicolonPattern = #"&#x([0-9A-Fa-f]+)(?!;)"#
+        if let regex = try? NSRegularExpression(pattern: hexNoSemicolonPattern, options: []) {
+            var searchRange = NSRange(result.startIndex..., in: result)
+
+            while let match = regex.firstMatch(in: result, options: [], range: searchRange) {
+                guard let codeRange = Range(match.range(at: 1), in: result),
+                      let codePoint = Int(result[codeRange], radix: 16),
+                      let scalar = Unicode.Scalar(codePoint) else {
+                    break
+                }
+
                 let character = String(Character(scalar))
                 let fullRange = Range(match.range, in: result)!
                 result.replaceSubrange(fullRange, with: character)

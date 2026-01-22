@@ -15,23 +15,15 @@ struct MentionsView: View {
         timelineWrapper.service
     }
     
-    private var privateMentions: [MastodonNotification] {
-        guard let mentions = timelineService?.mentions else { return [] }
-        return mentions.filter { notification in
-            guard let status = notification.status else { return false }
-            return status.visibility == .private || status.visibility == .direct
-        }
-    }
-    
-    private var conversations: [Conversation] {
-        buildConversations(from: privateMentions)
+    private var conversations: [MastodonConversation] {
+        timelineService?.conversations ?? []
     }
     
     var body: some View {
         Group {
             if !conversations.isEmpty {
                 ConversationsListView(conversations: conversations)
-            } else if timelineService?.isLoadingMentions == true {
+            } else if timelineService?.isLoadingConversations == true {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -40,30 +32,11 @@ struct MentionsView: View {
         }
         .navigationTitle("Messages")
         .refreshable {
-            await timelineService?.refreshMentions()
+            await timelineService?.refreshConversations()
         }
         .task {
-            await loadMentions()
+            await loadConversations()
         }
-    }
-    
-    private func buildConversations(from mentions: [MastodonNotification]) -> [Conversation] {
-        // Group mentions by account
-        let groupedByAccount = Dictionary(grouping: mentions) { $0.account.id }
-        
-        return groupedByAccount.values.compactMap { notifications in
-            guard let firstNotification = notifications.first,
-                  firstNotification.status != nil else { return nil }
-            
-            // Sort by date (newest first for preview, but we'll reverse in detail view)
-            let sortedNotifications = notifications.sorted { $0.createdAt > $1.createdAt }
-            
-            return Conversation(
-                account: firstNotification.account,
-                messages: sortedNotifications.map { ChatMessage(notification: $0) }
-            )
-        }
-        .sorted { $0.lastMessageDate > $1.lastMessageDate }
     }
     
     private var emptyStateView: some View {
@@ -74,50 +47,17 @@ struct MentionsView: View {
         } actions: {
             Button("Refresh") {
                 Task {
-                    await timelineService?.refreshMentions()
+                    await timelineService?.refreshConversations()
                 }
             }
             .buttonStyle(.bordered)
         }
     }
     
-    private func loadMentions() async {
-        if timelineService?.mentions.isEmpty == true {
-            await timelineService?.refreshMentions()
+    private func loadConversations() async {
+        if timelineService?.conversations.isEmpty == true {
+            await timelineService?.refreshConversations()
         }
-    }
-}
-
-// MARK: - Conversation
-
-struct Conversation: Identifiable {
-    let id: String
-    let account: MastodonAccount
-    let messages: [ChatMessage]
-    
-    var lastMessage: ChatMessage? {
-        messages.first
-    }
-    
-    var lastMessageDate: Date {
-        guard let lastMessage = lastMessage else {
-            return Date.distantPast
-        }
-        return lastMessage.createdAt
-    }
-    
-    var lastMessagePreview: String {
-        guard let lastMessage = lastMessage,
-              let status = lastMessage.status else {
-            return ""
-        }
-        return status.content.htmlToPlainText
-    }
-    
-    init(account: MastodonAccount, messages: [ChatMessage]) {
-        self.id = account.id
-        self.account = account
-        self.messages = messages
     }
 }
 
@@ -148,8 +88,7 @@ struct ChatMessage: Identifiable {
 // MARK: - Conversations List View
 
 struct ConversationsListView: View {
-    let conversations: [Conversation]
-    @Environment(AppState.self) private var appState
+    let conversations: [MastodonConversation]
     
     var body: some View {
         GlassEffectContainer {
@@ -173,12 +112,24 @@ struct ConversationsListView: View {
 // MARK: - Conversation Row
 
 struct ConversationRow: View {
-    let conversation: Conversation
+    let conversation: MastodonConversation
+    @Environment(AppState.self) private var appState
+    
+    private var otherAccount: MastodonAccount? {
+        guard let currentAccount = appState.currentAccount?.mastodonAccount else {
+            return conversation.accounts.first
+        }
+        return conversation.accounts.first(where: { $0.id != currentAccount.id }) ?? conversation.accounts.first
+    }
+    
+    private var lastStatus: Status? {
+        conversation.lastStatus
+    }
     
     var body: some View {
         HStack(spacing: 12) {
             // Avatar
-            AsyncImage(url: conversation.account.avatarURL) { image in
+            AsyncImage(url: otherAccount?.avatarURL) { image in
                 image
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -192,18 +143,18 @@ struct ConversationRow: View {
             // Content
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(conversation.account.displayName)
+                    Text(otherAccount?.displayName ?? "Unknown")
                         .font(.roundedHeadline)
                         .lineLimit(1)
                     
                     Spacer()
                     
-                    Text(TimeFormatter.relativeTimeString(from: conversation.lastMessageDate))
+                    Text(TimeFormatter.relativeTimeString(from: lastStatus?.createdAt ?? Date.distantPast))
                         .font(.roundedCaption)
                         .foregroundStyle(.secondary)
                 }
                 
-                Text(conversation.lastMessagePreview)
+                Text(lastStatus?.content.htmlToPlainText ?? "")
                     .font(.roundedSubheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -225,10 +176,9 @@ struct ConversationRow: View {
 // MARK: - Conversation Detail View
 
 struct ConversationDetailView: View {
-    let conversation: Conversation
+    let conversation: MastodonConversation
     @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
-    @Environment(\.dismiss) private var dismiss
     
     @State private var messageText = ""
     @State private var isSending = false
@@ -238,46 +188,51 @@ struct ConversationDetailView: View {
         timelineWrapper.service
     }
     
-    @State private var userReplies: [Status] = []
-    @State private var isLoadingReplies = false
+    @State private var statusContext: StatusContext?
+    @State private var isLoadingThread = false
     
-    // Get updated conversation with latest messages (including user's replies)
-    private var updatedConversation: Conversation {
-        guard let mentions = timelineService?.mentions else { return conversation }
+    private var otherAccount: MastodonAccount? {
+        guard let currentAccount = appState.currentAccount?.mastodonAccount else {
+            return conversation.accounts.first
+        }
+        return conversation.accounts.first(where: { $0.id != currentAccount.id }) ?? conversation.accounts.first
+    }
+    
+    private var lastStatus: Status? {
+        conversation.lastStatus
+    }
+    
+    private var conversationStatuses: [Status] {
+        guard let lastStatus else { return [] }
         
-        // Get incoming messages (mentions from the other user)
-        let privateMentions = mentions.filter { notification in
-            guard let status = notification.status else { return false }
-            return (status.visibility == .private || status.visibility == .direct) &&
-                   notification.account.id == conversation.account.id
+        var statuses: [Status] = [lastStatus]
+        if let context = statusContext {
+            statuses.append(contentsOf: context.ancestors)
+            statuses.append(contentsOf: context.descendants)
         }
         
-        // Get user's replies to this conversation
-        let userRepliesToConversation = userReplies.filter { status in
-            // Check if this reply mentions the conversation account or is a reply to a message in this conversation
-            let mentionsAccount = status.mentions.contains { $0.acct == conversation.account.acct }
-            let isReplyToConversation = privateMentions.contains { mention in
-                mention.status?.id == status.inReplyToId
-            }
-            return mentionsAccount || isReplyToConversation
-        }
+        let uniqueStatuses = Dictionary(grouping: statuses, by: { $0.id })
+            .compactMap { $0.value.first }
+            .filter { $0.visibility == .private || $0.visibility == .direct }
         
-        // Combine and sort by date
-        var allMessages: [ChatMessage] = []
-        allMessages.append(contentsOf: privateMentions.map { ChatMessage(notification: $0) })
-        allMessages.append(contentsOf: userRepliesToConversation.map { ChatMessage(status: $0, isSent: true) })
-        
-        let sortedMessages = allMessages.sorted { $0.createdAt > $1.createdAt }
-        return Conversation(account: conversation.account, messages: sortedMessages)
+        return uniqueStatuses.sorted { $0.createdAt < $1.createdAt }
     }
     
     // Group messages for display (consecutive messages from same user)
     private var groupedMessages: [GroupedMessage] {
-        groupMessages(updatedConversation.messages)
+        let messages = conversationStatuses.map { status in
+            ChatMessage(status: status, isSent: isSentMessage(status))
+        }
+        return groupMessages(messages)
     }
     
     private var canSend: Bool {
         !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
+    }
+    
+    private func isSentMessage(_ status: Status) -> Bool {
+        guard let currentId = appState.currentAccount?.mastodonAccount.id else { return false }
+        return status.account.id == currentId
     }
     
     var body: some View {
@@ -315,55 +270,42 @@ struct ConversationDetailView: View {
             // Compose bar
             composeBar
         }
-        .navigationTitle(conversation.account.displayName)
+        .navigationTitle(otherAccount?.displayName ?? "Messages")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    appState.navigate(to: .profile(conversation.account))
+                    if let account = otherAccount {
+                        appState.navigate(to: .profile(account))
+                    }
                 } label: {
                     Image(systemName: "person.circle")
                 }
             }
         }
         .task {
-            await loadUserReplies()
+            await loadConversationThread()
         }
         .refreshable {
-            await loadUserReplies()
-            await timelineService?.refreshMentions()
+            await timelineService?.refreshConversations()
+            await loadConversationThread()
         }
     }
     
-    private func loadUserReplies() async {
-        guard let account = appState.currentAccount,
-              let token = await appState.getAccessToken(),
-              !isLoadingReplies else { return }
+    private func loadConversationThread() async {
+        guard let lastStatus else {
+            statusContext = nil
+            return
+        }
         
-        isLoadingReplies = true
-        defer { isLoadingReplies = false }
+        guard let service = timelineService, !isLoadingThread else { return }
+        isLoadingThread = true
+        defer { isLoadingThread = false }
         
         do {
-            // Extract account ID (format is "instance:accountId")
-            let accountId = account.id.components(separatedBy: ":").last ?? account.id
-            
-            // Fetch user's statuses (replies included)
-            let statuses = try await appState.client.getAccountStatuses(
-                instance: account.instance,
-                accessToken: token,
-                accountId: accountId,
-                limit: 100,
-                excludeReplies: false,
-                excludeReblogs: true
-            )
-            
-            // Filter for private/direct replies
-            userReplies = statuses.filter { status in
-                (status.visibility == .private || status.visibility == .direct) &&
-                status.inReplyToId != nil
-            }
+            statusContext = try await service.getStatusContext(for: lastStatus)
         } catch {
-            print("Failed to load user replies: \(error)")
+            statusContext = nil
         }
     }
     
@@ -409,11 +351,10 @@ struct ConversationDetailView: View {
             
             // Find the most recent message to reply to
             // Messages are sorted newest first, so first is most recent
-            guard let firstMessage = conversation.messages.first,
-                  let lastMessage = firstMessage.status else { return }
+            guard let lastMessage = lastStatus, let otherAccount else { return }
             
             // Add mention if not already present
-            let mention = "@\(conversation.account.acct) "
+            let mention = "@\(otherAccount.acct) "
             let contentWithMention = messageText.hasPrefix("@") ? messageText : "\(mention)\(messageText)"
             
             // Reply to the last message in the conversation
@@ -423,8 +364,8 @@ struct ConversationDetailView: View {
             messageText = ""
             
             // Refresh mentions and user replies to get the new message
-            await timelineService?.refreshMentions()
-            await loadUserReplies()
+            await timelineService?.refreshConversations()
+            await loadConversationThread()
         } catch {
             // Handle error (could show alert)
             print("Failed to send message: \(error)")
@@ -438,6 +379,12 @@ struct ConversationDetailView: View {
         var groups: [GroupedMessage] = []
         var currentGroup: [ChatMessage] = []
         var currentIsSent: Bool?
+        let sentAccount = appState.currentAccount?.mastodonAccount
+            ?? otherAccount
+            ?? conversation.accounts.first
+        let receivedAccount = otherAccount
+            ?? conversation.accounts.first
+            ?? appState.currentAccount?.mastodonAccount
         
         for message in reversedMessages {
             // If same sender type and within 5 minutes, add to current group
@@ -448,9 +395,29 @@ struct ConversationDetailView: View {
             } else {
                 // Start new group
                 if !currentGroup.isEmpty, let isSent = currentIsSent {
-                    let account = isSent ? (appState.currentAccount?.mastodonAccount ?? conversation.account) : conversation.account
+                    let account = isSent ? sentAccount : receivedAccount
                     groups.append(GroupedMessage(
-                        account: account,
+                        account: account ?? MastodonAccount(
+                            id: "unknown",
+                            username: "unknown",
+                            acct: "unknown",
+                            displayName: "Unknown",
+                            locked: false,
+                            bot: false,
+                            createdAt: Date(),
+                            note: "",
+                            url: "",
+                            avatar: "",
+                            avatarStatic: "",
+                            header: "",
+                            headerStatic: "",
+                            followersCount: 0,
+                            followingCount: 0,
+                            statusesCount: 0,
+                            lastStatusAt: nil,
+                            emojis: [],
+                            fields: []
+                        ),
                         messages: currentGroup,
                         isSent: isSent
                     ))
@@ -462,9 +429,29 @@ struct ConversationDetailView: View {
         
         // Add final group
         if !currentGroup.isEmpty, let isSent = currentIsSent {
-            let account = isSent ? (appState.currentAccount?.mastodonAccount ?? conversation.account) : conversation.account
+            let account = isSent ? sentAccount : receivedAccount
             groups.append(GroupedMessage(
-                account: account,
+                account: account ?? MastodonAccount(
+                    id: "unknown",
+                    username: "unknown",
+                    acct: "unknown",
+                    displayName: "Unknown",
+                    locked: false,
+                    bot: false,
+                    createdAt: Date(),
+                    note: "",
+                    url: "",
+                    avatar: "",
+                    avatarStatic: "",
+                    header: "",
+                    headerStatic: "",
+                    followersCount: 0,
+                    followingCount: 0,
+                    statusesCount: 0,
+                    lastStatusAt: nil,
+                    emojis: [],
+                    fields: []
+                ),
                 messages: currentGroup,
                 isSent: isSent
             ))
@@ -567,7 +554,7 @@ struct ChatMessageGroup: View {
                 // Messages
                 VStack(alignment: .leading, spacing: 4) {
                     // Account name (only for first message)
-                    if group.messages.first != nil {
+                    if let firstMessage = group.messages.first {
                         Button {
                             appState.navigate(to: .profile(group.account))
                         } label: {

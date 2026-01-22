@@ -80,7 +80,7 @@ struct LinkFeedView: View {
                     LinkStatusRow(linkStatus: linkStatus)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                         .onAppear {
                             checkLoadMore(linkStatus)
                         }
@@ -93,6 +93,7 @@ struct LinkFeedView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .listRowSpacing(8)
+            .padding(.horizontal, 12)
         }
     }
     
@@ -171,9 +172,15 @@ struct LinkStatusRow: View {
     @Environment(ReadLaterManager.self) private var readLaterManager
     
     @State private var isShowingActions = false
+    @State private var blueskyDescription: String?
+    @State private var hasLoadedBlueskyDescription = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if linkStatus.status.isReblog {
+                reblogHeader
+            }
+            
             // Author info
             authorHeader
             
@@ -204,12 +211,66 @@ struct LinkStatusRow: View {
             
             // Actions bar
             StatusActionsBar(status: linkStatus.status, compact: true)
+
+            Divider()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
         .contextMenu {
             contextMenuContent
+        }
+    }
+
+    private var reblogHeader: some View {
+        let reblogger = linkStatus.status.account
+        return Button {
+            appState.navigate(to: .profile(reblogger))
+        } label: {
+            HStack(spacing: 8) {
+                AsyncImage(url: reblogger.avatarURL) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Circle()
+                        .fill(.tertiary)
+                }
+                .frame(width: 24, height: 24)
+                .clipShape(Circle())
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.2.squarepath")
+                            .font(.roundedCaption2)
+                            .foregroundStyle(.secondary)
+                        
+                        Text("Boosted by")
+                            .font(.roundedCaption)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    HStack(spacing: 6) {
+                        Text(reblogger.displayName)
+                            .font(.roundedCaption.bold())
+                            .lineLimit(1)
+                        
+                        Text("@\(reblogger.acct)")
+                            .font(.roundedCaption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                
+                Spacer()
+            }
+            .padding(8)
+            .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .task(id: blueskyCardURL?.absoluteString) {
+            guard let url = blueskyCardURL, !hasLoadedBlueskyDescription else { return }
+            hasLoadedBlueskyDescription = true
+            blueskyDescription = await LinkPreviewService.shared.fetchDescription(for: url)
         }
     }
     
@@ -244,7 +305,17 @@ struct LinkStatusRow: View {
                     .foregroundStyle(.tertiary)
         }
     }
-    
+
+    private var blueskyCardURL: URL? {
+        let url = linkStatus.primaryURL
+        return isBlueskyURL(url) ? url : nil
+    }
+
+    private func isBlueskyURL(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return host.contains("bsky.app") || host.contains("bsky.social")
+    }
+
     private var linkCard: some View {
         Button {
             appState.navigate(to: .article(url: linkStatus.primaryURL, status: linkStatus.status))
@@ -252,25 +323,28 @@ struct LinkStatusRow: View {
             VStack(alignment: .leading, spacing: 12) {
                 // Large image
                 if let imageURL = linkStatus.imageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 220)
-                                .clipped()
-                        case .failure:
-                            placeholderImage
-                        case .empty:
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 220)
-                        @unknown default:
-                            placeholderImage
+                    GeometryReader { geo in
+                        AsyncImage(url: imageURL) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: geo.size.width, height: 220)
+                                    .clipped()
+                            case .failure:
+                                placeholderImage
+                                    .frame(width: geo.size.width, height: 220)
+                            case .empty:
+                                ProgressView()
+                                    .frame(width: geo.size.width, height: 220)
+                            @unknown default:
+                                placeholderImage
+                                    .frame(width: geo.size.width, height: 220)
+                            }
                         }
                     }
+                    .frame(height: 220)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
@@ -281,11 +355,12 @@ struct LinkStatusRow: View {
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
                     
-                    if let description = linkStatus.displayDescription, !description.isEmpty {
-                        Text(description)
+                    let descriptionText = blueskyDescription ?? linkStatus.displayDescription
+                    if let descriptionText, !descriptionText.isEmpty {
+                        Text(descriptionText)
                             .font(.roundedSubheadline)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .lineLimit(blueskyDescription == nil ? 2 : 8)
                     }
                     
                     HStack(spacing: 8) {

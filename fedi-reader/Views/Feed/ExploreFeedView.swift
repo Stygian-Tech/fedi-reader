@@ -61,7 +61,9 @@ struct ExploreFeedView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+#if os(iOS)
                     .listRowSpacing(8)
+#endif
                 }
             } else if timelineService?.isLoadingExplore == true {
                 ProgressView()
@@ -91,7 +93,9 @@ struct ExploreFeedView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+#if os(iOS)
                     .listRowSpacing(8)
+#endif
                 }
             } else if timelineService?.isLoadingExplore == true {
                 ProgressView()

@@ -27,6 +27,22 @@
 		2278C5982F20773500DA775C /* fedi-reader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "fedi-reader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		2278C5A92F20773600DA775C /* fedi-readerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "fedi-readerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		2278C5B32F20773600DA775C /* fedi-readerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "fedi-readerUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		2278C9E32F21E28D00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278CA312F21E28D00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278CA7F2F21E28D00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278CACD2F21E28D00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278CB1B2F21E28D00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278CB692F21E28D00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D0252F21E28E00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D1302F21E28E00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D1F92F21E28E00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D2C22F21E28E00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D3102F21E28E00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D35D2F21E28E00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D51A2F21E28E00DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D76E2F21E29000DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D7BC2F21E29000DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
+		2278D80A2F21E29000DA775C /* fedi-reader.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "fedi-reader.xcodeproj"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -101,6 +117,118 @@
 				2278C5982F20773500DA775C /* fedi-reader.app */,
 				2278C5A92F20773600DA775C /* fedi-readerTests.xctest */,
 				2278C5B32F20773600DA775C /* fedi-readerUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278CB6E2F21E28D00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278CB702F21E28D00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278CB722F21E28D00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278CB742F21E28D00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278CB762F21E28D00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278CB782F21E28D00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D02A2F21E28E00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D1352F21E28E00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D1FE2F21E28E00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D3622F21E28E00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D3642F21E28E00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D3662F21E28E00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D51F2F21E28E00DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D80F2F21E29000DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D8112F21E29000DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2278D8132F21E29000DA775C /* Products */ = {
+			isa = PBXGroup;
+			children = (
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -211,6 +339,72 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2278C5992F20773500DA775C /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = 2278CB6E2F21E28D00DA775C /* Products */;
+					ProjectRef = 2278C9E32F21E28D00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D8112F21E29000DA775C /* Products */;
+					ProjectRef = 2278D80A2F21E29000DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278CB762F21E28D00DA775C /* Products */;
+					ProjectRef = 2278CACD2F21E28D00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D51F2F21E28E00DA775C /* Products */;
+					ProjectRef = 2278D51A2F21E28E00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D3662F21E28E00DA775C /* Products */;
+					ProjectRef = 2278D35D2F21E28E00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278CB782F21E28D00DA775C /* Products */;
+					ProjectRef = 2278CB1B2F21E28D00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278CB702F21E28D00DA775C /* Products */;
+					ProjectRef = 2278CA7F2F21E28D00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278CB722F21E28D00DA775C /* Products */;
+					ProjectRef = 2278CB692F21E28D00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D3642F21E28E00DA775C /* Products */;
+					ProjectRef = 2278D2C22F21E28E00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D3622F21E28E00DA775C /* Products */;
+					ProjectRef = 2278D3102F21E28E00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D1FE2F21E28E00DA775C /* Products */;
+					ProjectRef = 2278D1F92F21E28E00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D02A2F21E28E00DA775C /* Products */;
+					ProjectRef = 2278D0252F21E28E00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D1352F21E28E00DA775C /* Products */;
+					ProjectRef = 2278D1302F21E28E00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278CB742F21E28D00DA775C /* Products */;
+					ProjectRef = 2278CA312F21E28D00DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D8132F21E29000DA775C /* Products */;
+					ProjectRef = 2278D7BC2F21E29000DA775C /* fedi-reader.xcodeproj */;
+				},
+				{
+					ProductGroup = 2278D80F2F21E29000DA775C /* Products */;
+					ProjectRef = 2278D76E2F21E29000DA775C /* fedi-reader.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				2278C5972F20773500DA775C /* fedi-reader */,

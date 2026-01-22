@@ -186,13 +186,18 @@ final class AttributionChecker {
                 let name = creator.hasPrefix("@") ? String(creator.dropFirst()) : creator
                 return AuthorAttribution(name: name, url: nil, source: .twitterCard)
             }
+
+            // 5. Fediverse creator (Mastodon-specific)
+            if let creator = extractMetaContent(from: html, name: "fediverse:creator") {
+                return AuthorAttribution(name: creator, url: nil, source: .metaTag)
+            }
             
-            // 5. JSON-LD structured data
+            // 6. JSON-LD structured data
             if let attribution = extractJSONLDAuthor(from: html) {
                 return attribution
             }
             
-            // 6. Link rel="author" in HTML
+            // 7. Link rel="author" in HTML
             if let authorLink = extractLinkRelAuthor(from: html) {
                 return authorLink
             }

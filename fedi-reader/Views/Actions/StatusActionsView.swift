@@ -43,60 +43,12 @@ struct StatusActionsBar: View {
     }
     
     var body: some View {
-        HStack(spacing: compact ? 16 : 24) {
-            // Reply
-            actionButton(
-                icon: "arrowshape.turn.up.left",
-                count: displayStatus.repliesCount,
-                isActive: false,
-                activeColor: .accentColor
-            ) {
-                appState.present(sheet: .compose(replyTo: status))
+        actionsRow
+            .disabled(isProcessing)
+            .onReceive(NotificationCenter.default.publisher(for: .statusDidUpdate)) { notification in
+                guard let updated = notification.object as? Status else { return }
+                applyUpdatedStatus(updated)
             }
-            
-            // Boost
-            actionButton(
-                icon: "arrow.2.squarepath",
-                count: reblogCount,
-                isActive: isReblogged,
-                activeColor: .green
-            ) {
-                await toggleReblog()
-            }
-            
-            // Favorite
-            actionButton(
-                icon: isFavorited ? "star.fill" : "star",
-                count: favoriteCount,
-                isActive: isFavorited,
-                activeColor: .yellow
-            ) {
-                await toggleFavorite()
-            }
-            
-            // Quote (if not compact)
-            if !compact {
-                actionButton(
-                    icon: "quote.bubble",
-                    count: nil,
-                    isActive: false,
-                    activeColor: .accentColor
-                ) {
-                    appState.present(sheet: .compose(quote: status))
-                }
-            }
-            
-            Spacer()
-            
-            // Share
-            ShareLink(item: URL(string: displayStatus.url ?? "") ?? URL(string: "https://example.com")!) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(compact ? .roundedCaption : .roundedSubheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .disabled(isProcessing)
     }
     
     @ViewBuilder
@@ -108,22 +60,91 @@ struct StatusActionsBar: View {
         action: @escaping () async -> Void
     ) -> some View {
         Button {
+            guard !isProcessing else { return }
             Task {
                 await action()
             }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(compact ? .roundedCaption : .roundedSubheadline)
+                    .font(compact ? .roundedTitle3 : .roundedTitle2)
                     .foregroundStyle(isActive ? activeColor : .secondary)
                 
                 // Always show count, even if 0, for consistency
                 Text(formatCount(count ?? 0))
-                    .font(compact ? .roundedCaption2 : .roundedCaption)
+                    .font(compact ? .roundedSubheadline : .roundedBody)
                     .foregroundStyle(isActive ? activeColor : .secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .layoutPriority(1)
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private var actionsRow: some View {
+        HStack(spacing: compact ? 16 : 22) {
+            actionButtons
+            Spacer()
+            shareButton
+        }
+    }
+
+    private var actionButtons: some View {
+        Group {
+            // Reply
+            actionButton(
+                icon: "arrowshape.turn.up.left",
+                count: displayStatus.repliesCount,
+                isActive: false,
+                activeColor: .accentColor
+            ) {
+                appState.present(sheet: .compose(replyTo: status))
+            }
+
+            // Boost
+            actionButton(
+                icon: "arrow.2.squarepath",
+                count: reblogCount,
+                isActive: isReblogged,
+                activeColor: .green
+            ) {
+                await toggleReblog()
+            }
+
+            // Favorite
+            actionButton(
+                icon: isFavorited ? "star.fill" : "star",
+                count: favoriteCount,
+                isActive: isFavorited,
+                activeColor: .yellow
+            ) {
+                await toggleFavorite()
+            }
+
+            // Quote (if not compact)
+            if !compact {
+                actionButton(
+                    icon: "quote.bubble",
+                    count: nil,
+                    isActive: false,
+                    activeColor: .accentColor
+                ) {
+                    appState.present(sheet: .compose(quote: status))
+                }
+            }
+        }
+        .layoutPriority(1)
+    }
+
+    private var shareButton: some View {
+        ShareLink(item: URL(string: displayStatus.url ?? "") ?? URL(string: "https://example.com")!) {
+            Image(systemName: "square.and.arrow.up")
+                .font(compact ? .roundedTitle3 : .roundedTitle2)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .layoutPriority(0)
     }
     
     private func formatCount(_ count: Int) -> String {
@@ -147,7 +168,7 @@ struct StatusActionsBar: View {
         localFavoriteCount = favoriteCount + (wasFavorited ? -1 : 1)
         
         do {
-            let updatedStatus = try await service.favorite(status: status)
+            let updatedStatus = try await service.setFavorite(status: status, isFavorited: !wasFavorited)
             localFavorited = updatedStatus.favourited
             localFavoriteCount = updatedStatus.favouritesCount
         } catch {
@@ -170,7 +191,7 @@ struct StatusActionsBar: View {
         localReblogCount = reblogCount + (wasReblogged ? -1 : 1)
         
         do {
-            let updatedStatus = try await service.reblog(status: status)
+            let updatedStatus = try await service.setReblog(status: status, isReblogged: !wasReblogged)
             localReblogged = updatedStatus.reblogged
             localReblogCount = updatedStatus.reblogsCount
         } catch {
@@ -179,6 +200,14 @@ struct StatusActionsBar: View {
             localReblogCount = reblogCount + (wasReblogged ? 0 : -1)
             appState.handleError(error)
         }
+    }
+
+    private func applyUpdatedStatus(_ updated: Status) {
+        guard updated.id == displayStatus.id else { return }
+        localFavorited = updated.favourited
+        localReblogged = updated.reblogged
+        localFavoriteCount = updated.favouritesCount
+        localReblogCount = updated.reblogsCount
     }
 }
 
@@ -285,10 +314,10 @@ struct StatusActionsToolbar: View {
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: "tray.and.arrow.down")
-                            .font(.title3)
+                            .font(.title2)
                         
                         Text("Save")
-                            .font(.caption2)
+                            .font(.caption)
                     }
                     .foregroundStyle(.secondary)
                 }
@@ -297,6 +326,10 @@ struct StatusActionsToolbar: View {
         .padding(.horizontal)
         .padding(.vertical, 12)
         .disabled(isProcessing)
+        .onReceive(NotificationCenter.default.publisher(for: .statusDidUpdate)) { notification in
+            guard let updated = notification.object as? Status else { return }
+            applyUpdatedStatus(updated)
+        }
     }
     
     @ViewBuilder
@@ -308,17 +341,18 @@ struct StatusActionsToolbar: View {
         action: @escaping () async -> Void
     ) -> some View {
         Button {
+            guard !isProcessing else { return }
             Task {
                 await action()
             }
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: icon)
-                            .font(.roundedTitle3)
+                            .font(.roundedTitle)
                             .foregroundStyle(isActive ? activeColor : .secondary)
                         
                         Text(label)
-                            .font(.roundedCaption2)
+                            .font(.roundedSubheadline)
                             .foregroundStyle(isActive ? activeColor : .secondary)
                     }
                 }
@@ -335,7 +369,7 @@ struct StatusActionsToolbar: View {
         localFavorited = !wasFavorited
         
         do {
-            let updated = try await service.favorite(status: status)
+            let updated = try await service.setFavorite(status: status, isFavorited: !wasFavorited)
             localFavorited = updated.favourited
         } catch {
             localFavorited = wasFavorited
@@ -353,7 +387,7 @@ struct StatusActionsToolbar: View {
         localReblogged = !wasReblogged
         
         do {
-            let updated = try await service.reblog(status: status)
+            let updated = try await service.setReblog(status: status, isReblogged: !wasReblogged)
             localReblogged = updated.reblogged
         } catch {
             localReblogged = wasReblogged
@@ -377,6 +411,13 @@ struct StatusActionsToolbar: View {
             localBookmarked = wasBookmarked
             appState.handleError(error)
         }
+    }
+
+    private func applyUpdatedStatus(_ updated: Status) {
+        guard updated.id == displayStatus.id else { return }
+        localFavorited = updated.favourited
+        localReblogged = updated.reblogged
+        localBookmarked = updated.bookmarked
     }
 }
 
