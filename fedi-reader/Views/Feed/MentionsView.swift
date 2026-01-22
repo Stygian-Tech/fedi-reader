@@ -350,7 +350,7 @@ struct ConversationDetailView: View {
             guard let service = timelineService else { return }
             
             // Find the most recent message to reply to
-            // Messages are sorted newest first, so first is most recent
+            // Messages are sorted oldest first, so last is most recent
             guard let lastMessage = lastStatus, let otherAccount else { return }
             
             // Add mention if not already present
@@ -373,9 +373,6 @@ struct ConversationDetailView: View {
     }
     
     private func groupMessages(_ messages: [ChatMessage]) -> [GroupedMessage] {
-        // Reverse so newest appear at bottom (like chat)
-        let reversedMessages = Array(messages.reversed())
-        
         var groups: [GroupedMessage] = []
         var currentGroup: [ChatMessage] = []
         var currentIsSent: Bool?
@@ -386,7 +383,7 @@ struct ConversationDetailView: View {
             ?? conversation.accounts.first
             ?? appState.currentAccount?.mastodonAccount
         
-        for message in reversedMessages {
+        for message in messages {
             // If same sender type and within 5 minutes, add to current group
             if let lastMessage = currentGroup.last,
                message.isSent == currentIsSent,
@@ -590,6 +587,12 @@ struct ChatBubble: View {
         message.status
     }
     
+    private var mediaAttachments: [MediaAttachment] {
+        status?.mediaAttachments.filter { attachment in
+            attachment.type == .image || attachment.type == .video || attachment.type == .gifv
+        } ?? []
+    }
+    
     var body: some View {
         if let status = status {
             Button {
@@ -605,6 +608,10 @@ struct ChatBubble: View {
                         Text(status.content.htmlToPlainText)
                             .font(.roundedBody)
                             .multilineTextAlignment(isSent ? .trailing : .leading)
+                    }
+                    
+                    if !mediaAttachments.isEmpty {
+                        chatMediaAttachments
                     }
                     
                     // Timestamp
@@ -645,6 +652,32 @@ struct ChatBubble: View {
                     appState.navigate(to: .profile(account))
                 } label: {
                     Label("View Profile", systemImage: "person")
+                }
+            }
+        }
+    }
+    
+    private var chatMediaAttachments: some View {
+        VStack(alignment: isSent ? .trailing : .leading, spacing: 6) {
+            ForEach(mediaAttachments) { attachment in
+                AsyncImage(url: URL(string: attachment.previewUrl ?? attachment.url)) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Rectangle()
+                        .fill(.tertiary)
+                }
+                .frame(maxWidth: 220, maxHeight: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(alignment: .bottomTrailing) {
+                    if attachment.type == .video || attachment.type == .gifv {
+                        Image(systemName: attachment.type == .gifv ? "play.circle" : "video")
+                            .font(.roundedCaption)
+                            .padding(4)
+                            .glassEffect(.clear, in: Circle())
+                            .padding(6)
+                    }
                 }
             }
         }
