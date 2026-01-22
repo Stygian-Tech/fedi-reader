@@ -11,6 +11,11 @@ struct StatusRowView: View {
     let status: Status
     @Environment(AppState.self) private var appState
     
+    @State private var blueskyDescription: String?
+    @State private var hasLoadedBlueskyDescription = false
+    @State private var fediverseCreatorName: String?
+    @State private var fediverseCreatorURL: URL?
+    
     var displayStatus: Status {
         status.displayStatus
     }
@@ -49,24 +54,61 @@ struct StatusRowView: View {
             
             // Actions bar
             StatusActionsBar(status: status, compact: false)
+
+            Divider()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
+        .padding(8)
     }
     
     // MARK: - Reblog Header
     
     private var reblogHeader: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "arrow.2.squarepath")
-                .font(.caption)
-            
-            Text("\(status.account.displayName) boosted")
-                .font(.caption)
+        Button {
+            appState.navigate(to: .profile(status.account))
+        } label: {
+            HStack(spacing: 8) {
+                AsyncImage(url: status.account.avatarURL) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Circle()
+                        .fill(.tertiary)
+                }
+                .frame(width: 24, height: 24)
+                .clipShape(Circle())
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.2.squarepath")
+                            .font(.roundedCaption2)
+                            .foregroundStyle(.secondary)
+                        
+                        Text("Boosted by")
+                            .font(.roundedCaption)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    HStack(spacing: 6) {
+                        Text(status.account.displayName)
+                            .font(.roundedCaption.bold())
+                            .lineLimit(1)
+                        
+                        Text("@\(status.account.acct)")
+                            .font(.roundedCaption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                
+                Spacer()
+            }
+            .padding(8)
+            .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+            .contentShape(Rectangle())
         }
-        .foregroundStyle(.secondary)
-        .padding(.leading, Constants.UI.avatarSize + 10)
+        .buttonStyle(.plain)
     }
     
     // MARK: - Author Header
@@ -123,6 +165,24 @@ struct StatusRowView: View {
         case .private: return "lock"
         case .direct: return "envelope"
         }
+    }
+    
+    private var blueskyCardURL: URL? {
+        guard let card = displayStatus.card,
+              (card.type == .link || card.type == .rich),
+              let url = card.linkURL,
+              isBlueskyURL(url) else { return nil }
+        return url
+    }
+    
+    private var cardURL: URL? {
+        guard let card = displayStatus.card, (card.type == .link || card.type == .rich) else { return nil }
+        return card.linkURL
+    }
+    
+    private func isBlueskyURL(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return host.contains("bsky.app") || host.contains("bsky.social")
     }
     
     // MARK: - Content Warning
@@ -247,14 +307,15 @@ struct StatusRowView: View {
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
                     
-                    if !card.description.isEmpty {
-                        Text(card.description)
+                    let descriptionText = blueskyDescription ?? card.description
+                    if !descriptionText.isEmpty {
+                        Text(descriptionText)
                             .font(.roundedSubheadline)
                             .foregroundStyle(.secondary)
-                            .lineLimit(3)
+                            .lineLimit(blueskyDescription == nil ? 3 : 8)
                     }
                     
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "link")
                             .font(.roundedCaption)
                         
@@ -263,7 +324,55 @@ struct StatusRowView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
+                        
+                        if let authorName = fediverseCreatorName,
+                           let authorURL = fediverseCreatorURL {
+                            Link(destination: authorURL) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "person.crop.circle")
+                                        .font(.roundedCaption)
+                                    
+                                    Text(authorName)
+                                        .font(.roundedCaption)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(.tertiarySystemBackground), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        } else if let authorName = fediverseCreatorName {
+                            Text(authorName)
+                                .font(.roundedCaption)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        } else if let authorName = card.authorName,
+                                  let authorUrlString = card.authorUrl,
+                                  let authorURL = URL(string: authorUrlString) {
+                            Link(destination: authorURL) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "person.crop.circle")
+                                        .font(.roundedCaption)
+                                    
+                                    Text(authorName)
+                                        .font(.roundedCaption)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(.tertiarySystemBackground), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        } else if let author = card.authorName {
+                            Text(author)
+                                .font(.roundedCaption)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
                     }
+                    .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -274,6 +383,17 @@ struct StatusRowView: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .task(id: blueskyCardURL?.absoluteString) {
+            guard let url = blueskyCardURL, !hasLoadedBlueskyDescription else { return }
+            hasLoadedBlueskyDescription = true
+            blueskyDescription = await LinkPreviewService.shared.fetchDescription(for: url)
+        }
+        .task(id: cardURL?.absoluteString) {
+            guard let url = cardURL else { return }
+            let creator = await LinkPreviewService.shared.fetchFediverseCreator(for: url)
+            fediverseCreatorName = creator?.name
+            fediverseCreatorURL = creator?.url
+        }
     }
     
     // MARK: - Poll

@@ -19,11 +19,13 @@ final class TimelineService {
     var exploreStatuses: [Status] = []
     var trendingLinks: [TrendingLink] = []
     var mentions: [MastodonNotification] = []
+    var conversations: [MastodonConversation] = []
     
     // Loading state
     var isLoadingHome = false
     var isLoadingExplore = false
     var isLoadingMentions = false
+    var isLoadingConversations = false
     var isLoadingMore = false
     
     // Pagination cursors
@@ -31,6 +33,7 @@ final class TimelineService {
     private var homeMinId: String?
     private var exploreMaxId: String?
     private var mentionsMaxId: String?
+    private var conversationsMaxId: String?
     
     // Error state
     var error: Error?
@@ -74,6 +77,10 @@ final class TimelineService {
             }
             if let firstStatus = statuses.first, refresh {
                 homeMinId = firstStatus.id
+            }
+
+            Task {
+                await prefetchFediverseCreators(for: homeTimeline)
             }
             
             NotificationCenter.default.post(name: .timelineDidRefresh, object: TimelineType.home)
@@ -143,6 +150,10 @@ final class TimelineService {
             
             if let lastStatus = statuses.last {
                 exploreMaxId = lastStatus.id
+            }
+
+            Task {
+                await prefetchFediverseCreators(for: exploreStatuses)
             }
         } catch let err as FediReaderError where err == .unauthorized {
             self.error = err
@@ -237,6 +248,62 @@ final class TimelineService {
         await loadMentions(refresh: true)
     }
     
+    // MARK: - Conversations
+    
+    func loadConversations(refresh: Bool = false) async {
+        guard !isLoadingConversations else { return }
+        
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            error = FediReaderError.noActiveAccount
+            return
+        }
+        
+        isLoadingConversations = true
+        error = nil
+        
+        do {
+            let items = try await client.getConversations(
+                instance: account.instance,
+                accessToken: token,
+                maxId: refresh ? nil : conversationsMaxId,
+                limit: Constants.Pagination.defaultLimit
+            )
+            
+            if refresh {
+                conversations = items
+            } else {
+                conversations.append(contentsOf: items)
+            }
+            
+            if let lastConversation = items.last {
+                conversationsMaxId = lastConversation.id
+            }
+            
+            NotificationCenter.default.post(name: .timelineDidRefresh, object: TimelineType.mentions)
+        } catch let err as FediReaderError where err == .unauthorized {
+            self.error = err
+            NotificationCenter.default.post(name: .accountDidChange, object: nil)
+        } catch {
+            self.error = error
+        }
+        
+        isLoadingConversations = false
+    }
+    
+    func loadMoreConversations() async {
+        guard !isLoadingMore, conversationsMaxId != nil else { return }
+        
+        isLoadingMore = true
+        await loadConversations(refresh: false)
+        isLoadingMore = false
+    }
+    
+    func refreshConversations() async {
+        conversationsMaxId = nil
+        await loadConversations(refresh: true)
+    }
+    
     // MARK: - Status Operations
     
     func getStatusContext(for status: Status) async throws -> StatusContext {
@@ -301,6 +368,32 @@ final class TimelineService {
         return updatedStatus
     }
     
+    func setFavorite(status: Status, isFavorited: Bool) async throws -> Status {
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            throw FediReaderError.noActiveAccount
+        }
+        
+        let targetStatus = status.displayStatus
+        
+        let updatedStatus: Status = isFavorited
+            ? try await client.favorite(
+                instance: account.instance,
+                accessToken: token,
+                statusId: targetStatus.id
+            )
+            : try await client.unfavorite(
+                instance: account.instance,
+                accessToken: token,
+                statusId: targetStatus.id
+            )
+        
+        updateStatusInTimelines(updatedStatus)
+        NotificationCenter.default.post(name: .statusDidUpdate, object: updatedStatus)
+        
+        return updatedStatus
+    }
+    
     func reblog(status: Status) async throws -> Status {
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
@@ -323,6 +416,32 @@ final class TimelineService {
                 statusId: targetStatus.id
             )
         }
+        
+        updateStatusInTimelines(updatedStatus)
+        NotificationCenter.default.post(name: .statusDidUpdate, object: updatedStatus)
+        
+        return updatedStatus
+    }
+    
+    func setReblog(status: Status, isReblogged: Bool) async throws -> Status {
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            throw FediReaderError.noActiveAccount
+        }
+        
+        let targetStatus = status.displayStatus
+        
+        let updatedStatus: Status = isReblogged
+            ? try await client.reblog(
+                instance: account.instance,
+                accessToken: token,
+                statusId: targetStatus.id
+            )
+            : try await client.unreblog(
+                instance: account.instance,
+                accessToken: token,
+                statusId: targetStatus.id
+            )
         
         updateStatusInTimelines(updatedStatus)
         NotificationCenter.default.post(name: .statusDidUpdate, object: updatedStatus)
@@ -432,17 +551,32 @@ final class TimelineService {
             // The UI should handle this via the notification
         }
     }
+
+    private func prefetchFediverseCreators(for statuses: [Status]) async {
+        let urls = statuses.compactMap { status in
+            guard let card = status.displayStatus.card,
+                  (card.type == .link || card.type == .rich),
+                  let url = card.linkURL else {
+                return nil
+            }
+            return url
+        }
+        
+        await LinkPreviewService.shared.prefetchFediverseCreators(for: urls)
+    }
     
     func clearAllTimelines() {
         homeTimeline = []
         exploreStatuses = []
         trendingLinks = []
         mentions = []
+        conversations = []
         
         homeMaxId = nil
         homeMinId = nil
         exploreMaxId = nil
         mentionsMaxId = nil
+        conversationsMaxId = nil
     }
 }
 
