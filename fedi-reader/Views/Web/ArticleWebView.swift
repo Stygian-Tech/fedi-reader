@@ -271,8 +271,16 @@ struct StatusDetailRowView: View {
     let status: Status
     @Environment(AppState.self) private var appState
     
+    @State private var fediverseCreatorName: String?
+    @State private var fediverseCreatorURL: URL?
+    
     var displayStatus: Status {
         status.displayStatus
+    }
+    
+    private var cardURL: URL? {
+        guard let card = displayStatus.card, (card.type == .link || card.type == .rich) else { return nil }
+        return card.linkURL
     }
     
     var body: some View {
@@ -411,6 +419,49 @@ struct StatusDetailRowView: View {
                                 Text(card.providerName ?? HTMLParser.extractDomain(from: URL(string: card.url)!) ?? card.url)
                                     .font(.roundedCaption)
                                     .lineLimit(1)
+                                
+                                if let authorName = fediverseCreatorName,
+                                   let authorURL = fediverseCreatorURL {
+                                    Link(destination: authorURL) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "person.crop.circle")
+                                                .font(.roundedCaption2)
+                                            
+                                            Text(authorName)
+                                                .font(.roundedCaption)
+                                                .lineLimit(1)
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color(.tertiarySystemBackground), in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                } else if let authorName = fediverseCreatorName {
+                                    Text(authorName)
+                                        .font(.roundedCaption)
+                                        .lineLimit(1)
+                                } else if let authorName = card.authorName,
+                                          let authorUrlString = card.authorUrl,
+                                          let authorURL = URL(string: authorUrlString) {
+                                    Link(destination: authorURL) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "person.crop.circle")
+                                                .font(.roundedCaption2)
+                                            
+                                            Text(authorName)
+                                                .font(.roundedCaption)
+                                                .lineLimit(1)
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color(.tertiarySystemBackground), in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                } else if let author = card.authorName {
+                                    Text(author)
+                                        .font(.roundedCaption)
+                                        .lineLimit(1)
+                                }
                             }
                             .foregroundStyle(.tertiary)
                         }
@@ -422,6 +473,12 @@ struct StatusDetailRowView: View {
                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
+                .task(id: cardURL?.absoluteString) {
+                    guard let url = cardURL else { return }
+                    let creator = await LinkPreviewService.shared.fetchFediverseCreator(for: url)
+                    fediverseCreatorName = creator?.name
+                    fediverseCreatorURL = creator?.url
+                }
             }
             
             // Actions bar
