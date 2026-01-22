@@ -288,7 +288,7 @@ struct LinkStatusRow: View {
                             .lineLimit(2)
                     }
                     
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "link")
                             .font(.roundedCaption)
                         
@@ -297,10 +297,25 @@ struct LinkStatusRow: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                         
-                        if let author = linkStatus.displayAuthor {
-                            Text("•")
-                                .font(.roundedCaption)
-                            
+                        if let authorName = linkStatus.authorAttribution,
+                           let authorUrlString = linkStatus.authorURL,
+                           let authorURL = URL(string: authorUrlString) {
+                            Link(destination: authorURL) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "person.crop.circle")
+                                        .font(.roundedCaption)
+                                    
+                                    Text(authorName)
+                                        .font(.roundedCaption)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(.tertiarySystemBackground), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        } else if let author = linkStatus.displayAuthor {
                             Text(author)
                                 .font(.roundedCaption)
                                 .lineLimit(1)

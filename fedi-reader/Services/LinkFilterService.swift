@@ -90,7 +90,8 @@ final class LinkFilterService {
                 description: description,
                 imageURL: imageURL,
                 providerName: providerName,
-                authorAttribution: targetStatus.card?.authorName
+                authorAttribution: targetStatus.card?.authorName,
+                authorURL: targetStatus.card?.authorUrl
             )
             
             linkStatuses.append(linkStatus)
