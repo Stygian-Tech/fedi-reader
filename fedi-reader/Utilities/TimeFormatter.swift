@@ -22,13 +22,13 @@ struct TimeFormatter {
         formatter.unitsStyle = .abbreviated
         formatter.dateTimeStyle = .named
         
-        var relativeString = formatter.localizedString(for: date, relativeTo: now)
+        let relativeString = formatter.localizedString(for: date, relativeTo: now)
         
         // Remove seconds from the string if present (e.g., "30 seconds ago" -> "30s ago")
         // But keep minutes, hours, days, etc.
         if timeInterval < 3600 { // Less than an hour
             // For times under an hour, ensure we show minutes, not seconds
-            if let secondsRange = relativeString.range(of: "sec", options: .caseInsensitive) {
+            if relativeString.range(of: "sec", options: .caseInsensitive) != nil {
                 // Replace "X sec ago" with "now" or "1m ago"
                 let minutes = Int(timeInterval / 60)
                 if minutes < 1 {

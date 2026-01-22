@@ -449,6 +449,22 @@ final class MastodonClient {
             limit: limit
         )
     }
+
+    func getConversations(
+        instance: String,
+        accessToken: String,
+        maxId: String? = nil,
+        sinceId: String? = nil,
+        limit: Int = Constants.Pagination.defaultLimit
+    ) async throws -> [MastodonConversation] {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let maxId { queryItems.append(URLQueryItem(name: "max_id", value: maxId)) }
+        if let sinceId { queryItems.append(URLQueryItem(name: "since_id", value: sinceId)) }
+
+        let url = try buildURL(instance: instance, path: Constants.API.conversations, queryItems: queryItems)
+        let request = buildRequest(url: url, accessToken: accessToken)
+        return try await execute(request)
+    }
     
     // MARK: - Statuses
     

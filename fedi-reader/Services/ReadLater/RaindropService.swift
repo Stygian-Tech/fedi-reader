@@ -175,7 +175,7 @@ final class RaindropService: ReadLaterServiceProtocol {
     }
     
     private func refreshAccessToken() async throws {
-        guard let refreshToken else {
+        guard refreshToken != nil else {
             throw FediReaderError.readLaterError("No refresh token available")
         }
         

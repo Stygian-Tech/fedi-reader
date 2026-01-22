@@ -53,7 +53,7 @@ struct MentionsView: View {
         
         return groupedByAccount.values.compactMap { notifications in
             guard let firstNotification = notifications.first,
-                  let firstStatus = firstNotification.status else { return nil }
+                  firstNotification.status != nil else { return nil }
             
             // Sort by date (newest first for preview, but we'll reverse in detail view)
             let sortedNotifications = notifications.sorted { $0.createdAt > $1.createdAt }
@@ -567,7 +567,7 @@ struct ChatMessageGroup: View {
                 // Messages
                 VStack(alignment: .leading, spacing: 4) {
                     // Account name (only for first message)
-                    if let firstMessage = group.messages.first {
+                    if group.messages.first != nil {
                         Button {
                             appState.navigate(to: .profile(group.account))
                         } label: {

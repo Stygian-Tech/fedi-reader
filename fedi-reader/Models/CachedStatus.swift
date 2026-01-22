@@ -45,12 +45,14 @@ final class CachedStatus {
         self.authorAttribution = authorAttribution
     }
     
+    @MainActor
     var status: Status? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try? decoder.decode(Status.self, from: jsonData)
     }
     
+    @MainActor
     static func from(status: Status, accountId: String, timelineType: String) -> CachedStatus? {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

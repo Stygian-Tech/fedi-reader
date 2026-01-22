@@ -64,9 +64,9 @@ enum Constants {
     // MARK: - Pagination
     
     enum Pagination {
-        static let defaultLimit = 40
-        static let maxLimit = 80
-        static let prefetchThreshold = 10 // Load more when this many items from end
+        nonisolated static let defaultLimit = 40
+        nonisolated static let maxLimit = 80
+        nonisolated static let prefetchThreshold = 10 // Load more when this many items from end
     }
     
     // MARK: - Cache

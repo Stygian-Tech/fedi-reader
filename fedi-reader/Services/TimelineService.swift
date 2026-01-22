@@ -546,14 +546,14 @@ final class TimelineService {
         }
         
         // Update in mentions
-        if let index = mentions.firstIndex(where: { $0.status?.id == status.id }) {
+        if mentions.contains(where: { $0.status?.id == status.id }) {
             // Notifications are immutable, so we can't easily update them
             // The UI should handle this via the notification
         }
     }
 
     private func prefetchFediverseCreators(for statuses: [Status]) async {
-        let urls = statuses.compactMap { status in
+        let urls: [URL] = statuses.compactMap { status -> URL? in
             guard let card = status.displayStatus.card,
                   (card.type == .link || card.type == .rich),
                   let url = card.linkURL else {

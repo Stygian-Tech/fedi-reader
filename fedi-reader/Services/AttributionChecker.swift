@@ -337,4 +337,8 @@ final class AttributionChecker {
     func clearCache() {
         cache.removeAll()
     }
+
+    func cacheCountForTesting() -> Int {
+        cache.count
+    }
 }

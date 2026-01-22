@@ -10,6 +10,7 @@ import Foundation
 @testable import fedi_reader
 
 @Suite("Mastodon Types Tests")
+@MainActor
 struct MastodonTypesTests {
     
     // MARK: - Status Tests

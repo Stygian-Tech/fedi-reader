@@ -10,6 +10,8 @@ import Foundation
 @Observable
 @MainActor
 final class LinkPreviewService {
+    static let shared = LinkPreviewService()
+
     // MARK: - Types
     struct LinkPreview: Hashable, Sendable {
         let url: URL
@@ -21,6 +23,11 @@ final class LinkPreviewService {
         let provider: String? // derived from domain
         let fediverseCreator: String? // from meta name="fediverse:creator"
         let fediverseCreatorURL: URL?
+    }
+
+    struct FediverseCreator: Sendable {
+        let name: String?
+        let url: URL?
     }
 
     // MARK: - State
@@ -100,6 +107,23 @@ final class LinkPreviewService {
             }
         }
         return results
+    }
+
+    func fetchDescription(for url: URL) async -> String? {
+        let preview = await preview(for: url)
+        return preview?.description
+    }
+
+    func fetchFediverseCreator(for url: URL) async -> FediverseCreator? {
+        let preview = await preview(for: url)
+        guard let preview else { return nil }
+        return FediverseCreator(name: preview.fediverseCreator, url: preview.fediverseCreatorURL)
+    }
+
+    func prefetchFediverseCreators(for urls: [URL]) async {
+        let uniqueURLs = Array(Set(urls))
+        guard !uniqueURLs.isEmpty else { return }
+        _ = await previews(for: uniqueURLs)
     }
 
     func clearCache() { cache.removeAll() }

@@ -10,6 +10,7 @@ import Foundation
 @testable import fedi_reader
 
 @Suite("Attribution Checker Tests")
+@MainActor
 struct AttributionCheckerTests {
     
     // MARK: - Link Header Parsing
@@ -24,7 +25,7 @@ struct AttributionCheckerTests {
         
         // The actual parsing happens internally, so we test the full flow
         // with mock responses in integration tests
-        #expect(checker != nil)
+        #expect(checker.cacheCountForTesting() == 0)
     }
     
     // MARK: - Meta Tag Parsing Verification
@@ -76,6 +77,6 @@ struct AttributionCheckerTests {
         checker.clearCache()
         
         // No exception thrown means success
-        #expect(true)
+        #expect(checker.cacheCountForTesting() == 0)
     }
 }

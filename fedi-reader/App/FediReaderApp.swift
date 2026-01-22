@@ -7,6 +7,12 @@
 
 import SwiftUI
 import SwiftData
+import AppIntents
+
+@available(iOS 16.0, *)
+private enum AppIntentsDependency {
+    static let intentType: (any AppIntent.Type)? = nil
+}
 
 @main
 struct FediReaderApp: App {

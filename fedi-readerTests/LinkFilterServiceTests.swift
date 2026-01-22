@@ -10,9 +10,9 @@ import Foundation
 @testable import fedi_reader
 
 @Suite("Link Filter Service Tests")
+@MainActor
 struct LinkFilterServiceTests {
     
-    @MainActor
     let service = LinkFilterService()
     
     // MARK: - Basic Filtering
