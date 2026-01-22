@@ -1,192 +1,204 @@
-<<<<<<< Current (Your changes)
-=======
 //
 //  LinkPreviewService.swift
 //  fedi-reader
 //
-//  Fetches lightweight preview metadata for links
+//  Fetch lightweight preview metadata (title, description, image) for external URLs.
 //
 
 import Foundation
 
+@Observable
 @MainActor
 final class LinkPreviewService {
-    static let shared = LinkPreviewService()
-    
-    private let session: URLSession
-    private var cache: [URL: String] = [:]
-    private var fediverseCreatorCache: [URL: (name: String, url: URL?)] = [:]
-    private let cacheLimit = 500
-    
-    init(session: URLSession? = nil) {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10
-        config.httpAdditionalHeaders = [
-            "User-Agent": Constants.userAgent
-        ]
-        self.session = session ?? URLSession(configuration: config)
-    }
-    
-    func fetchDescription(for url: URL) async -> String? {
-        if let cached = cache[url] {
-            return cached
-        }
-        
-        let resolvedURL = await resolveURL(for: url) ?? url
-        if let cached = cache[resolvedURL] {
-            return cached
-        }
-        
-        guard let html = await fetchHeadHTML(from: resolvedURL) else { return nil }
-        let description = extractDescription(from: html)
-        
-        if let description, !description.isEmpty {
-            cacheResult(description, for: resolvedURL)
-        }
-        
-        return description
-    }
-    
-    func fetchFediverseCreator(for url: URL) async -> (name: String, url: URL?)? {
-        if let cached = fediverseCreatorCache[url] {
-            return cached
-        }
-        
-        let resolvedURL = await resolveURL(for: url) ?? url
-        if let cached = fediverseCreatorCache[resolvedURL] {
-            return cached
-        }
-        
-        guard let html = await fetchHeadHTML(from: resolvedURL),
-              let creator = extractMetaContent(from: html, name: "fediverse:creator"),
-              !creator.isEmpty else { return nil }
-        
-        let normalized = normalizeFediverseCreator(creator)
-        cacheFediverseCreator(normalized, for: resolvedURL)
-        return normalized
+    // MARK: - Types
+    struct LinkPreview: Hashable, Sendable {
+        let url: URL
+        let finalURL: URL?
+        let title: String?
+        let description: String?
+        let imageURL: URL?
+        let siteName: String?
+        let provider: String? // derived from domain
+        let fediverseCreator: String? // from meta name="fediverse:creator"
+        let fediverseCreatorURL: URL?
     }
 
-    func prefetchFediverseCreators(for urls: [URL]) async {
-        let unique = Array(Set(urls))
-        guard !unique.isEmpty else { return }
-        
-        await withTaskGroup(of: Void.self) { group in
-            for url in unique {
-                group.addTask {
-                    _ = await self.fetchFediverseCreator(for: url)
+    // MARK: - State
+    private let session: URLSession
+    private var cache: [URL: LinkPreview] = [:]
+    private let cacheLimit = 500
+
+    var isLoading = false
+
+    // MARK: - Init
+    init(configuration: URLSessionConfiguration = .default) {
+        configuration.timeoutIntervalForRequest = 10
+        configuration.httpAdditionalHeaders = [
+            "User-Agent": Constants.userAgent
+        ]
+        self.session = URLSession(configuration: configuration)
+    }
+
+    // MARK: - Public API
+    func preview(for url: URL) async -> LinkPreview? {
+        if let cached = cache[url] { return cached }
+        isLoading = true
+        defer { isLoading = false }
+
+        // Step 1: HEAD to follow redirects cheaply and detect content-type
+        let headResult = await head(url)
+        let finalURL = headResult.finalURL ?? url
+        let contentType = headResult.contentType ?? "text/html"
+
+        // Only fetch HTML for previews
+        guard (contentType.contains("text/html") || contentType.contains("application/xhtml")) else {
+            let preview = LinkPreview(
+                url: url,
+                finalURL: finalURL,
+                title: nil,
+                description: nil,
+                imageURL: nil,
+                siteName: nil,
+                provider: HTMLParser.extractDomain(from: finalURL),
+                fediverseCreator: nil,
+                fediverseCreatorURL: nil
+            )
+            cache(preview)
+            return preview
+        }
+
+        // Step 2: GET first bytes (head) of the document
+        let html = await fetchHeadHTML(from: finalURL)
+        let parsed = parseHTML(html, baseURL: finalURL)
+        let creator = normalizeFediverseCreator(parsed.fediverseCreator)
+        let preview = LinkPreview(
+            url: url,
+            finalURL: finalURL,
+            title: parsed.title,
+            description: parsed.description,
+            imageURL: parsed.imageURL,
+            siteName: parsed.siteName,
+            provider: HTMLParser.extractDomain(from: finalURL),
+            fediverseCreator: creator.name,
+            fediverseCreatorURL: creator.url
+        )
+        cache(preview)
+        return preview
+    }
+
+    func previews(for urls: [URL]) async -> [URL: LinkPreview] {
+        var results: [URL: LinkPreview] = [:]
+        await withTaskGroup(of: (URL, LinkPreview?).self) { group in
+            for url in urls {
+                group.addTask { [weak self] in
+                    guard let self else { return (url, nil) }
+                    return (url, await self.preview(for: url))
                 }
             }
+            for await (url, preview) in group {
+                if let preview { results[url] = preview }
+            }
         }
+        return results
     }
-    
-    private func resolveURL(for url: URL) async -> URL? {
+
+    func clearCache() { cache.removeAll() }
+
+    // MARK: - Networking
+    private func head(_ url: URL) async -> (finalURL: URL?, contentType: String?) {
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
-        
         do {
             let (_, response) = try await session.data(for: request)
-            return response.url
+            let http = response as? HTTPURLResponse
+            let type = http?.value(forHTTPHeaderField: "Content-Type")
+            let finalURL = http?.url
+            return (finalURL, type)
         } catch {
-            return nil
+            return (nil, nil)
         }
     }
-    
-    private func fetchHeadHTML(from url: URL) async -> String? {
+
+    private func fetchHeadHTML(from url: URL) async -> String {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("bytes=0-32768", forHTTPHeaderField: "Range")
-        
+        // Request only the first ~32KB; meta tags typically live in <head>
+        request.setValue("bytes=0-32767", forHTTPHeaderField: "Range")
         do {
             let (data, _) = try await session.data(for: request)
-            return String(data: data, encoding: .utf8)
+            return String(data: data, encoding: .utf8) ?? ""
         } catch {
-            return nil
+            return ""
         }
     }
-    
-    private func extractDescription(from html: String) -> String? {
-        if let ogDescription = extractMetaProperty(from: html, property: "og:description") {
-            return HTMLParser.decodeHTMLEntities(ogDescription)
+
+    // MARK: - Parsing
+    private func parseHTML(_ html: String, baseURL: URL) -> (title: String?, description: String?, imageURL: URL?, siteName: String?, fediverseCreator: String?) {
+        guard !html.isEmpty else { return (nil, nil, nil, nil, nil) }
+
+        func metaContent(name: String) -> String? {
+            let pattern = #"<meta[^>]+name\s*=\s*[\"']\#(NSRegularExpression.escapedPattern(for: name))[\"'][^>]+content\s*=\s*[\"']([^\"']+)[\"']"#
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+            let range = NSRange(html.startIndex..., in: html)
+            guard let match = regex.firstMatch(in: html, options: [], range: range),
+                  let contentRange = Range(match.range(at: 1), in: html) else { return nil }
+            return HTMLParser.decodeHTMLEntities(String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines))
         }
-        
-        if let twitterDescription = extractMetaContent(from: html, name: "twitter:description") {
-            return HTMLParser.decodeHTMLEntities(twitterDescription)
+
+        func metaProperty(_ property: String) -> String? {
+            let pattern = #"<meta[^>]+property\s*=\s*[\"']\#(NSRegularExpression.escapedPattern(for: property))[\"'][^>]+content\s*=\s*[\"']([^\"']+)[\"']"#
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+            let range = NSRange(html.startIndex..., in: html)
+            guard let match = regex.firstMatch(in: html, options: [], range: range),
+                  let contentRange = Range(match.range(at: 1), in: html) else { return nil }
+            return HTMLParser.decodeHTMLEntities(String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines))
         }
-        
-        if let metaDescription = extractMetaContent(from: html, name: "description") {
-            return HTMLParser.decodeHTMLEntities(metaDescription)
+
+        func titleTag() -> String? {
+            let pattern = #"<title[^>]*>(.*?)</title>"#
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else { return nil }
+            let range = NSRange(html.startIndex..., in: html)
+            guard let match = regex.firstMatch(in: html, options: [], range: range),
+                  let textRange = Range(match.range(at: 1), in: html) else { return nil }
+            return HTMLParser.convertToPlainText(String(html[textRange])).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        
-        return nil
+
+        // Prefer Open Graph, then Twitter, then standard meta, then <title>
+        let title = metaProperty("og:title") ?? metaContent(name: "twitter:title") ?? metaContent(name: "title") ?? titleTag()
+        let description = metaProperty("og:description") ?? metaContent(name: "twitter:description") ?? metaContent(name: "description")
+        let siteName = metaProperty("og:site_name")
+        let fediverseCreator = metaContent(name: "fediverse:creator")
+
+        // Image URL resolution
+        let imageString = metaProperty("og:image") ?? metaContent(name: "twitter:image")
+        let imageURL: URL? = {
+            guard let imageString else { return nil }
+            let decoded = HTMLParser.decodeHTMLEntities(imageString)
+            if let url = URL(string: decoded), url.scheme != nil { return url }
+            return URL(string: decoded, relativeTo: baseURL)?.absoluteURL
+        }()
+
+        return (title, description, imageURL, siteName, fediverseCreator)
     }
-    
-    private func extractMetaContent(from html: String, name: String) -> String? {
-        let pattern = #"<meta[^>]+name\s*=\s*["']\#(name)["'][^>]+content\s*=\s*["']([^"']+)["']"#
-        
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return nil
-        }
-        
-        let range = NSRange(html.startIndex..., in: html)
-        guard let match = regex.firstMatch(in: html, options: [], range: range),
-              let contentRange = Range(match.range(at: 1), in: html) else {
-            return nil
-        }
-        
-        return String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    private func extractMetaProperty(from html: String, property: String) -> String? {
-        let escapedProperty = NSRegularExpression.escapedPattern(for: property)
-        let pattern = #"<meta[^>]+property\s*=\s*["']\#(escapedProperty)["'][^>]+content\s*=\s*["']([^"']+)["']"#
-        
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return nil
-        }
-        
-        let range = NSRange(html.startIndex..., in: html)
-        guard let match = regex.firstMatch(in: html, options: [], range: range),
-              let contentRange = Range(match.range(at: 1), in: html) else {
-            return nil
-        }
-        
-        return String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    private func cacheResult(_ description: String, for url: URL) {
-        if cache.count >= cacheLimit {
-            let keysToRemove = Array(cache.keys.prefix(cacheLimit / 4))
-            for key in keysToRemove {
-                cache.removeValue(forKey: key)
-            }
-        }
-        
-        cache[url] = description
-    }
-    
-    private func cacheFediverseCreator(_ creator: (name: String, url: URL?), for url: URL) {
-        if fediverseCreatorCache.count >= cacheLimit {
-            let keysToRemove = Array(fediverseCreatorCache.keys.prefix(cacheLimit / 4))
-            for key in keysToRemove {
-                fediverseCreatorCache.removeValue(forKey: key)
-            }
-        }
-        
-        fediverseCreatorCache[url] = creator
-    }
-    
-    private func normalizeFediverseCreator(_ creator: String) -> (name: String, url: URL?) {
+
+    private func normalizeFediverseCreator(_ creator: String?) -> (name: String?, url: URL?) {
+        guard let creator, !creator.isEmpty else { return (nil, nil) }
         let trimmed = creator.trimmingCharacters(in: .whitespacesAndNewlines)
         let handle = trimmed.hasPrefix("@") ? String(trimmed.dropFirst()) : trimmed
         let parts = handle.split(separator: "@", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else {
-            return (name: trimmed, url: nil)
-        }
-        
+        guard parts.count == 2 else { return (trimmed, nil) }
         let username = parts[0]
         let instance = parts[1]
         let profileURL = URL(string: "https://\(instance)/@\(username)")
-        return (name: "@\(username)@\(instance)", url: profileURL)
+        return ("@\(username)@\(instance)", profileURL)
+    }
+
+    // MARK: - Cache
+    private func cache(_ preview: LinkPreview) {
+        if cache.count >= cacheLimit {
+            let keysToRemove = Array(cache.keys.prefix(cacheLimit / 4))
+            for key in keysToRemove { cache.removeValue(forKey: key) }
+        }
+        cache[preview.url] = preview
     }
 }
->>>>>>> Incoming (Background Agent changes)
