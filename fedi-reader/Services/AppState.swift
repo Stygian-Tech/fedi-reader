@@ -154,6 +154,7 @@ enum NavigationDestination: Hashable {
 enum SheetDestination: Identifiable {
     case login
     case compose(replyTo: Status? = nil, quote: Status? = nil)
+    case newMessage
     case readLaterLogin(ReadLaterServiceType)
     case shareSheet(url: URL)
     case accountSwitcher
@@ -162,6 +163,7 @@ enum SheetDestination: Identifiable {
         switch self {
         case .login: return "login"
         case .compose: return "compose"
+        case .newMessage: return "newMessage"
         case .readLaterLogin(let type): return "readLater-\(type.rawValue)"
         case .shareSheet: return "share"
         case .accountSwitcher: return "accountSwitcher"

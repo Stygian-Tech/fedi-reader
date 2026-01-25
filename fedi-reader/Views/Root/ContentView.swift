@@ -83,6 +83,9 @@ struct ContentView: View {
         case .compose(let replyTo, let quote):
             ComposeView(replyTo: replyTo, quote: quote)
                 .environment(appState)
+        case .newMessage:
+            NewMessageView()
+                .environment(appState)
         case .readLaterLogin(let serviceType):
             ReadLaterLoginView(serviceType: serviceType)
                 .environment(readLaterManager)

@@ -501,6 +501,14 @@ final class MastodonClient {
         return try await getHashtagTimeline(instance: instance, accessToken: token, tag: tag, limit: limit)
     }
     
+    func searchAccounts(query: String, limit: Int = 10) async throws -> [MastodonAccount] {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        let results = try await search(instance: instance, accessToken: token, query: query, type: "accounts", limit: limit)
+        return results.accounts
+    }
+    
     func getHashtagTimeline(instance: String, accessToken: String, tag: String, limit: Int = Constants.Pagination.defaultLimit) async throws -> [Status] {
         let url = try buildURL(
             instance: instance,
