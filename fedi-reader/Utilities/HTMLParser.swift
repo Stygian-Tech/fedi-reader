@@ -157,12 +157,12 @@ struct HTMLParser: Sendable {
             while let match = regex.firstMatch(in: result, options: [], range: searchRange) {
                 guard let codeRange = Range(match.range(at: 1), in: result),
                       let codePoint = Int(result[codeRange]),
-                      let scalar = Unicode.Scalar(codePoint) else {
+                      let scalar = Unicode.Scalar(codePoint),
+                      let fullRange = Range(match.range, in: result) else {
                     break
                 }
                 
                 let character = String(Character(scalar))
-                let fullRange = Range(match.range, in: result)!
                 result.replaceSubrange(fullRange, with: character)
                 searchRange = NSRange(result.startIndex..., in: result)
             }
@@ -176,12 +176,12 @@ struct HTMLParser: Sendable {
             while let match = regex.firstMatch(in: result, options: [], range: searchRange) {
                 guard let codeRange = Range(match.range(at: 1), in: result),
                       let codePoint = Int(result[codeRange]),
-                      let scalar = Unicode.Scalar(codePoint) else {
+                      let scalar = Unicode.Scalar(codePoint),
+                      let fullRange = Range(match.range, in: result) else {
                     break
                 }
 
                 let character = String(Character(scalar))
-                let fullRange = Range(match.range, in: result)!
                 result.replaceSubrange(fullRange, with: character)
                 searchRange = NSRange(result.startIndex..., in: result)
             }
@@ -195,12 +195,12 @@ struct HTMLParser: Sendable {
             while let match = regex.firstMatch(in: result, options: [], range: searchRange) {
                 guard let codeRange = Range(match.range(at: 1), in: result),
                       let codePoint = Int(result[codeRange], radix: 16),
-                      let scalar = Unicode.Scalar(codePoint) else {
+                      let scalar = Unicode.Scalar(codePoint),
+                      let fullRange = Range(match.range, in: result) else {
                     break
                 }
                 
                 let character = String(Character(scalar))
-                let fullRange = Range(match.range, in: result)!
                 result.replaceSubrange(fullRange, with: character)
                 searchRange = NSRange(result.startIndex..., in: result)
             }
@@ -214,12 +214,12 @@ struct HTMLParser: Sendable {
             while let match = regex.firstMatch(in: result, options: [], range: searchRange) {
                 guard let codeRange = Range(match.range(at: 1), in: result),
                       let codePoint = Int(result[codeRange], radix: 16),
-                      let scalar = Unicode.Scalar(codePoint) else {
+                      let scalar = Unicode.Scalar(codePoint),
+                      let fullRange = Range(match.range, in: result) else {
                     break
                 }
 
                 let character = String(Character(scalar))
-                let fullRange = Range(match.range, in: result)!
                 result.replaceSubrange(fullRange, with: character)
                 searchRange = NSRange(result.startIndex..., in: result)
             }
@@ -307,8 +307,8 @@ struct HTMLParser: Sendable {
         let htmlRange = NSRange(html.startIndex..., in: html)
         let matches = regex.matches(in: html, options: [], range: htmlRange)
         
-        // Process matches in reverse order to maintain correct indices
-        for match in matches.reversed() {
+        // Process matches in forward order; compute indices immediately before each use to avoid invalidation after mutation
+        for match in matches {
             guard let urlRange = Range(match.range(at: 1), in: html),
                   let textRange = Range(match.range(at: 2), in: html) else {
                 continue
@@ -326,12 +326,13 @@ struct HTMLParser: Sendable {
                 continue
             }
             
-            // Find the link text in the plain text version
+            // Find the link text in the plain text version; derive AttributedString indices right before use
             if let plainTextRange = plainText.range(of: decodedLinkText) {
                 let attributedRange = AttributedString.Index(plainTextRange.lowerBound, within: attributedString)
                 let attributedEnd = AttributedString.Index(plainTextRange.upperBound, within: attributedString)
                 
                 if let start = attributedRange, let end = attributedEnd {
+                    guard start < end else { continue }
                     let range = start..<end
                     attributedString[range].link = url
                 }
@@ -344,20 +345,21 @@ struct HTMLParser: Sendable {
             let plainTextRange = NSRange(plainText.startIndex..., in: plainText)
             let hashtagMatches = hashtagRegex.matches(in: plainText, options: [], range: plainTextRange)
             
-            // Process in reverse order to maintain indices
-            for match in hashtagMatches.reversed() {
+            // Process in forward order; compute indices immediately before each use to avoid invalidation after mutation
+            for match in hashtagMatches {
                 guard let matchRange = Range(match.range, in: plainText) else { continue }
                 let hashtag = String(plainText[matchRange])
                 
                 // Remove # for the tag name
                 let tagName = String(hashtag.dropFirst())
                 
-                // Create URL for hashtag (using custom handler if provided)
+                // Create URL for hashtag (using custom handler if provided); derive AttributedString indices right before use
                 if let url = hashtagHandler?(tagName) ?? URL(string: "fedi-reader://hashtag/\(tagName)") {
                     let attributedRange = AttributedString.Index(matchRange.lowerBound, within: attributedString)
                     let attributedEnd = AttributedString.Index(matchRange.upperBound, within: attributedString)
                     
                     if let start = attributedRange, let end = attributedEnd {
+                        guard start < end else { continue }
                         let range = start..<end
                         attributedString[range].link = url
                     }

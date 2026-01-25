@@ -231,4 +231,17 @@ struct HTMLParserTests {
         
         #expect(!attributedString.characters.isEmpty)
     }
+
+    @Test("Handles several links and hashtags in AttributedString without crashing")
+    @available(iOS 15.0, macOS 12.0, *)
+    func handlesSeveralLinksAndHashtagsInAttributedString() {
+        let html = """
+        <p>Check <a href="https://a.com">one</a> and <a href="https://b.com">two</a> and \
+        <a href="https://c.com">three</a>. Tags: #swift #ios #mastodon.</p>
+        """
+        let attributedString = HTMLParser.convertToAttributedString(html) { _ in URL(string: "https://tags.example.com") }
+        #expect(!attributedString.characters.isEmpty)
+        let linkRuns = attributedString.runs.filter { $0.link != nil }
+        #expect(linkRuns.count >= 3)
+    }
 }
