@@ -494,6 +494,8 @@ struct GroupedConversationDetailView: View {
         }
         .task {
             await loadAllConversationThreads()
+            // Mark all unread conversations in this group as read
+            await markConversationsAsRead()
         }
         .refreshable {
             await timelineService?.refreshConversations()
@@ -525,6 +527,17 @@ struct GroupedConversationDetailView: View {
                 if let context {
                     statusContexts[statusId] = context
                 }
+            }
+        }
+    }
+    
+    private func markConversationsAsRead() async {
+        guard let service = timelineService else { return }
+        
+        // Mark all unread conversations in this group as read
+        for conversation in groupedConversation.conversations {
+            if conversation.unread == true {
+                await service.markConversationAsRead(conversationId: conversation.id)
             }
         }
     }

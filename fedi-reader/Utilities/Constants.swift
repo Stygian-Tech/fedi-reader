@@ -44,6 +44,7 @@ enum Constants {
         static let publicTimeline = "/api/v1/timelines/public"
         static let notifications = "/api/v1/notifications"
         static let conversations = "/api/v1/conversations"
+        static let conversationRead = "/api/v1/conversations" // Use with /:id/read
         
         static let statuses = "/api/v1/statuses"
         static let accounts = "/api/v1/accounts"
@@ -154,6 +155,15 @@ enum Constants {
         static let acceptHeader = "application/activity+json, application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\""
         static let contentType = "application/activity+json"
     }
+    
+    // MARK: - Remote Replies
+    
+    enum RemoteReplies {
+        static let asyncRefreshHeader = "Mastodon-Async-Refresh"
+        static let fetchTimeout: TimeInterval = 10
+        static let maxConcurrentFetches = 5
+        static let maxRetries = 2
+    }
 }
 
 // MARK: - Notification Names
@@ -165,6 +175,14 @@ extension Notification.Name {
     static let timelineDidRefresh = Notification.Name("timelineDidRefresh")
     static let statusDidUpdate = Notification.Name("statusDidUpdate")
     static let readLaterDidSave = Notification.Name("readLaterDidSave")
+    static let statusContextDidUpdate = Notification.Name("statusContextDidUpdate")
+}
+
+// MARK: - Notification Payloads
+
+struct StatusContextUpdatePayload: Sendable {
+    let statusId: String
+    let context: StatusContext
 }
 
 // MARK: - Error Types

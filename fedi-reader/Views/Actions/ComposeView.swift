@@ -238,15 +238,32 @@ struct ComposeView: View {
     // MARK: - Actions
     
     private func setupInitialContent() {
-        if let replyTo {
-            // Pre-fill with mention
-            let mention = "@\(replyTo.displayStatus.account.acct) "
-            content = mention
+        guard let replyTo else { return }
+        
+        let targetStatus = replyTo.displayStatus
+        
+        // Collect all mentions: original poster + all mentioned users
+        var mentionsToInclude: Set<String> = []
+        
+        // Add the original poster
+        mentionsToInclude.insert(targetStatus.account.acct)
+        
+        // Add all users mentioned in the original post
+        for mention in targetStatus.mentions {
+            mentionsToInclude.insert(mention.acct)
         }
         
-        if let replyTo {
-            visibility = replyTo.displayStatus.visibility
+        // Exclude current user to avoid self-mentioning
+        if let currentAccount = appState.currentAccount {
+            mentionsToInclude.remove(currentAccount.acct)
         }
+        
+        // Build mention string
+        let mentionStrings = mentionsToInclude.sorted().map { "@\($0) " }
+        content = mentionStrings.joined()
+        
+        // Inherit visibility from the post being replied to
+        visibility = targetStatus.visibility
     }
     
     private func post() async {

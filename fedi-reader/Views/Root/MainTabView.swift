@@ -17,6 +17,10 @@ struct MainTabView: View {
     @State private var scrollToTopTrigger = false
     @AppStorage("hapticFeedback") private var hapticFeedback = true
     @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
+    
+    private var unreadMentionsCount: Int {
+        timelineWrapper.service?.unreadConversationsCount ?? 0
+    }
 
     var body: some View {
         @Bindable var state = appState
@@ -57,6 +61,7 @@ struct MainTabView: View {
                         }
                 }
             }
+            .badge(unreadMentionsCount)
 
             Tab(hideTabBarLabels ? "" : "Profile", systemImage: "person", value: .profile) {
                 NavigationStack(path: $state.navigationPath) {
@@ -76,6 +81,12 @@ struct MainTabView: View {
                     scrollToTopTrigger.toggle()
                     HapticFeedback.play(.medium, enabled: hapticFeedback)
                 }
+            } else if newValue == .mentions {
+                // Refresh conversations when switching to mentions tab to get latest unread count
+                Task {
+                    await timelineWrapper.service?.refreshConversations()
+                }
+                tabTracker.reset()
             } else {
                 tabTracker.reset()
             }

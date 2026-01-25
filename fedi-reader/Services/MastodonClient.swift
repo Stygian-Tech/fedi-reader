@@ -111,6 +111,11 @@ final class MastodonClient {
     // MARK: - Request Execution
     
     private func execute<T: Decodable>(_ request: URLRequest) async throws -> T {
+        let (result, _): (T, HTTPURLResponse) = try await executeWithHeaders(request)
+        return result
+    }
+    
+    private func executeWithHeaders<T: Decodable>(_ request: URLRequest) async throws -> (T, HTTPURLResponse) {
         let startTime = Date()
         let method = request.httpMethod ?? "GET"
         let url = request.url?.absoluteString ?? "unknown"
@@ -137,7 +142,7 @@ final class MastodonClient {
                 do {
                     let result = try decoder.decode(T.self, from: data)
                     Self.logger.info("API success: \(method) \(url, privacy: .public) - \(statusCode) (\(dataSize) bytes) in \(String(format: "%.2f", duration))s")
-                    return result
+                    return (result, httpResponse)
                 } catch {
                     Self.logger.error("Decoding error for \(method) \(url, privacy: .public): \(error.localizedDescription)")
                     throw FediReaderError.decodingError(error)
@@ -563,6 +568,19 @@ final class MastodonClient {
         return conversations
     }
     
+    func markConversationAsRead(
+        instance: String,
+        accessToken: String,
+        conversationId: String
+    ) async throws -> MastodonConversation {
+        Self.logger.info("Marking conversation as read: \(conversationId.prefix(8), privacy: .public)")
+        let url = try buildURL(instance: instance, path: "\(Constants.API.conversations)/\(conversationId)/read")
+        let request = buildRequest(url: url, method: "POST", accessToken: accessToken)
+        let conversation: MastodonConversation = try await execute(request)
+        Self.logger.info("Conversation marked as read: \(conversationId.prefix(8), privacy: .public)")
+        return conversation
+    }
+    
     // MARK: - Statuses
     
     func getStatus(instance: String, accessToken: String, id: String) async throws -> Status {
@@ -582,6 +600,164 @@ final class MastodonClient {
             throw FediReaderError.noActiveAccount
         }
         return try await getStatusContext(instance: instance, accessToken: token, id: id)
+    }
+    
+    // MARK: - Status Context with Async Refresh Support
+    
+    struct StatusContextWithRefresh: Sendable {
+        let context: StatusContext
+        let asyncRefreshId: String?
+    }
+    
+    func getStatusContextWithRefresh(instance: String, accessToken: String, id: String) async throws -> StatusContextWithRefresh {
+        Self.logger.debug("Fetching status context with refresh support for status: \(id.prefix(8), privacy: .public)")
+        let url = try buildURL(instance: instance, path: "\(Constants.API.statuses)/\(id)/context")
+        let request = buildRequest(url: url, accessToken: accessToken)
+        
+        let result: (StatusContext, HTTPURLResponse) = try await executeWithHeaders(request)
+        let (context, httpResponse) = result
+        
+        // Check for async refresh header (Mastodon 4.5+)
+        let asyncRefreshId = httpResponse.value(forHTTPHeaderField: Constants.RemoteReplies.asyncRefreshHeader)
+        
+        if let refreshId = asyncRefreshId {
+            Self.logger.info("Async refresh detected for status context: \(refreshId, privacy: .public)")
+        }
+        
+        // Merge async refresh ID into context if not already present
+        let enhancedContext = StatusContext(
+            ancestors: context.ancestors,
+            descendants: context.descendants,
+            hasMoreReplies: context.hasMoreReplies,
+            asyncRefreshId: asyncRefreshId ?? context.asyncRefreshId
+        )
+        
+        return StatusContextWithRefresh(context: enhancedContext, asyncRefreshId: asyncRefreshId)
+    }
+    
+    func getStatusContextWithRefresh(id: String) async throws -> StatusContextWithRefresh {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await getStatusContextWithRefresh(instance: instance, accessToken: token, id: id)
+    }
+    
+    // MARK: - Remote Status Resolution
+    
+    func resolveStatus(instance: String, accessToken: String, uri: String) async throws -> Status? {
+        Self.logger.debug("Resolving remote status URI: \(uri, privacy: .public)")
+        
+        // Security: Validate URI format
+        guard let uriURL = URL(string: uri),
+              let scheme = uriURL.scheme,
+              (scheme == "https" || scheme == "http"),
+              uriURL.host != nil else {
+            Self.logger.warning("Invalid URI format for status resolution: \(uri, privacy: .public)")
+            return nil
+        }
+        
+        // Try search API first (Mastodon v2 search with resolve=true)
+        do {
+            let results = try await search(
+                instance: instance,
+                accessToken: accessToken,
+                query: uri,
+                type: "statuses",
+                resolve: true,
+                limit: 1
+            )
+            
+            if let status = results.statuses.first {
+                Self.logger.info("Resolved remote status via search API: \(status.id.prefix(8), privacy: .public)")
+                return status
+            }
+        } catch {
+            Self.logger.debug("Search API resolution failed, will try ActivityPub: \(error.localizedDescription)")
+        }
+        
+        // Fallback: Try ActivityPub resolution
+        return try await resolveStatusViaActivityPub(uri: uri, instance: instance, accessToken: accessToken)
+    }
+    
+    func resolveStatus(uri: String) async throws -> Status? {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await resolveStatus(instance: instance, accessToken: token, uri: uri)
+    }
+    
+    private func resolveStatusViaActivityPub(uri: String, instance: String, accessToken: String) async throws -> Status? {
+        guard let uriURL = URL(string: uri) else {
+            return nil
+        }
+        
+        // Security: Validate remote host to prevent SSRF
+        guard let host = uriURL.host,
+              host != instance else {
+            // Only resolve remote instances, not local ones
+            return nil
+        }
+        
+        // Build request to remote instance's ActivityPub endpoint
+        var components = URLComponents()
+        components.scheme = uriURL.scheme ?? "https"
+        components.host = host
+        components.path = uriURL.path
+        
+        guard let activityPubURL = components.url else {
+            return nil
+        }
+        
+        var request = URLRequest(url: activityPubURL)
+        request.setValue(Constants.ActivityPub.acceptHeader, forHTTPHeaderField: "Accept")
+        request.setValue(Constants.userAgent, forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = Constants.RemoteReplies.fetchTimeout
+        
+        Self.logger.debug("Attempting ActivityPub resolution for: \(uri, privacy: .public)")
+        
+        do {
+            let (_, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                Self.logger.debug("ActivityPub resolution failed: invalid response type")
+                return nil
+            }
+            
+            // Handle different status codes gracefully
+            switch httpResponse.statusCode {
+            case 200..<300:
+                // Try to parse as ActivityPub Note/Status
+                // For now, we'll return nil as ActivityPub parsing is complex
+                // In a full implementation, we'd parse the ActivityPub JSON-LD
+                Self.logger.debug("ActivityPub response received but parsing not fully implemented")
+                return nil
+            case 404:
+                Self.logger.debug("ActivityPub resolution: status not found (404)")
+                return nil
+            case 403, 401:
+                Self.logger.debug("ActivityPub resolution: access denied (\(httpResponse.statusCode))")
+                return nil
+            default:
+                Self.logger.debug("ActivityPub resolution failed: HTTP \(httpResponse.statusCode)")
+                return nil
+            }
+        } catch let error as URLError {
+            // Handle specific network errors
+            switch error.code {
+            case .timedOut:
+                Self.logger.debug("ActivityPub resolution timed out for: \(uri.prefix(50), privacy: .public)")
+            case .notConnectedToInternet, .networkConnectionLost:
+                Self.logger.debug("ActivityPub resolution: no network connection")
+            case .cannotFindHost, .cannotConnectToHost:
+                Self.logger.debug("ActivityPub resolution: cannot connect to host")
+            default:
+                Self.logger.debug("ActivityPub resolution failed: \(error.localizedDescription)")
+            }
+            return nil
+        } catch {
+            Self.logger.debug("ActivityPub resolution failed: \(error.localizedDescription)")
+            return nil
+        }
     }
     
     func getStatus(id: String) async throws -> Status {

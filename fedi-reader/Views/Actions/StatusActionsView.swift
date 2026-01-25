@@ -133,7 +133,7 @@ struct StatusActionsBar: View {
                 activeColor: .accentColor,
                 accessibilityLabel: "Reply"
             ) {
-                appState.present(sheet: .compose(replyTo: status))
+                appState.present(sheet: .compose(replyTo: displayStatus))
             }
 
             // Boost
@@ -285,7 +285,7 @@ struct StatusActionsToolbar: View {
                 isActive: false,
                 activeColor: .accentColor
             ) {
-                appState.present(sheet: .compose(replyTo: status))
+                appState.present(sheet: .compose(replyTo: displayStatus))
             }
             
             // Boost

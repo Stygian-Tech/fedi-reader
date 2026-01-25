@@ -16,6 +16,7 @@ final class TimelineService {
     
     private let client: MastodonClient
     private let authService: AuthService
+    private let remoteReplyService: RemoteReplyService
     
     // Timeline state
     var homeTimeline: [Status] = []
@@ -51,9 +52,15 @@ final class TimelineService {
     // Error state
     var error: Error?
     
+    // Unread conversations count
+    var unreadConversationsCount: Int {
+        conversations.filter { $0.unread == true }.count
+    }
+    
     init(client: MastodonClient, authService: AuthService) {
         self.client = client
         self.authService = authService
+        self.remoteReplyService = RemoteReplyService(client: client, authService: authService)
     }
     
     // MARK: - Home Timeline
@@ -358,6 +365,32 @@ final class TimelineService {
         await loadConversations(refresh: true)
     }
     
+    func markConversationAsRead(conversationId: String) async {
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for marking conversation as read")
+            return
+        }
+        
+        do {
+            let updatedConversation = try await client.markConversationAsRead(
+                instance: account.instance,
+                accessToken: token,
+                conversationId: conversationId
+            )
+            
+            // Update the conversation in our local array
+            if let index = conversations.firstIndex(where: { $0.id == conversationId }) {
+                conversations[index] = updatedConversation
+                Self.logger.info("Updated conversation \(conversationId.prefix(8), privacy: .public) in local array")
+            }
+            
+            NotificationCenter.default.post(name: .timelineDidRefresh, object: TimelineType.mentions)
+        } catch {
+            Self.logger.error("Error marking conversation as read: \(error.localizedDescription)")
+        }
+    }
+    
     // MARK: - Status Operations
     
     func getStatusContext(for status: Status) async throws -> StatusContext {
@@ -366,11 +399,77 @@ final class TimelineService {
             throw FediReaderError.noActiveAccount
         }
         
-        return try await client.getStatusContext(
+        // Use enhanced context fetching with async refresh support
+        let contextWithRefresh = try await client.getStatusContextWithRefresh(
             instance: account.instance,
             accessToken: token,
             id: status.id
         )
+        
+        let context = contextWithRefresh.context
+        
+        // If async refresh is indicated or we suspect missing replies, fetch remote replies
+        if contextWithRefresh.asyncRefreshId != nil || shouldFetchRemoteReplies(context: context, status: status) {
+            Self.logger.info("Fetching remote replies for status: \(status.id.prefix(8), privacy: .public)")
+            
+            // Fetch remote replies in background (don't block initial return)
+            Task { [context] in
+                // Use a copy of context to avoid capturing mutable state
+                let allReplies = await remoteReplyService.fetchRemoteReplies(for: status)
+                
+                // Merge remote replies into context descendants
+                let existingIds = Set(context.descendants.map { $0.id })
+                var mergedDescendants = context.descendants
+                
+                for reply in allReplies {
+                    if !existingIds.contains(reply.id) {
+                        mergedDescendants.append(reply)
+                    }
+                }
+                
+                // Sort by creation date
+                mergedDescendants.sort { $0.createdAt < $1.createdAt }
+                
+                // Update context with merged descendants
+                let updatedContext = StatusContext(
+                    ancestors: context.ancestors,
+                    descendants: mergedDescendants,
+                    hasMoreReplies: context.hasMoreReplies,
+                    asyncRefreshId: context.asyncRefreshId
+                )
+                
+                // Post notification for UI update
+                let payload = StatusContextUpdatePayload(statusId: status.id, context: updatedContext)
+                NotificationCenter.default.post(name: .statusContextDidUpdate, object: payload)
+            }
+        }
+        
+        return context
+    }
+    
+    /// Fetches remote replies for a status and returns updated context
+    func fetchRemoteReplies(for status: Status) async throws -> [Status] {
+        return await remoteReplyService.fetchRemoteReplies(for: status)
+    }
+    
+    /// Determines if we should fetch remote replies based on context and status
+    private func shouldFetchRemoteReplies(context: StatusContext, status: Status) -> Bool {
+        // Fetch if we have fewer descendants than expected replies
+        if status.repliesCount > context.descendants.count {
+            return true
+        }
+        
+        // Fetch if any descendants appear to be remote (different instance)
+        if let account = authService.currentAccount {
+            let hasRemoteReplies = context.descendants.contains { reply in
+                !reply.uri.contains(account.instance)
+            }
+            if hasRemoteReplies {
+                return true
+            }
+        }
+        
+        return false
     }
     
     func refreshStatus(id: String) async throws -> Status {

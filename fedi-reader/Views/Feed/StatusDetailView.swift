@@ -205,7 +205,7 @@ struct StatusDetailRowView: View {
                 }
             }
 
-            StatusActionsBar(status: status, size: .detail)
+            StatusActionsBar(status: displayStatus, size: .detail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -220,6 +220,7 @@ struct StatusDetailView: View {
 
     @State private var context: StatusContext?
     @State private var isLoading = true
+    @State private var isLoadingRemoteReplies = false
 
     var body: some View {
         ScrollView {
@@ -250,16 +251,90 @@ struct StatusDetailView: View {
                     }
 
                     if !context.descendants.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Replies")
-                                .font(.roundedHeadline)
-                                .padding(.horizontal)
-                                .padding(.vertical, 8)
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Replies")
+                                    .font(.roundedHeadline)
+                                
+                                if isLoadingRemoteReplies {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                        .padding(.leading, 4)
+                                }
+                                
+                                Spacer()
+                                
+                                // Show expected count if we have more replies
+                                if status.repliesCount > context.descendants.count {
+                                    Text("\(context.descendants.count) of \(status.repliesCount)")
+                                        .font(.roundedCaption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                
+                                // Button to fetch remote replies
+                                if status.repliesCount > context.descendants.count && !isLoadingRemoteReplies {
+                                    Button {
+                                        Task {
+                                            await refreshReplies()
+                                        }
+                                    } label: {
+                                        Label("Fetch Remote", systemImage: "arrow.down.circle")
+                                            .font(.roundedCaption)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
 
-                            ForEach(context.descendants) { descendant in
+                            ForEach(Array(context.descendants.enumerated()), id: \.element.id) { index, descendant in
                                 StatusDetailRowView(status: descendant)
                                     .padding(.horizontal)
-                                Divider()
+                                    .padding(.vertical, 4)
+                            }
+                        }
+                    } else if status.repliesCount > 0 {
+                        // Show message if we expect replies but don't have any yet
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                Text("Replies")
+                                    .font(.roundedHeadline)
+                                
+                                if isLoadingRemoteReplies {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                        .padding(.leading, 4)
+                                }
+                                
+                                Spacer()
+                                
+                                // Button to fetch remote replies
+                                if !isLoadingRemoteReplies {
+                                    Button {
+                                        Task {
+                                            await refreshReplies()
+                                        }
+                                    } label: {
+                                        Label("Fetch Remote", systemImage: "arrow.down.circle")
+                                            .font(.roundedCaption)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            
+                            if isLoadingRemoteReplies {
+                                HStack {
+                                    Text("Loading remote replies...")
+                                        .font(.roundedCaption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                }
+                                .padding(.horizontal)
+                                .padding(.bottom, 8)
                             }
                         }
                     }
@@ -272,6 +347,19 @@ struct StatusDetailView: View {
         .task {
             await loadContext()
         }
+        .refreshable {
+            // Allow manual refresh of replies
+            await refreshReplies()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .statusContextDidUpdate)) { notification in
+            // Update context when remote replies are fetched
+            if let payload = notification.object as? StatusContextUpdatePayload,
+               payload.statusId == status.id {
+                // Replace context with updated one (it already contains all replies)
+                context = payload.context
+                isLoadingRemoteReplies = false
+            }
+        }
     }
 
     private func loadContext() async {
@@ -281,10 +369,47 @@ struct StatusDetailView: View {
         }
 
         do {
-            context = try await service.getStatusContext(for: status)
+            let loadedContext = try await service.getStatusContext(for: status)
+            context = loadedContext
             isLoading = false
+            
+            // Check if we need to fetch remote replies
+            // Note: getStatusContext already triggers remote reply fetching in background
+            // We just need to show loading state
+            if shouldFetchRemoteReplies(context: loadedContext) {
+                isLoadingRemoteReplies = true
+            }
         } catch {
             isLoading = false
+            isLoadingRemoteReplies = false
+        }
+    }
+    
+    private func shouldFetchRemoteReplies(context: StatusContext) -> Bool {
+        // Fetch if we have fewer descendants than expected
+        if status.repliesCount > context.descendants.count {
+            return true
+        }
+        
+        // Fetch if async refresh is indicated
+        if context.asyncRefreshId != nil {
+            return true
+        }
+        
+        return false
+    }
+    
+    private func refreshReplies() async {
+        guard let service = timelineWrapper.service else { return }
+        
+        isLoadingRemoteReplies = true
+        
+        do {
+            // Force refresh by fetching remote replies
+            _ = try await service.fetchRemoteReplies(for: status)
+            // Context will be updated via notification
+        } catch {
+            isLoadingRemoteReplies = false
         }
     }
 }

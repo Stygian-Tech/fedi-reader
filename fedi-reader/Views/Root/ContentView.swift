@@ -108,6 +108,7 @@ struct ContentView: View {
         case .compose(let replyTo, let quote):
             ComposeView(replyTo: replyTo, quote: quote)
                 .environment(appState)
+                .environment(timelineWrapper)
         case .newMessage:
             NewMessageView()
                 .environment(appState)
