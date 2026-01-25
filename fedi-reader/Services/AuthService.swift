@@ -41,7 +41,7 @@ final class AuthService {
         do {
             accounts = try modelContext.fetch(descriptor)
             currentAccount = accounts.first(where: { $0.isActive }) ?? accounts.first
-            Self.logger.info("Loaded \(accounts.count) accounts, current: \(currentAccount?.username ?? "none", privacy: .public)@\(currentAccount?.instance ?? "none", privacy: .public)")
+            Self.logger.info("Loaded \(self.accounts.count) accounts, current: \(self.currentAccount?.username ?? "none", privacy: .public)@\(self.currentAccount?.instance ?? "none", privacy: .public)")
         } catch {
             Self.logger.error("Failed to load accounts: \(error.localizedDescription)")
         }
@@ -100,11 +100,7 @@ final class AuthService {
     func getAccessToken(for account: Account) async -> String? {
         do {
             let token = try await keychain.getToken(forAccount: account.id)
-            if token != nil {
-                Self.logger.debug("Retrieved access token for account: \(account.id.prefix(8), privacy: .public)")
-            } else {
-                Self.logger.warning("No access token found for account: \(account.id.prefix(8), privacy: .public)")
-            }
+            Self.logger.debug("Retrieved access token for account: \(account.id.prefix(8), privacy: .public)")
             return token
         } catch {
             Self.logger.error("Failed to get access token for account \(account.id.prefix(8), privacy: .public): \(error.localizedDescription)")
@@ -266,7 +262,7 @@ final class AuthService {
         if currentAccount?.id == account.id {
             currentAccount = accounts.first
             currentAccount?.isActive = true
-            Self.logger.info("Switched to account: \(currentAccount?.username ?? "none", privacy: .public)")
+            Self.logger.info("Switched to account: \(self.currentAccount?.username ?? "none", privacy: .public)")
         }
         
         Self.logger.notice("Logout complete for account: \(account.id.prefix(8), privacy: .public)")

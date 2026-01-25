@@ -178,7 +178,9 @@ struct LoginView: View {
                 callbackURLScheme: Constants.OAuth.redirectScheme
             )
             
-            _ = try await appState.authService.handleCallback(url: callbackURL, modelContext: modelContext)
+            let account = try await appState.authService.handleCallback(url: callbackURL, modelContext: modelContext)
+            // Fetch custom emoji for the newly logged-in instance
+            await appState.emojiService.fetchCustomEmojis(for: account.instance)
             dismiss()
         } catch ASWebAuthenticationSessionError.canceledLogin {
             // User cancelled - do nothing

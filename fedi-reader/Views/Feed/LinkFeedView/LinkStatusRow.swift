@@ -21,6 +21,7 @@ struct LinkStatusRow: View {
     @State private var isShowingActions = false
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
+    @State private var resolvedMastodonAccount: MastodonAccount?
 
     private var themeColor: Color {
         ThemeColor(rawValue: themeColorName)?.color ?? .blue
@@ -51,6 +52,7 @@ struct LinkStatusRow: View {
                 Divider()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -99,16 +101,17 @@ struct LinkStatusRow: View {
             .background {
                 LinearGradient(
                     colors: [
-                        themeColor.opacity(0.28),
-                        themeColor.opacity(0.15),
-                        themeColor.opacity(0.06),
+                        themeColor.opacity(0.35),
+                        themeColor.opacity(0.20),
+                        themeColor.opacity(0.10),
+                        themeColor.opacity(0.05),
                         Color.clear
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -183,6 +186,11 @@ struct LinkStatusRow: View {
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
 
+                    // Prominent author attribution (only if valid author tag exists)
+                    if let authorName = linkStatus.authorAttribution, !authorName.isEmpty {
+                        authorAttributionView
+                    }
+
                     let descriptionText = blueskyDescription ?? linkStatus.displayDescription
                     if let descriptionText, !descriptionText.isEmpty {
                         Text(descriptionText)
@@ -199,8 +207,6 @@ struct LinkStatusRow: View {
                             .font(.roundedCaption)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-
-                        authorAttributionChip(linkStatus.status.displayStatus.account.displayName)
                     }
                     .foregroundStyle(.secondary)
                 }
@@ -224,18 +230,183 @@ struct LinkStatusRow: View {
             }
     }
 
-    private func authorAttributionChip(_ authorName: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "person.crop.circle")
-                .font(.roundedCaption)
-            Text(authorName)
-                .font(.roundedCaption)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+    // MARK: - Author Attribution
+    
+    @ViewBuilder
+    private var authorAttributionView: some View {
+        // Show attribution if we have a name, OR if we have a Mastodon handle/profile URL
+        let hasAuthorName = linkStatus.authorAttribution != nil && !linkStatus.authorAttribution!.isEmpty
+        let hasMastodonAttribution = linkStatus.mastodonHandle != nil || linkStatus.mastodonProfileURL != nil
+        
+        if hasAuthorName || hasMastodonAttribution {
+            let authorName = linkStatus.authorAttribution ?? linkStatus.mastodonHandle ?? "Author"
+            let profilePictureURL = linkStatus.authorProfilePictureURL.flatMap { URL(string: $0) }
+            let isMastodonProfile = linkStatus.mastodonProfileURL != nil
+            let destinationURL: String? = linkStatus.mastodonProfileURL ?? linkStatus.authorURL
+            
+            if let destinationURL {
+                if isMastodonProfile {
+                    // Mastodon profile - navigate in-app
+                    Button {
+                        handleMastodonProfileNavigation(url: destinationURL)
+                    } label: {
+                        authorAttributionContent(
+                            authorName: authorName,
+                            profilePictureURL: profilePictureURL,
+                            mastodonHandle: linkStatus.mastodonHandle,
+                            showNavigationIcon: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .task(id: destinationURL) {
+                        await resolveMastodonAccount(url: destinationURL)
+                    }
+                } else if let url = URL(string: destinationURL) {
+                    // Regular author URL - open in browser
+                    Link(destination: url) {
+                        authorAttributionContent(
+                            authorName: authorName,
+                            profilePictureURL: profilePictureURL,
+                            mastodonHandle: linkStatus.mastodonHandle,
+                            showNavigationIcon: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    // No valid link, just show attribution
+                    authorAttributionContent(
+                        authorName: authorName,
+                        profilePictureURL: profilePictureURL,
+                        mastodonHandle: linkStatus.mastodonHandle,
+                        showNavigationIcon: false
+                    )
+                }
+            } else {
+                // No link, just show attribution
+                authorAttributionContent(
+                    authorName: authorName,
+                    profilePictureURL: profilePictureURL,
+                    mastodonHandle: linkStatus.mastodonHandle,
+                    showNavigationIcon: false
+                )
+            }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(Color(.tertiarySystemBackground), in: Capsule())
+    }
+    
+    private func authorAttributionContent(
+        authorName: String,
+        profilePictureURL: URL?,
+        mastodonHandle: String?,
+        showNavigationIcon: Bool
+    ) -> some View {
+        HStack(spacing: 10) {
+            // Profile picture or fallback icon
+            if let profilePictureURL {
+                ProfileAvatarView(url: profilePictureURL, size: 36, usePersonIconForFallback: true)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Author")
+                    .font(.roundedCaption2)
+                    .foregroundStyle(.secondary)
+                
+                Text(authorName)
+                    .font(.roundedSubheadline.bold())
+                    .lineLimit(1)
+                
+                if let mastodonHandle {
+                    Text(mastodonHandle)
+                        .font(.roundedCaption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+            
+            Spacer()
+            
+            if showNavigationIcon {
+                Image(systemName: "arrow.up.right.square")
+                    .font(.roundedSubheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color(.secondarySystemBackground).opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private func handleMastodonProfileNavigation(url: String) {
+        // If we already resolved the account, use it
+        if let account = resolvedMastodonAccount {
+            appState.navigate(to: .profile(account))
+            return
+        }
+        
+        // Otherwise, try to parse and search for the account
+        if let (instance, username) = parseMastodonProfileURL(url) {
+            Task {
+                await resolveAndNavigateToMastodonAccount(instance: instance, username: username)
+            }
+        }
+    }
+    
+    private func parseMastodonProfileURL(_ urlString: String) -> (instance: String, username: String)? {
+        // Parse URL like https://instance.com/@username
+        guard let url = URL(string: urlString),
+              let host = url.host else {
+            return nil
+        }
+        
+        let path = url.path
+        // Remove leading /@
+        guard path.hasPrefix("/@") else {
+            return nil
+        }
+        
+        let username = String(path.dropFirst(2)) // Remove "/@"
+        return (host, username)
+    }
+    
+    private func resolveMastodonAccount(url: String) async {
+        guard let (instance, username) = parseMastodonProfileURL(url) else {
+            return
+        }
+        
+        await resolveAndNavigateToMastodonAccount(instance: instance, username: username, setState: true)
+    }
+    
+    private func resolveAndNavigateToMastodonAccount(
+        instance: String,
+        username: String,
+        setState: Bool = false
+    ) async {
+        // Use appState.client for account search
+        let client = appState.client
+        
+        // Try to search for the account
+        do {
+            let query = "@\(username)@\(instance)"
+            let accounts = try await client.searchAccounts(query: query, limit: 1)
+            
+            if let account = accounts.first,
+               account.acct.lowercased() == "\(username)@\(instance)".lowercased() {
+                if setState {
+                    await MainActor.run {
+                        resolvedMastodonAccount = account
+                    }
+                } else {
+                    await MainActor.run {
+                        appState.navigate(to: .profile(account))
+                    }
+                }
+            }
+        } catch {
+            // If search fails, we can't resolve the account
+            // The user can still tap to try navigation
+        }
     }
 
     @ViewBuilder

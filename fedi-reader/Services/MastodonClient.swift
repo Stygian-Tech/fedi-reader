@@ -61,6 +61,18 @@ final class MastodonClient {
     // MARK: - Request Building
     
     private func buildURL(instance: String, path: String, queryItems: [URLQueryItem]? = nil) throws -> URL {
+        // Security: Validate instance format to prevent SSRF attacks
+        // Instance should be a valid hostname without protocol
+        guard !instance.isEmpty,
+              !instance.contains("://"),
+              !instance.contains("/"),
+              !instance.contains("?"),
+              !instance.contains("#"),
+              instance.range(of: #"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"#, options: .regularExpression) != nil else {
+            Self.logger.error("Invalid instance format: \(instance, privacy: .public)")
+            throw FediReaderError.invalidURL
+        }
+        
         var components = URLComponents()
         components.scheme = "https"
         components.host = instance
@@ -234,7 +246,7 @@ final class MastodonClient {
         let body = try encoder.encode(params)
         let request = buildRequest(url: url, method: "POST", body: body)
         
-        let result = try await execute(request)
+        let result: OAuthApplication = try await execute(request)
         Self.logger.info("App registered successfully on \(instance, privacy: .public)")
         return result
     }
@@ -271,7 +283,7 @@ final class MastodonClient {
         let body = try encoder.encode(params)
         let request = buildRequest(url: url, method: "POST", body: body)
         
-        let result = try await execute(request)
+        let result: OAuthToken = try await execute(request)
         Self.logger.info("OAuth token exchange successful for \(instance, privacy: .public)")
         return result
     }
@@ -299,7 +311,7 @@ final class MastodonClient {
         Self.logger.info("Verifying credentials on instance: \(instance, privacy: .public)")
         let url = try buildURL(instance: instance, path: Constants.API.verifyCredentials)
         let request = buildRequest(url: url, accessToken: accessToken)
-        let account = try await execute(request) as MastodonAccount
+        let account: MastodonAccount = try await execute(request)
         Self.logger.info("Credentials verified for account: \(account.username, privacy: .public)@\(instance, privacy: .public)")
         return account
     }
@@ -334,7 +346,7 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: "\(Constants.API.accounts)/\(accountId)/statuses", queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        let statuses = try await execute(request) as [Status]
+        let statuses: [Status] = try await execute(request)
         Self.logger.debug("Fetched \(statuses.count) account statuses for \(accountId, privacy: .public)")
         return statuses
     }
@@ -394,7 +406,7 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: Constants.API.homeTimeline, queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        let statuses = try await execute(request) as [Status]
+        let statuses: [Status] = try await execute(request)
         Self.logger.info("Home timeline loaded: \(statuses.count) statuses")
         return statuses
     }
@@ -439,7 +451,7 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: Constants.API.trendingStatuses, queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        let statuses = try await execute(request) as [Status]
+        let statuses: [Status] = try await execute(request)
         Self.logger.debug("Fetched \(statuses.count) trending statuses")
         return statuses
     }
@@ -458,7 +470,7 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: Constants.API.trendingLinks, queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        let links = try await execute(request) as [TrendingLink]
+        let links: [TrendingLink] = try await execute(request)
         Self.logger.debug("Fetched \(links.count) trending links")
         return links
     }
@@ -546,7 +558,7 @@ final class MastodonClient {
 
         let url = try buildURL(instance: instance, path: Constants.API.conversations, queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        let conversations = try await execute(request) as [MastodonConversation]
+        let conversations: [MastodonConversation] = try await execute(request)
         Self.logger.info("Fetched \(conversations.count) conversations")
         return conversations
     }
@@ -634,7 +646,7 @@ final class MastodonClient {
         let body = try JSONSerialization.data(withJSONObject: params)
         let request = buildRequest(url: url, method: "POST", accessToken: accessToken, body: body)
         
-        let result = try await execute(request) as Status
+        let result: Status = try await execute(request)
         Self.logger.info("Status posted successfully: \(result.id, privacy: .public)")
         return result
     }
@@ -726,13 +738,29 @@ final class MastodonClient {
         return try await execute(request)
     }
     
+    func getCustomEmojis(instance: String) async throws -> [CustomEmoji] {
+        Self.logger.debug("Fetching custom emoji from instance: \(instance, privacy: .public)")
+        let url = try buildURL(instance: instance, path: Constants.API.customEmojis)
+        let request = buildRequest(url: url)
+        let emojis: [CustomEmoji] = try await execute(request)
+        Self.logger.debug("Fetched \(emojis.count) custom emoji from \(instance, privacy: .public)")
+        return emojis
+    }
+    
+    func getCustomEmojis() async throws -> [CustomEmoji] {
+        guard let instance = currentInstance else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await getCustomEmojis(instance: instance)
+    }
+    
     // MARK: - Lists
     
     func getLists(instance: String, accessToken: String) async throws -> [MastodonList] {
         Self.logger.debug("Fetching lists")
         let url = try buildURL(instance: instance, path: Constants.API.lists)
         let request = buildRequest(url: url, accessToken: accessToken)
-        let lists = try await execute(request) as [MastodonList]
+        let lists: [MastodonList] = try await execute(request)
         Self.logger.debug("Fetched \(lists.count) lists")
         return lists
     }
@@ -761,7 +789,7 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: "\(Constants.API.listTimeline)/\(listId)", queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        let statuses = try await execute(request) as [Status]
+        let statuses: [Status] = try await execute(request)
         Self.logger.info("List timeline loaded: \(statuses.count) statuses")
         return statuses
     }

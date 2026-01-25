@@ -71,7 +71,7 @@ final class TimelineService {
             return
         }
         
-        Self.logger.info("Loading home timeline, refresh: \(refresh), current count: \(homeTimeline.count), maxId: \(homeMaxId?.prefix(8) ?? "nil", privacy: .public)")
+        Self.logger.info("Loading home timeline, refresh: \(refresh), current count: \(self.homeTimeline.count), maxId: \(self.homeMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingHome = true
         error = nil
         
@@ -88,7 +88,7 @@ final class TimelineService {
                 Self.logger.info("Home timeline refreshed: \(statuses.count) statuses")
             } else {
                 homeTimeline.append(contentsOf: statuses)
-                Self.logger.info("Home timeline loaded more: \(statuses.count) new statuses, total: \(homeTimeline.count)")
+                Self.logger.info("Home timeline loaded more: \(statuses.count) new statuses, total: \(self.homeTimeline.count)")
             }
             
             // Update pagination cursor
@@ -241,7 +241,7 @@ final class TimelineService {
             return
         }
         
-        Self.logger.info("Loading mentions, refresh: \(refresh), current count: \(mentions.count), maxId: \(mentionsMaxId?.prefix(8) ?? "nil", privacy: .public)")
+        Self.logger.info("Loading mentions, refresh: \(refresh), current count: \(self.mentions.count), maxId: \(self.mentionsMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingMentions = true
         error = nil
         
@@ -258,7 +258,7 @@ final class TimelineService {
                 Self.logger.info("Mentions refreshed: \(notifications.count) mentions")
             } else {
                 mentions.append(contentsOf: notifications)
-                Self.logger.info("Mentions loaded more: \(notifications.count) new mentions, total: \(mentions.count)")
+                Self.logger.info("Mentions loaded more: \(notifications.count) new mentions, total: \(self.mentions.count)")
             }
             
             if let lastMention = notifications.last {
@@ -307,7 +307,7 @@ final class TimelineService {
             return
         }
         
-        Self.logger.info("Loading conversations, refresh: \(refresh), current count: \(conversations.count), maxId: \(conversationsMaxId?.prefix(8) ?? "nil", privacy: .public)")
+        Self.logger.info("Loading conversations, refresh: \(refresh), current count: \(self.conversations.count), maxId: \(self.conversationsMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingConversations = true
         error = nil
         
@@ -324,7 +324,7 @@ final class TimelineService {
                 Self.logger.info("Conversations refreshed: \(items.count) conversations")
             } else {
                 conversations.append(contentsOf: items)
-                Self.logger.info("Conversations loaded more: \(items.count) new conversations, total: \(conversations.count)")
+                Self.logger.info("Conversations loaded more: \(items.count) new conversations, total: \(self.conversations.count)")
             }
             
             if let lastConversation = items.last {
@@ -681,7 +681,7 @@ final class TimelineService {
         
         do {
             lists = try await client.getLists(instance: account.instance, accessToken: token)
-            Self.logger.info("Lists loaded: \(lists.count) lists")
+            Self.logger.info("Lists loaded: \(self.lists.count) lists")
         } catch let err as FediReaderError where err == .unauthorized {
             Self.logger.error("Unauthorized error loading lists")
             self.error = err
@@ -707,7 +707,7 @@ final class TimelineService {
             return
         }
         
-        Self.logger.info("Loading list timeline \(listId.prefix(8), privacy: .public), refresh: \(refresh), current count: \(listTimeline.count), maxId: \(listTimelineMaxId?.prefix(8) ?? "nil", privacy: .public)")
+        Self.logger.info("Loading list timeline \(listId.prefix(8), privacy: .public), refresh: \(refresh), current count: \(self.listTimeline.count), maxId: \(self.listTimelineMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingListTimeline = true
         error = nil
         
@@ -725,7 +725,7 @@ final class TimelineService {
                 Self.logger.info("List timeline refreshed: \(statuses.count) statuses")
             } else {
                 listTimeline.append(contentsOf: statuses)
-                Self.logger.info("List timeline loaded more: \(statuses.count) new statuses, total: \(listTimeline.count)")
+                Self.logger.info("List timeline loaded more: \(statuses.count) new statuses, total: \(self.listTimeline.count)")
             }
             
             if let lastStatus = statuses.last {
@@ -774,7 +774,7 @@ final class TimelineService {
             return
         }
         
-        Self.logger.info("Loading list accounts for list \(listId.prefix(8), privacy: .public), refresh: \(refresh), current count: \(listAccounts.count), maxId: \(listAccountsMaxId?.prefix(8) ?? "nil", privacy: .public)")
+        Self.logger.info("Loading list accounts for list \(listId.prefix(8), privacy: .public), refresh: \(refresh), current count: \(self.listAccounts.count), maxId: \(self.listAccountsMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingListAccounts = true
         error = nil
         
@@ -792,7 +792,7 @@ final class TimelineService {
                 Self.logger.info("List accounts refreshed: \(accounts.count) accounts")
             } else {
                 listAccounts.append(contentsOf: accounts)
-                Self.logger.info("List accounts loaded more: \(accounts.count) new accounts, total: \(listAccounts.count)")
+                Self.logger.info("List accounts loaded more: \(accounts.count) new accounts, total: \(self.listAccounts.count)")
             }
             
             if let lastAccount = accounts.last {

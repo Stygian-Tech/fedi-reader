@@ -259,11 +259,11 @@ final class LinkPreviewService {
     // MARK: - Cache
     private func cache(_ preview: LinkPreview) {
         if cache.count >= cacheLimit {
-            let keysToRemove = Array(cache.keys.prefix(cacheLimit / 4))
+            let keysToRemove = Array(cache.keys.prefix(self.cacheLimit / 4))
             for key in keysToRemove { cache.removeValue(forKey: key) }
-            Self.logger.debug("Cache evicted \(keysToRemove.count) items (limit: \(cacheLimit))")
+            Self.logger.debug("Cache evicted \(keysToRemove.count) items (limit: \(self.cacheLimit))")
         }
         cache[preview.url] = preview
-        Self.logger.debug("Cached preview for: \(preview.url.absoluteString, privacy: .public), cache size: \(cache.count)")
+        Self.logger.debug("Cached preview for: \(preview.url.absoluteString, privacy: .public), cache size: \(self.cache.count)")
     }
 }

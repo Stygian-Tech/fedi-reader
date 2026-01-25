@@ -290,10 +290,96 @@ struct HTMLParser: Sendable {
     
     // MARK: - HTML to AttributedString with Links
     
+    /// Replaces emoji shortcodes in HTML with image tags
+    static func replaceEmojiShortcodes(_ html: String, emojiLookup: [String: CustomEmoji]) -> String {
+        var result = html
+        
+        // Pattern to match :shortcode: in HTML
+        // This matches emoji shortcodes that are not already inside <img> tags
+        let pattern = #":([a-zA-Z0-9_+-]+):"#
+        
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            // Logging would require importing os, but this is a static utility
+            // Error is handled by returning original HTML
+            return html
+        }
+        
+        let range = NSRange(result.startIndex..., in: result)
+        let matches = regex.matches(in: result, options: [], range: range)
+        
+        // Process matches in reverse order to preserve indices
+        for match in matches.reversed() {
+            guard let shortcodeRange = Range(match.range(at: 1), in: result),
+                  let fullRange = Range(match.range, in: result) else {
+                continue
+            }
+            
+            let shortcode = String(result[shortcodeRange])
+            
+            // Security: Validate shortcode format and length
+            // Pattern already ensures [a-zA-Z0-9_+-], but add length check
+            guard shortcode.count <= 50, shortcode.count > 0 else {
+                continue
+            }
+            
+            // Check if this is already inside an img tag (avoid double replacement)
+            let beforeMatch = String(result[..<fullRange.lowerBound])
+            // Simple check: if there's an unclosed <img tag before this, skip
+            if let lastImgTag = beforeMatch.range(of: "<img", options: .backwards) {
+                let afterImgTag = String(beforeMatch[lastImgTag.upperBound...])
+                // If there's no closing > before our match, we're inside the img tag
+                if !afterImgTag.contains(">") {
+                    continue
+                }
+            }
+            
+            // Look up emoji
+            if let emoji = emojiLookup[shortcode] {
+                // Security: Validate and sanitize emoji URL
+                guard let emojiURL = URL(string: emoji.url),
+                      emojiURL.scheme == "https" || emojiURL.scheme == "http",
+                      emojiURL.host != nil else {
+                    // Skip invalid URLs to prevent XSS
+                    continue
+                }
+                
+                // Security: Escape URL and shortcode for HTML attributes
+                let escapedURL = emoji.url
+                    .replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "\"", with: "&quot;")
+                    .replacingOccurrences(of: "'", with: "&#x27;")
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: ">", with: "&gt;")
+                
+                let escapedShortcode = shortcode
+                    .replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "\"", with: "&quot;")
+                    .replacingOccurrences(of: "'", with: "&#x27;")
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: ">", with: "&gt;")
+                
+                // Replace with img tag with properly escaped attributes
+                let imgTag = #"<img src="\#(escapedURL)" alt=":\#(escapedShortcode):" class="emoji" title=":\#(escapedShortcode):" />"#
+                result.replaceSubrange(fullRange, with: imgTag)
+            }
+        }
+        
+        // Note: Logging would require importing os, but this is a static utility
+        // Callers can add logging if needed
+        
+        return result
+    }
+    
     /// Converts HTML to AttributedString with clickable links and hashtags
     @available(iOS 15.0, macOS 12.0, *)
-    static func convertToAttributedString(_ html: String, hashtagHandler: ((String) -> URL?)? = nil) -> AttributedString {
-        let plainText = convertToPlainText(html)
+    static func convertToAttributedString(_ html: String, hashtagHandler: ((String) -> URL?)? = nil, emojiLookup: [String: CustomEmoji]? = nil) -> AttributedString {
+        // Replace emoji shortcodes first if lookup is provided
+        let processedHTML = if let lookup = emojiLookup {
+            replaceEmojiShortcodes(html, emojiLookup: lookup)
+        } else {
+            html
+        }
+        let plainText = convertToPlainText(processedHTML)
         var attributedString = AttributedString(plainText)
         
         // Extract links with their text content (handles nested tags)
@@ -304,8 +390,8 @@ struct HTMLParser: Sendable {
             return attributedString
         }
         
-        let htmlRange = NSRange(html.startIndex..., in: html)
-        let matches = regex.matches(in: html, options: [], range: htmlRange)
+        let htmlRange = NSRange(processedHTML.startIndex..., in: processedHTML)
+        let matches = regex.matches(in: processedHTML, options: [], range: htmlRange)
         
         // Process matches in forward order; compute indices immediately before each use to avoid invalidation after mutation
         for match in matches {
@@ -314,8 +400,8 @@ struct HTMLParser: Sendable {
                 continue
             }
             
-            let urlString = String(html[urlRange])
-            let linkHTML = String(html[textRange])
+            let urlString = String(processedHTML[urlRange])
+            let linkHTML = String(processedHTML[textRange])
             
             // Decode URL and link text
             let decodedURL = decodeHTMLEntities(urlString)

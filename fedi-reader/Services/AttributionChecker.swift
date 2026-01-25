@@ -43,14 +43,14 @@ final class AttributionChecker {
         
         // Try HEAD request first (faster, checks headers)
         if let attribution = await checkHeaderAttribution(for: url) {
-            Self.logger.info("Attribution found via HEAD: \(url.absoluteString, privacy: .public), name: \(attribution.name ?? "nil", privacy: .public), source: \(attribution.source.rawValue, privacy: .public)")
+            Self.logger.info("Attribution found via HEAD: \(url.absoluteString, privacy: .public), name: \(attribution.name ?? "nil", privacy: .public), source: \(String(describing: attribution.source), privacy: .public)")
             cacheResult(attribution, for: url)
             return attribution
         }
         
         // Fall back to fetching HTML meta tags
         if let attribution = await checkMetaAttribution(for: url) {
-            Self.logger.info("Attribution found via meta tags: \(url.absoluteString, privacy: .public), name: \(attribution.name ?? "nil", privacy: .public), source: \(attribution.source.rawValue, privacy: .public)")
+            Self.logger.info("Attribution found via meta tags: \(url.absoluteString, privacy: .public), name: \(attribution.name ?? "nil", privacy: .public), source: \(String(describing: attribution.source), privacy: .public)")
             cacheResult(attribution, for: url)
             return attribution
         }
@@ -109,13 +109,13 @@ final class AttributionChecker {
                 }
             }
             
-            // Check custom author headers
-            if let author = httpResponse.value(forHTTPHeaderField: "X-Author") {
+            // Check custom author headers (only if they contain actual author info, not derived)
+            if let author = httpResponse.value(forHTTPHeaderField: "X-Author"), !author.isEmpty {
                 Self.logger.debug("Found attribution in X-Author header: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .linkHeader)
             }
             
-            if let author = httpResponse.value(forHTTPHeaderField: "Author") {
+            if let author = httpResponse.value(forHTTPHeaderField: "Author"), !author.isEmpty {
                 Self.logger.debug("Found attribution in Author header: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .linkHeader)
             }
@@ -149,19 +149,8 @@ final class AttributionChecker {
             
             let urlString = String(urlPart.dropFirst().dropLast())
             
-            // The URL might be the author page, try to get the name from it
-            if let authorURL = URL(string: urlString) {
-                // Try to extract name from URL path (e.g., /author/john-doe)
-                let pathComponents = authorURL.pathComponents
-                if let lastComponent = pathComponents.last, lastComponent != "/" {
-                    let name = lastComponent
-                        .replacingOccurrences(of: "-", with: " ")
-                        .replacingOccurrences(of: "_", with: " ")
-                        .capitalized
-                    return AuthorAttribution(name: name, url: urlString, source: .linkHeader)
-                }
-            }
-            
+            // Return attribution with URL only - don't make up names from URL paths
+            // The URL is valid author attribution, but we need actual meta tags for the name
             return AuthorAttribution(name: nil, url: urlString, source: .linkHeader)
         }
         
@@ -189,47 +178,81 @@ final class AttributionChecker {
             
             // Try different meta tag sources in order of preference
             
-            // 1. Standard meta author tag
+            // 1. Fediverse creator (Mastodon-specific) - HIGHEST PRIORITY
+            if let creator = extractMetaContent(from: html, name: "fediverse:creator") {
+                Self.logger.debug("Found attribution in Fediverse creator: \(url.absoluteString, privacy: .public)")
+                let (handle, profileURL) = parseMastodonHandle(creator)
+                // Fetch profile picture if we have a Mastodon profile URL
+                let profilePicture = profileURL != nil ? await fetchMastodonProfilePicture(profileURL: profileURL!) : nil
+                return AuthorAttribution(
+                    name: creator,
+                    url: nil,
+                    source: .metaTag,
+                    mastodonHandle: handle,
+                    mastodonProfileURL: profileURL,
+                    profilePictureURL: profilePicture
+                )
+            }
+            
+            // 2. Standard meta author tag
             if let author = extractMetaContent(from: html, name: "author") {
                 Self.logger.debug("Found attribution in meta author tag: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .metaTag)
             }
             
-            // 2. Open Graph article:author
+            // 3. Open Graph article:author
             if let author = extractMetaProperty(from: html, property: "article:author") {
                 Self.logger.debug("Found attribution in OG article:author: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .openGraph)
             }
             
-            // 3. Open Graph og:article:author
+            // 4. Open Graph og:article:author
             if let author = extractMetaProperty(from: html, property: "og:article:author") {
                 Self.logger.debug("Found attribution in OG og:article:author: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .openGraph)
             }
             
-            // 4. Twitter creator
+            // 5. Twitter creator
             if let creator = extractMetaContent(from: html, name: "twitter:creator") {
                 // Remove @ prefix if present
                 let name = creator.hasPrefix("@") ? String(creator.dropFirst()) : creator
                 Self.logger.debug("Found attribution in Twitter creator: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: name, url: nil, source: .twitterCard)
             }
-
-            // 5. Fediverse creator (Mastodon-specific)
-            if let creator = extractMetaContent(from: html, name: "fediverse:creator") {
-                Self.logger.debug("Found attribution in Fediverse creator: \(url.absoluteString, privacy: .public)")
-                return AuthorAttribution(name: creator, url: nil, source: .metaTag)
-            }
             
             // 6. JSON-LD structured data
             if let attribution = extractJSONLDAuthor(from: html) {
                 Self.logger.debug("Found attribution in JSON-LD: \(url.absoluteString, privacy: .public)")
+                // Fetch profile picture if author URL exists
+                if let authorURL = attribution.url, let url = URL(string: authorURL) {
+                    let profilePicture = await fetchAuthorProfilePicture(from: url)
+                    return AuthorAttribution(
+                        name: attribution.name,
+                        url: attribution.url,
+                        source: attribution.source,
+                        mastodonHandle: attribution.mastodonHandle,
+                        mastodonProfileURL: attribution.mastodonProfileURL,
+                        profilePictureURL: profilePicture
+                    )
+                }
                 return attribution
             }
             
             // 7. Link rel="author" in HTML
             if let authorLink = extractLinkRelAuthor(from: html) {
                 Self.logger.debug("Found attribution in link rel=author: \(url.absoluteString, privacy: .public)")
+                // Fetch profile picture if author URL exists
+                if let authorURL = authorLink.url, let url = URL(string: authorURL) {
+                    let profilePicture = await fetchAuthorProfilePicture(from: url)
+                    return AuthorAttribution(
+                        name: authorLink.name,
+                        url: authorLink.url,
+                        source: authorLink.source,
+                        mastodonHandle: authorLink.mastodonHandle,
+                        mastodonProfileURL: authorLink.mastodonProfileURL,
+                        profilePictureURL: profilePicture
+                    )
+                }
                 return authorLink
             }
             
@@ -341,19 +364,140 @@ final class AttributionChecker {
         
         let href = String(html[hrefRange])
         
-        // Try to extract name from URL
-        if let url = URL(string: href) {
-            let pathComponents = url.pathComponents.filter { $0 != "/" }
-            if let lastComponent = pathComponents.last {
-                let name = lastComponent
-                    .replacingOccurrences(of: "-", with: " ")
-                    .replacingOccurrences(of: "_", with: " ")
-                    .capitalized
-                return AuthorAttribution(name: name, url: href, source: .metaTag)
+        // Return attribution with URL only - don't make up names from URL paths
+        // The URL is valid author attribution, but we need actual meta tags for the name
+        return AuthorAttribution(name: nil, url: href, source: .metaTag)
+    }
+    
+    // MARK: - Mastodon Handle Parsing
+    
+    /// Parses a Mastodon handle and returns the handle and profile URL
+    /// Format: @username@instance.com or username@instance.com
+    private func parseMastodonHandle(_ handle: String) -> (handle: String?, profileURL: String?) {
+        var cleanedHandle = handle.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Remove @ prefix if present
+        if cleanedHandle.hasPrefix("@") {
+            cleanedHandle = String(cleanedHandle.dropFirst())
+        }
+        
+        // Split by @ to get username and instance
+        let components = cleanedHandle.components(separatedBy: "@")
+        guard components.count == 2 else {
+            Self.logger.debug("Invalid Mastodon handle format: \(handle, privacy: .public)")
+            return (nil, nil)
+        }
+        
+        let username = components[0]
+        let instance = components[1]
+        
+        // Build profile URL: https://instance/@username
+        let profileURL = "https://\(instance)/@\(username)"
+        
+        return ("@\(cleanedHandle)", profileURL)
+    }
+    
+    // MARK: - Profile Picture Fetching
+    
+    /// Fetches profile picture from a Mastodon profile URL
+    private func fetchMastodonProfilePicture(profileURL: String) async -> String? {
+        guard let url = URL(string: profileURL) else { return nil }
+        
+        // Try to fetch the profile page and extract avatar
+        do {
+            var request = URLRequest(url: url)
+            request.setValue("bytes=0-32768", forHTTPHeaderField: "Range")
+            
+            let (data, _) = try await session.data(for: request)
+            guard let html = String(data: data, encoding: .utf8) else { return nil }
+            
+            // Look for Open Graph image or Twitter card image
+            if let ogImage = extractMetaProperty(from: html, property: "og:image") {
+                return ogImage
+            }
+            
+            if let twitterImage = extractMetaContent(from: html, name: "twitter:image") {
+                return twitterImage
+            }
+            
+            // Look for avatar in meta tags
+            if let avatar = extractMetaProperty(from: html, property: "og:image:url") {
+                return avatar
+            }
+        } catch {
+            Self.logger.debug("Failed to fetch Mastodon profile picture: \(error.localizedDescription)")
+        }
+        
+        return nil
+    }
+    
+    /// Fetches profile picture from an author page URL
+    private func fetchAuthorProfilePicture(from url: URL) async -> String? {
+        do {
+            var request = URLRequest(url: url)
+            request.setValue("bytes=0-32768", forHTTPHeaderField: "Range")
+            
+            let (data, _) = try await session.data(for: request)
+            guard let html = String(data: data, encoding: .utf8) else { return nil }
+            
+            // Look for Open Graph image first (most reliable)
+            if let ogImage = extractMetaProperty(from: html, property: "og:image") {
+                return ogImage
+            }
+            
+            // Try Twitter card image
+            if let twitterImage = extractMetaContent(from: html, name: "twitter:image") {
+                return twitterImage
+            }
+            
+            // Try avatar-specific meta tags
+            if let avatar = extractMetaProperty(from: html, property: "og:image:url") {
+                return avatar
+            }
+            
+            // Look for profile picture in JSON-LD
+            if let jsonLDImage = extractJSONLDImage(from: html) {
+                return jsonLDImage
+            }
+        } catch {
+            Self.logger.debug("Failed to fetch author profile picture from \(url.absoluteString, privacy: .public): \(error.localizedDescription)")
+        }
+        
+        return nil
+    }
+    
+    /// Extracts image URL from JSON-LD structured data
+    private func extractJSONLDImage(from html: String) -> String? {
+        let pattern = #"<script[^>]+type\s*=\s*["']application/ld\+json["'][^>]*>([^<]+)</script>"#
+        
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return nil
+        }
+        
+        let range = NSRange(html.startIndex..., in: html)
+        let matches = regex.matches(in: html, options: [], range: range)
+        
+        for match in matches {
+            guard let jsonRange = Range(match.range(at: 1), in: html) else { continue }
+            let jsonString = String(html[jsonRange])
+            
+            guard let jsonData = jsonString.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+                continue
+            }
+            
+            // Check for image in JSON-LD
+            if let image = json["image"] as? String {
+                return image
+            }
+            
+            if let image = json["image"] as? [String: Any],
+               let imageUrl = image["url"] as? String {
+                return imageUrl
             }
         }
         
-        return AuthorAttribution(name: nil, url: href, source: .metaTag)
+        return nil
     }
     
     // MARK: - Cache
@@ -362,15 +506,15 @@ final class AttributionChecker {
         // Simple LRU-style cache management
         if cache.count >= cacheLimit {
             // Remove oldest entries (this is a simple approach)
-            let keysToRemove = Array(cache.keys.prefix(cacheLimit / 4))
+            let keysToRemove = Array(cache.keys.prefix(self.cacheLimit / 4))
             for key in keysToRemove {
                 cache.removeValue(forKey: key)
             }
-            Self.logger.debug("Attribution cache evicted \(keysToRemove.count) items (limit: \(cacheLimit))")
+            Self.logger.debug("Attribution cache evicted \(keysToRemove.count) items (limit: \(self.cacheLimit))")
         }
         
         cache[url] = attribution
-        Self.logger.debug("Cached attribution for: \(url.absoluteString, privacy: .public), cache size: \(cache.count)")
+        Self.logger.debug("Cached attribution for: \(url.absoluteString, privacy: .public), cache size: \(self.cache.count)")
     }
     
     func clearCache() {

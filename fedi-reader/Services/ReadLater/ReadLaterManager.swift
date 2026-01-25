@@ -47,7 +47,7 @@ final class ReadLaterManager {
             configuredServices = try modelContext.fetch(descriptor)
             primaryService = configuredServices.first(where: { $0.isPrimary }) ?? configuredServices.first
             
-            Self.logger.info("Loaded \(configuredServices.count) read-later service configurations, primary: \(primaryService?.service?.rawValue ?? "none", privacy: .public)")
+            Self.logger.info("Loaded \(self.configuredServices.count) read-later service configurations, primary: \(self.primaryService?.service?.rawValue ?? "none", privacy: .public)")
             
             // Initialize services for configured configs
             for config in configuredServices {
@@ -194,7 +194,7 @@ final class ReadLaterManager {
         if primaryService?.id == config.id {
             primaryService = configuredServices.first
             primaryService?.isPrimary = true
-            Self.logger.info("Switched primary service to: \(primaryService?.service?.rawValue ?? "none", privacy: .public)")
+            Self.logger.info("Switched primary service to: \(self.primaryService?.service?.rawValue ?? "none", privacy: .public)")
         }
         
         // Clear service instance

@@ -45,7 +45,7 @@ final class LinkFilterService {
     func switchToFeed(_ feedId: String) {
         let previousFeedId = activeFeedId
         activeFeedId = feedId
-        Self.logger.info("Switched feed from '\(previousFeedId, privacy: .public)' to '\(feedId, privacy: .public)', cached items: \(getCachedContent(for: feedId).count)")
+        Self.logger.info("Switched feed from '\(previousFeedId, privacy: .public)' to '\(feedId, privacy: .public)', cached items: \(self.getCachedContent(for: feedId).count)")
     }
     
     /// Check if feed has cached content
@@ -163,9 +163,21 @@ final class LinkFilterService {
             return
         }
         
-        let statusesNeedingAttribution = linkStatuses.filter { $0.authorAttribution == nil }
+        // Check for statuses that need attribution (no attribution at all) OR missing Mastodon attribution
+        // This ensures we always check for Mastodon attribution even if authorName exists from card
+        let statusesNeedingAttribution = linkStatuses.enumerated().compactMap { (index, linkStatus) -> (Int, LinkStatus)? in
+            // Need attribution if: no attribution at all, OR has attribution but missing Mastodon fields
+            let needsAttribution = linkStatus.authorAttribution == nil
+            let needsMastodonCheck = linkStatus.mastodonHandle == nil && linkStatus.mastodonProfileURL == nil
+            
+            if needsAttribution || needsMastodonCheck {
+                return (index, linkStatus)
+            }
+            return nil
+        }
+        
         guard !statusesNeedingAttribution.isEmpty else {
-            Self.logger.debug("All link statuses already have attribution")
+            Self.logger.debug("All link statuses already have full attribution")
             return
         }
         
@@ -178,29 +190,41 @@ final class LinkFilterService {
         let currentFeedId = activeFeedId
         var attributionCount = 0
         
-        for batchStart in stride(from: 0, to: linkStatuses.count, by: batchSize) {
-            let batchEnd = min(batchStart + batchSize, linkStatuses.count)
-            let batch = Array(linkStatuses[batchStart..<batchEnd])
+        for batchStart in stride(from: 0, to: statusesNeedingAttribution.count, by: batchSize) {
+            let batchEnd = min(batchStart + batchSize, statusesNeedingAttribution.count)
+            let batch = Array(statusesNeedingAttribution[batchStart..<batchEnd])
             
-            await withTaskGroup(of: (Int, AuthorAttribution?).self) { group in
-                for (index, linkStatus) in batch.enumerated() {
-                    // Skip if already has attribution
-                    if linkStatus.authorAttribution != nil { continue }
-                    
-                    let globalIndex = batchStart + index
-                    
+            await withTaskGroup(of: ((Int, Int), AuthorAttribution?).self) { group in
+                for (batchIndex, (originalIndex, linkStatus)) in batch.enumerated() {
                     group.addTask {
                         let attribution = await self.attributionChecker.checkAttribution(for: linkStatus.primaryURL)
-                        return (globalIndex, attribution)
+                        return ((batchStart + batchIndex, originalIndex), attribution)
                     }
                 }
                 
-                for await (index, attribution) in group {
+                for await ((_, originalIndex), attribution) in group {
                     if let attribution,
                        var cached = feedCache[currentFeedId],
-                       index < cached.count {
-                        cached[index].authorAttribution = attribution.name
-                        cached[index].authorURL = attribution.url
+                       originalIndex < cached.count {
+                        // Create updated LinkStatus with all attribution fields
+                        let existing = cached[originalIndex]
+                        let updated = LinkStatus(
+                            status: existing.status,
+                            primaryURL: existing.primaryURL,
+                            title: existing.title,
+                            description: existing.description,
+                            imageURL: existing.imageURL,
+                            providerName: existing.providerName,
+                            // Preserve existing authorAttribution if it exists, otherwise use new one
+                            authorAttribution: existing.authorAttribution ?? attribution.name,
+                            // Update URL if we got a better one
+                            authorURL: attribution.url ?? existing.authorURL,
+                            authorProfilePictureURL: attribution.profilePictureURL ?? existing.authorProfilePictureURL,
+                            // Always update Mastodon fields if found
+                            mastodonHandle: attribution.mastodonHandle ?? existing.mastodonHandle,
+                            mastodonProfileURL: attribution.mastodonProfileURL ?? existing.mastodonProfileURL
+                        )
+                        cached[originalIndex] = updated
                         feedCache[currentFeedId] = cached
                         attributionCount += 1
                     }
@@ -240,7 +264,7 @@ final class LinkFilterService {
                 let statuses = await loadContent(feedId)
                 _ = await processStatuses(statuses, for: feedId)
             } else {
-                Self.logger.debug("Skipping prefetch for feed '\(feedId, privacy: .public)' (has cache: \(hasCachedContent(for: feedId)), loading: \(isLoadingFeed(feedId)))")
+                Self.logger.debug("Skipping prefetch for feed '\(feedId, privacy: .public)' (has cache: \(self.hasCachedContent(for: feedId)), loading: \(self.isLoadingFeed(feedId)))")
             }
         }
     }
@@ -341,6 +365,9 @@ struct LinkStatus: Identifiable, Hashable {
     var providerName: String?
     var authorAttribution: String?
     var authorURL: String?
+    var authorProfilePictureURL: String?
+    var mastodonHandle: String?
+    var mastodonProfileURL: String?
     
     init(
         status: Status,
@@ -350,7 +377,10 @@ struct LinkStatus: Identifiable, Hashable {
         imageURL: URL? = nil,
         providerName: String? = nil,
         authorAttribution: String? = nil,
-        authorURL: String? = nil
+        authorURL: String? = nil,
+        authorProfilePictureURL: String? = nil,
+        mastodonHandle: String? = nil,
+        mastodonProfileURL: String? = nil
     ) {
         self.id = status.id
         self.status = status
@@ -361,6 +391,9 @@ struct LinkStatus: Identifiable, Hashable {
         self.providerName = providerName
         self.authorAttribution = authorAttribution
         self.authorURL = authorURL
+        self.authorProfilePictureURL = authorProfilePictureURL
+        self.mastodonHandle = mastodonHandle
+        self.mastodonProfileURL = mastodonProfileURL
     }
     
     // Hashable

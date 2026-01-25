@@ -53,6 +53,10 @@ struct AccountSwitcherView: View {
     
     private func selectAccount(_ account: Account) {
         appState.authService.setActiveAccount(account, modelContext: modelContext)
+        // Fetch emoji for the switched account's instance
+        Task {
+            await appState.emojiService.fetchCustomEmojis(for: account.instance)
+        }
         dismiss()
     }
     

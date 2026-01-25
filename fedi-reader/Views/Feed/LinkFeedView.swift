@@ -94,17 +94,24 @@ struct LinkFeedView: View {
                     linkList
                 }
             }
+            .offset(x: dragOffset)
             .simultaneousGesture(
-                DragGesture(minimumDistance: 20)
+                DragGesture(minimumDistance: 50)
                     .updating($dragOffset) { value, state, _ in
-                        state = value.translation.width
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        // Only allow horizontal swipes, and limit the offset
+                        guard abs(dx) > abs(dy) * 2 else { return }
+                        // Clamp the offset to prevent over-swiping
+                        let maxOffset: CGFloat = 300
+                        state = max(-maxOffset, min(maxOffset, dx))
                     }
                     .onEnded { value in
                         let dx = value.translation.width
                         let dy = value.translation.height
                         // Only switch tabs on predominantly horizontal swipes
-                        guard abs(dx) > abs(dy) else { return }
-                        let threshold: CGFloat = 50
+                        guard abs(dx) > abs(dy) * 2 else { return }
+                        let threshold: CGFloat = 150 // Increased threshold to make it harder
                         if dx > threshold && selectedTabIndex > 0 {
                             // Swipe right - go to previous tab
                             withAnimation(.easeInOut(duration: 0.25)) {
@@ -116,6 +123,7 @@ struct LinkFeedView: View {
                                 selectedTabIndex += 1
                             }
                         }
+                        // Note: dragOffset will automatically reset to 0 via @GestureState
                     }
             )
         }

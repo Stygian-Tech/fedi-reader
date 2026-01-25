@@ -61,6 +61,13 @@ struct ContentView: View {
         )
         appState.authService.loadAccounts(from: modelContext)
         readLaterManager.loadConfigurations(from: modelContext)
+        
+        // Fetch emoji for current account's instance
+        if let instance = appState.getCurrentInstance() {
+            Task {
+                await appState.emojiService.fetchCustomEmojis(for: instance)
+            }
+        }
     }
 
     private func loadListsAndApplyDefault() async {
@@ -82,7 +89,9 @@ struct ContentView: View {
         if appState.authService.isValidCallback(url: url) {
             Task {
                 do {
-                    _ = try await appState.authService.handleCallback(url: url, modelContext: modelContext)
+                    let account = try await appState.authService.handleCallback(url: url, modelContext: modelContext)
+                    // Fetch custom emoji for the newly logged-in instance
+                    await appState.emojiService.fetchCustomEmojis(for: account.instance)
                 } catch {
                     appState.handleError(error)
                 }

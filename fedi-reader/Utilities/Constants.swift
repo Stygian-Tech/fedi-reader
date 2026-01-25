@@ -51,6 +51,7 @@ enum Constants {
         
         static let instance = "/api/v1/instance"
         static let instanceV2 = "/api/v2/instance"
+        static let customEmojis = "/api/v1/custom_emojis"
         
         static let trendingStatuses = "/api/v1/trends/statuses"
         static let trendingTags = "/api/v1/trends/tags"

@@ -17,6 +17,7 @@ final class AppState {
     // Services
     let client: MastodonClient
     let authService: AuthService
+    let emojiService: EmojiService
     
     // Current state
     var isLoading = false
@@ -37,6 +38,7 @@ final class AppState {
         Self.logger.info("Initializing AppState")
         self.client = MastodonClient()
         self.authService = AuthService(client: client)
+        self.emojiService = EmojiService(client: client)
     }
     
     // MARK: - Account Helpers

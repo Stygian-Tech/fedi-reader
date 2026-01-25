@@ -32,10 +32,9 @@ struct StatusRowView: View {
                 reblogGradientStrip
             }
             
-            VStack(alignment: .leading, spacing: 12) {
-                // Author info
-                authorHeader
-            
+            // Author info
+            authorHeader
+        
             // Content warning
             if !displayStatus.spoilerText.isEmpty {
                 contentWarning
@@ -62,7 +61,6 @@ struct StatusRowView: View {
             StatusActionsBar(status: status, size: .standard)
 
             Divider()
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
@@ -104,16 +102,17 @@ struct StatusRowView: View {
             .background {
                 LinearGradient(
                     colors: [
-                        themeColor.opacity(0.28),
-                        themeColor.opacity(0.15),
-                        themeColor.opacity(0.06),
+                        themeColor.opacity(0.35),
+                        themeColor.opacity(0.20),
+                        themeColor.opacity(0.10),
+                        themeColor.opacity(0.05),
                         Color.clear
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

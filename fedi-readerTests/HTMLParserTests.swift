@@ -244,4 +244,109 @@ struct HTMLParserTests {
         let linkRuns = attributedString.runs.filter { $0.link != nil }
         #expect(linkRuns.count >= 3)
     }
+    
+    // MARK: - Emoji Replacement
+    
+    @Test("Replaces emoji shortcode in HTML")
+    func replacesEmojiShortcode() {
+        let emoji = CustomEmoji(
+            shortcode: "test",
+            url: "https://example.com/emoji.png",
+            staticUrl: "https://example.com/emoji_static.png",
+            visibleInPicker: true,
+            category: nil
+        )
+        let lookup: [String: CustomEmoji] = ["test": emoji]
+        
+        let html = "Hello :test: world"
+        let result = HTMLParser.replaceEmojiShortcodes(html, emojiLookup: lookup)
+        
+        #expect(result.contains("emoji.png"))
+        #expect(result.contains("<img"))
+        #expect(result.contains("alt=\":test:\""))
+    }
+    
+    @Test("Replaces multiple emoji in HTML")
+    func replacesMultipleEmoji() {
+        let emoji1 = CustomEmoji(shortcode: "smile", url: "https://example.com/smile.png", staticUrl: "", visibleInPicker: true, category: nil)
+        let emoji2 = CustomEmoji(shortcode: "wave", url: "https://example.com/wave.png", staticUrl: "", visibleInPicker: true, category: nil)
+        let lookup: [String: CustomEmoji] = ["smile": emoji1, "wave": emoji2]
+        
+        let html = "Hello :smile: and :wave:"
+        let result = HTMLParser.replaceEmojiShortcodes(html, emojiLookup: lookup)
+        
+        #expect(result.contains("smile.png"))
+        #expect(result.contains("wave.png"))
+        let imgCount = result.components(separatedBy: "<img").count - 1
+        #expect(imgCount == 2)
+    }
+    
+    @Test("Does not replace emoji inside img tags")
+    func doesNotReplaceInsideImgTags() {
+        let emoji = CustomEmoji(shortcode: "test", url: "https://example.com/test.png", staticUrl: "", visibleInPicker: true, category: nil)
+        let lookup: [String: CustomEmoji] = ["test": emoji]
+        
+        let html = "<img src=\"test.png\" alt=\":test:\" />"
+        let result = HTMLParser.replaceEmojiShortcodes(html, emojiLookup: lookup)
+        
+        // Should not add another img tag inside
+        let imgCount = result.components(separatedBy: "<img").count - 1
+        #expect(imgCount == 1)
+    }
+    
+    @Test("Handles invalid shortcodes gracefully")
+    func handlesInvalidShortcodes() {
+        let lookup: [String: CustomEmoji] = [:]
+        
+        let html = "Hello :invalid: world"
+        let result = HTMLParser.replaceEmojiShortcodes(html, emojiLookup: lookup)
+        
+        #expect(result == html)
+    }
+    
+    @Test("Emoji replacement happens before link extraction")
+    @available(iOS 15.0, macOS 12.0, *)
+    func emojiReplacementBeforeLinkExtraction() {
+        let emoji = CustomEmoji(shortcode: "test", url: "https://example.com/emoji.png", staticUrl: "", visibleInPicker: true, category: nil)
+        let lookup: [String: CustomEmoji] = ["test": emoji]
+        
+        let html = "<p>Check :test: and <a href=\"https://example.com/article\">link</a></p>"
+        let attributedString = HTMLParser.convertToAttributedString(html, hashtagHandler: nil, emojiLookup: lookup)
+        
+        // Should have both emoji img and link
+        #expect(!attributedString.characters.isEmpty)
+        let hasLink = attributedString.runs.contains { $0.link != nil }
+        #expect(hasLink == true)
+    }
+    
+    @Test("Handles emoji with special characters in shortcode")
+    func handlesEmojiWithSpecialCharacters() {
+        let emoji = CustomEmoji(shortcode: "test_emoji+123", url: "https://example.com/test.png", staticUrl: "", visibleInPicker: true, category: nil)
+        let lookup: [String: CustomEmoji] = ["test_emoji+123": emoji]
+        
+        let html = "Hello :test_emoji+123:"
+        let result = HTMLParser.replaceEmojiShortcodes(html, emojiLookup: lookup)
+        
+        #expect(result.contains("test.png"))
+    }
+    
+    @Test("Handles empty emoji lookup")
+    func handlesEmptyEmojiLookup() {
+        let html = "Hello :test: world"
+        let result = HTMLParser.replaceEmojiShortcodes(html, emojiLookup: [:])
+        
+        #expect(result == html)
+    }
+    
+    @Test("Handles nil emoji lookup in convertToAttributedString")
+    @available(iOS 15.0, macOS 12.0, *)
+    func handlesNilEmojiLookup() {
+        let html = "<p>Hello :test: <a href=\"https://example.com\">link</a></p>"
+        let attributedString = HTMLParser.convertToAttributedString(html, hashtagHandler: nil, emojiLookup: nil)
+        
+        #expect(!attributedString.characters.isEmpty)
+        // Should still process links even without emoji lookup
+        let hasLink = attributedString.runs.contains { $0.link != nil }
+        #expect(hasLink == true)
+    }
 }
