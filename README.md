@@ -65,6 +65,12 @@ Save articles to your favorite read-later service:
 - Xcode 16.0+
 - Swift 5.9+
 
+### Swift Version
+
+The app targets **Swift 5.9+** (required for `@Observable`). The project uses **targeted** strict concurrency and `MainActor` as the default actor isolation.
+
+We have not migrated to Swift 6. **Targeted concurrency is sufficient for now**: `SWIFT_STRICT_CONCURRENCY = targeted` plus `MainActor` default gives incremental concurrency safety without Swift 6’s **complete** strict concurrency mode. Moving to Swift 6 would require full strict concurrency (broader `Sendable` and isolation work across services and models); we’ve deferred that until we can prioritize it. We may revisit once tooling and migration paths are clearer.
+
 ## Installation
 
 1. Clone the repository:
@@ -140,6 +146,8 @@ The project includes comprehensive tests using Swift Testing:
 # Run all tests
 xcodebuild test -scheme fedi-reader -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
+
+See [WARP.md](WARP.md) for more build/test commands (single-suite, UI-only, clean, etc.).
 
 ### Test Coverage
 
