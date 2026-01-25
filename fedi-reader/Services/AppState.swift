@@ -121,7 +121,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     
     var title: String {
         switch self {
-        case .links: return "Links"
+        case .links: return "Home"
         case .explore: return "Explore"
         case .mentions: return "Mentions"
         case .profile: return "Profile"
@@ -130,7 +130,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     
     var systemImage: String {
         switch self {
-        case .links: return "link"
+        case .links: return "house"
         case .explore: return "globe"
         case .mentions: return "at"
         case .profile: return "person"

@@ -30,7 +30,7 @@ struct ProfileView: View {
                 ProfileHeaderView(account: account)
             }
             .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .listRowInsets(EdgeInsets(top: 0, leading: -20, bottom: 0, trailing: -20))
             
             // Stats
             Section {
@@ -169,16 +169,27 @@ struct ProfileHeaderView: View {
         VStack(spacing: 0) {
             // Header image
             if let headerURL = account.headerURL, let url = URL(string: headerURL) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Rectangle()
-                        .fill(.tertiary)
+                GeometryReader { geo in
+                    let top = geo.safeAreaInsets.top
+                    let horizontal = geo.safeAreaInsets.leading + geo.safeAreaInsets.trailing
+                    let scaleX = geo.size.width > 0 ? 1 + horizontal / geo.size.width : 1
+                    let scaleY = 1 + top / 200
+
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Rectangle()
+                            .fill(.tertiary)
+                    }
+                    .frame(height: 200)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
+                    .ignoresSafeArea(edges: [.top, .horizontal])
                 }
                 .frame(height: 200)
-                .frame(maxWidth: .infinity)
                 .clipped()
             }
             
@@ -202,8 +213,13 @@ struct ProfileHeaderView: View {
                 
                 // Name and handle
                 VStack(spacing: 4) {
-                    Text(account.displayName)
-                        .font(.roundedTitle2.bold())
+                    HStack(spacing: 4) {
+                        Text(account.displayName)
+                            .font(.roundedTitle2.bold())
+                        
+                        // Note: Account model doesn't have bot/locked, but we can show badges if needed
+                        // For now, we'll skip badges for the current user's profile
+                    }
                     
                     Text(account.fullHandle)
                         .font(.roundedSubheadline)
@@ -236,16 +252,27 @@ struct ProfileDetailView: View {
             VStack(spacing: 0) {
                 // Header
                 if let headerURL = account.headerURL {
-                    AsyncImage(url: headerURL) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Rectangle()
-                            .fill(.tertiary)
+                    GeometryReader { geo in
+                        let top = geo.safeAreaInsets.top
+                        let horizontal = geo.safeAreaInsets.leading + geo.safeAreaInsets.trailing
+                        let scaleX = geo.size.width > 0 ? 1 + horizontal / geo.size.width : 1
+                        let scaleY = 1 + top / 200
+
+                        AsyncImage(url: headerURL) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            Rectangle()
+                                .fill(.tertiary)
+                        }
+                        .frame(height: 200)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
+                        .ignoresSafeArea(edges: [.top, .horizontal])
                     }
                     .frame(height: 200)
-                    .frame(maxWidth: .infinity)
                     .clipped()
                 }
                 
@@ -267,8 +294,12 @@ struct ProfileDetailView: View {
                     .padding(.top, account.headerURL != nil ? 0 : 16)
                     
                     VStack(spacing: 4) {
-                        Text(account.displayName)
-                            .font(.roundedTitle2.bold())
+                        HStack(spacing: 4) {
+                            Text(account.displayName)
+                                .font(.roundedTitle2.bold())
+                            
+                            AccountBadgesView(account: account, size: .medium)
+                        }
                         
                         Text("@\(account.acct)")
                             .font(.roundedSubheadline)

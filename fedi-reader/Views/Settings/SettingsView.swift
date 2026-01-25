@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage("autoPlayGifs") private var autoPlayGifs = false
     @AppStorage("defaultVisibility") private var defaultVisibility = "public"
     @AppStorage("hapticFeedback") private var hapticFeedback = true
+    @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("defaultListId") private var defaultListId = ""
     
@@ -28,6 +29,7 @@ struct SettingsView: View {
             Section("Display") {
                 Toggle("Show Images", isOn: $showImages)
                 Toggle("Auto-play GIFs", isOn: $autoPlayGifs)
+                Toggle("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
                 
                 Picker("Theme Color", selection: $themeColorName) {
                     ForEach(ThemeColor.allCases, id: \.rawValue) { color in

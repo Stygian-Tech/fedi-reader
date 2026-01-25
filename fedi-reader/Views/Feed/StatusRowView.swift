@@ -10,6 +10,7 @@ import SwiftUI
 struct StatusRowView: View {
     let status: Status
     @Environment(AppState.self) private var appState
+    @AppStorage("themeColor") private var themeColorName = "blue"
     
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
@@ -20,15 +21,20 @@ struct StatusRowView: View {
         status.displayStatus
     }
     
+    private var themeColor: Color {
+        ThemeColor(rawValue: themeColorName)?.color ?? .blue
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Reblog indicator
+            // Reblog gradient strip
             if status.isReblog {
-                reblogHeader
+                reblogGradientStrip
             }
             
-            // Author info
-            authorHeader
+            VStack(alignment: .leading, spacing: 12) {
+                // Author info
+                authorHeader
             
             // Content warning
             if !displayStatus.spoilerText.isEmpty {
@@ -56,14 +62,15 @@ struct StatusRowView: View {
             StatusActionsBar(status: status, size: .standard)
 
             Divider()
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
     }
     
-    // MARK: - Reblog Header
+    // MARK: - Reblog Gradient Strip
     
-    private var reblogHeader: some View {
+    private var reblogGradientStrip: some View {
         Button {
             appState.navigate(to: .profile(status.account))
         } label: {
@@ -74,7 +81,7 @@ struct StatusRowView: View {
                         .aspectRatio(contentMode: .fill)
                 } placeholder: {
                     Circle()
-                        .fill(.tertiary)
+                        .fill(.white.opacity(0.5))
                 }
                 .frame(width: 24, height: 24)
                 .clipShape(Circle())
@@ -83,22 +90,39 @@ struct StatusRowView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.2.squarepath")
                             .font(.roundedCaption2)
-                            .foregroundStyle(.secondary)
                         
                         Text("Boosted by")
                             .font(.roundedCaption)
-                            .foregroundStyle(.secondary)
                     }
                     
-                    Text(status.account.displayName)
-                        .font(.roundedCaption.bold())
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(status.account.displayName)
+                            .font(.roundedCaption.bold())
+                            .lineLimit(1)
+                        
+                        AccountBadgesView(account: status.account, size: .small)
+                    }
                 }
+                .foregroundStyle(.white)
                 
                 Spacer()
             }
-            .padding(8)
-            .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                LinearGradient(
+                    colors: [
+                        themeColor.opacity(0.28),
+                        themeColor.opacity(0.15),
+                        themeColor.opacity(0.06),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -125,9 +149,13 @@ struct StatusRowView: View {
             .buttonStyle(.plain)
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(displayStatus.account.displayName)
-                    .font(.roundedSubheadline.bold())
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(displayStatus.account.displayName)
+                        .font(.roundedSubheadline.bold())
+                        .lineLimit(1)
+                    
+                    AccountBadgesView(account: displayStatus.account, size: .small)
+                }
             }
             
             Spacer()
@@ -475,9 +503,13 @@ struct CompactStatusRow: View {
             
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(displayStatus.account.displayName)
-                        .font(.roundedSubheadline.bold())
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(displayStatus.account.displayName)
+                            .font(.roundedSubheadline.bold())
+                            .lineLimit(1)
+                        
+                        AccountBadgesView(account: displayStatus.account, size: .small)
+                    }
                     
                     Spacer()
                     

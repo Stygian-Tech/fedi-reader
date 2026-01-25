@@ -122,6 +122,15 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Preference Key for Scroll to Top
+
+struct ScrollToTopKey: PreferenceKey {
+    static var defaultValue: Bool = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = nextValue()
+    }
+}
+
 // MARK: - Main Tab View
 
 struct MainTabView: View {
@@ -129,20 +138,35 @@ struct MainTabView: View {
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     
+    @State private var tabTracker = TabSelectionTracker()
+    @State private var scrollToTopTrigger = false
+    @AppStorage("hapticFeedback") private var hapticFeedback = true
+    @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
+    
     var body: some View {
         @Bindable var state = appState
         
         TabView(selection: $state.selectedTab) {
-            Tab("Links", systemImage: "link", value: .links) {
+            Tab(hideTabBarLabels ? "" : "Home", systemImage: "house", value: .links) {
                 NavigationStack(path: $state.navigationPath) {
                     LinkFeedView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
                             destinationView(for: destination)
                         }
+                        .onAppear {
+                            // Detect double-tap when view appears while already on Home tab
+                            if state.selectedTab == .links {
+                                let isDoubleTap = tabTracker.recordSelection(.links)
+                                if isDoubleTap {
+                                    scrollToTopTrigger.toggle()
+                                    HapticFeedback.play(.medium, enabled: hapticFeedback)
+                                }
+                            }
+                        }
                 }
             }
             
-            Tab("Explore", systemImage: "globe", value: .explore) {
+            Tab(hideTabBarLabels ? "" : "Explore", systemImage: "globe", value: .explore) {
                 NavigationStack {
                     ExploreFeedView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
@@ -151,7 +175,7 @@ struct MainTabView: View {
                 }
             }
             
-            Tab("Mentions", systemImage: "at", value: .mentions) {
+            Tab(hideTabBarLabels ? "" : "Mentions", systemImage: "at", value: .mentions) {
                 NavigationStack {
                     MentionsView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
@@ -160,7 +184,7 @@ struct MainTabView: View {
                 }
             }
             
-            Tab("Profile", systemImage: "person", value: .profile) {
+            Tab(hideTabBarLabels ? "" : "Profile", systemImage: "person", value: .profile) {
                 NavigationStack(path: $state.navigationPath) {
                     ProfileView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
@@ -170,6 +194,20 @@ struct MainTabView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        .onChange(of: state.selectedTab) { oldValue, newValue in
+            HapticFeedback.play(.selection, enabled: hapticFeedback)
+            // Detect double-tap on Home tab
+            if newValue == .links {
+                let isDoubleTap = tabTracker.recordSelection(.links)
+                if isDoubleTap {
+                    scrollToTopTrigger.toggle()
+                    HapticFeedback.play(.medium, enabled: hapticFeedback)
+                }
+            } else {
+                tabTracker.reset()
+            }
+        }
+        .preference(key: ScrollToTopKey.self, value: scrollToTopTrigger)
     }
     
     @ViewBuilder

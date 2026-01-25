@@ -23,24 +23,22 @@ struct ArticleWebView: View {
     @State private var webView: WKWebView?
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Web content
-            WebViewContainer(
-                url: url,
-                isLoading: $isLoading,
-                pageTitle: $pageTitle,
-                canGoBack: $canGoBack,
-                canGoForward: $canGoForward,
-                webView: $webView
-            )
-            .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
-            
-            // Action toolbar
+        WebViewContainer(
+            url: url,
+            isLoading: $isLoading,
+            pageTitle: $pageTitle,
+            canGoBack: $canGoBack,
+            canGoForward: $canGoForward,
+            webView: $webView
+        )
+        .ignoresSafeArea()
+        .safeAreaInset(edge: .bottom) {
             actionToolbar
         }
         .navigationTitle(pageTitle ?? url.host ?? "Article")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 // Navigation
@@ -317,9 +315,13 @@ struct StatusDetailRowView: View {
                 .buttonStyle(.plain)
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(displayStatus.account.displayName)
-                        .font(.roundedSubheadline.bold())
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(displayStatus.account.displayName)
+                            .font(.roundedSubheadline.bold())
+                            .lineLimit(1)
+                        
+                        AccountBadgesView(account: displayStatus.account, size: .small)
+                    }
                 }
                 
                 Spacer()

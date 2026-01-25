@@ -33,6 +33,9 @@ struct LinkFeedView: View {
     @State private var selectedDomain: String?
     @State private var selectedTabIndex: Int = 0
     @GestureState private var dragOffset: CGFloat = 0
+    @State private var scrollProxy: ScrollViewProxy?
+    @AppStorage("hapticFeedback") private var hapticFeedback = true
+    @State private var titleBarTapTracker = TabSelectionTracker()
     
     private var timelineService: TimelineService? {
         timelineWrapper.service
@@ -116,9 +119,28 @@ struct LinkFeedView: View {
                     }
             )
         }
-        .navigationTitle(currentTab.isHome ? "Home" : currentTab.title)
         .navigationBarTitleDisplayMode(.inline)
+        .onPreferenceChange(ScrollToTopKey.self) { shouldScroll in
+            if shouldScroll {
+                scrollToTop()
+            }
+        }
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Button {
+                    // Detect double-tap on title bar
+                    let isDoubleTap = titleBarTapTracker.recordSelection(.links)
+                    if isDoubleTap {
+                        scrollToTop()
+                        HapticFeedback.play(.medium, enabled: hapticFeedback)
+                    }
+                } label: {
+                    Text(currentTab.isHome ? "Home" : currentTab.title)
+                        .font(.headline)
+                }
+                .buttonStyle(.plain)
+            }
+            
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     appState.isUserFilterOpen = true
@@ -221,25 +243,31 @@ struct LinkFeedView: View {
     
     private var linkList: some View {
         GlassEffectContainer {
-            List {
-                ForEach(filteredStatuses) { linkStatus in
-                    LinkStatusRow(linkStatus: linkStatus)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .onAppear {
-                            checkLoadMore(linkStatus)
-                        }
+            ScrollViewReader { proxy in
+                List {
+                    ForEach(filteredStatuses) { linkStatus in
+                        LinkStatusRow(linkStatus: linkStatus)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                            .onAppear {
+                                checkLoadMore(linkStatus)
+                            }
+                    }
+                    
+                    if linkFilterService.isLoading {
+                        loadingRow
+                    }
                 }
-                
-                if linkFilterService.isLoading {
-                    loadingRow
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .listRowSpacing(8)
+                .padding(.horizontal, 12)
+                .contentMargins(.top, 0, for: .scrollContent)
+                .onAppear {
+                    scrollProxy = proxy
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .listRowSpacing(8)
-            .padding(.horizontal, 12)
         }
     }
     
@@ -404,6 +432,19 @@ struct LinkFeedView: View {
         }
     }
     
+    private func scrollToTop() {
+        guard let proxy = scrollProxy, !filteredStatuses.isEmpty else { return }
+        // Play haptic feedback (already played in MainTabView, but ensure it's ready)
+        HapticFeedback.prepare(.medium)
+        // Use spring animation for snappy, native feel
+        // Scroll to first item
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            if let firstStatus = filteredStatuses.first {
+                proxy.scrollTo(firstStatus.id, anchor: .top)
+            }
+        }
+    }
+    
     private func checkLoadMore(_ linkStatus: LinkStatus) {
         guard let service = timelineService else { return }
         
@@ -462,10 +503,15 @@ struct LinkStatusRow: View {
     let linkStatus: LinkStatus
     @Environment(AppState.self) private var appState
     @Environment(ReadLaterManager.self) private var readLaterManager
+    @AppStorage("themeColor") private var themeColorName = "blue"
     
     @State private var isShowingActions = false
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
+    
+    private var themeColor: Color {
+        ThemeColor(rawValue: themeColorName)?.color ?? .blue
+    }
     
     var body: some View {
         Button {
@@ -473,7 +519,7 @@ struct LinkStatusRow: View {
         } label: {
             VStack(alignment: .leading, spacing: 12) {
                 if linkStatus.status.isReblog {
-                    reblogHeader
+                    reblogGradientStrip
                 }
                 
                 // Author info
@@ -502,9 +548,14 @@ struct LinkStatusRow: View {
         .contextMenu {
             contextMenuContent
         }
+        .task(id: blueskyCardURL?.absoluteString) {
+            guard let url = blueskyCardURL, !hasLoadedBlueskyDescription else { return }
+            hasLoadedBlueskyDescription = true
+            blueskyDescription = await LinkPreviewService.shared.fetchDescription(for: url)
+        }
     }
 
-    private var reblogHeader: some View {
+    private var reblogGradientStrip: some View {
         let reblogger = linkStatus.status.account
         return Button {
             appState.navigate(to: .status(linkStatus.status))
@@ -516,7 +567,7 @@ struct LinkStatusRow: View {
                         .aspectRatio(contentMode: .fill)
                 } placeholder: {
                     Circle()
-                        .fill(.tertiary)
+                        .fill(.white.opacity(0.5))
                 }
                 .frame(width: 24, height: 24)
                 .clipShape(Circle())
@@ -525,30 +576,42 @@ struct LinkStatusRow: View {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.2.squarepath")
                             .font(.roundedCaption2)
-                            .foregroundStyle(.secondary)
                         
                         Text("Boosted by")
                             .font(.roundedCaption)
-                            .foregroundStyle(.secondary)
                     }
                     
-                    Text(reblogger.displayName)
-                        .font(.roundedCaption.bold())
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(reblogger.displayName)
+                            .font(.roundedCaption.bold())
+                            .lineLimit(1)
+                        
+                        AccountBadgesView(account: reblogger, size: .small)
+                    }
                 }
+                .foregroundStyle(.white)
                 
                 Spacer()
             }
-            .padding(8)
-            .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                LinearGradient(
+                    colors: [
+                        themeColor.opacity(0.28),
+                        themeColor.opacity(0.15),
+                        themeColor.opacity(0.06),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .task(id: blueskyCardURL?.absoluteString) {
-            guard let url = blueskyCardURL, !hasLoadedBlueskyDescription else { return }
-            hasLoadedBlueskyDescription = true
-            blueskyDescription = await LinkPreviewService.shared.fetchDescription(for: url)
-        }
     }
     
     private var authorHeader: some View {
@@ -565,9 +628,13 @@ struct LinkStatusRow: View {
             .clipShape(Circle())
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(linkStatus.status.displayStatus.account.displayName)
-                    .font(.roundedSubheadline.bold())
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(linkStatus.status.displayStatus.account.displayName)
+                        .font(.roundedSubheadline.bold())
+                        .lineLimit(1)
+                    
+                    AccountBadgesView(account: linkStatus.status.displayStatus.account, size: .small)
+                }
             }
             
             Spacer()

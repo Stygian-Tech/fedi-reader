@@ -105,9 +105,13 @@ struct AccountRowView: View {
             .clipShape(Circle())
             
             VStack(alignment: .leading, spacing: 4) {
-                Text(account.displayName)
-                    .font(.roundedHeadline)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(account.displayName)
+                        .font(.roundedHeadline)
+                        .lineLimit(1)
+                    
+                    AccountBadgesView(account: account, size: .small)
+                }
                 
                 Text("@\(account.acct)")
                     .font(.roundedSubheadline)

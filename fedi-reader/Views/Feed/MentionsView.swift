@@ -786,9 +786,13 @@ struct ChatMessageGroup: View {
                         Button {
                             appState.navigate(to: .profile(group.account))
                         } label: {
-                            Text(group.account.displayName)
-                                .font(.roundedCaption.bold())
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 4) {
+                                Text(group.account.displayName)
+                                    .font(.roundedCaption.bold())
+                                    .foregroundStyle(.secondary)
+                                
+                                AccountBadgesView(account: group.account, size: .small)
+                            }
                         }
                         .buttonStyle(.plain)
                     }
@@ -1257,9 +1261,13 @@ struct RecipientChip: View {
             .frame(width: 20, height: 20)
             .clipShape(Circle())
             
-            Text(account.displayName)
-                .font(.roundedSubheadline)
-                .lineLimit(1)
+            HStack(spacing: 4) {
+                Text(account.displayName)
+                    .font(.roundedSubheadline)
+                    .lineLimit(1)
+                
+                AccountBadgesView(account: account, size: .small)
+            }
             
             Button {
                 onRemove()
@@ -1300,9 +1308,13 @@ struct UserSearchRow: View {
             .clipShape(Circle())
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(account.displayName)
-                    .font(.roundedBody)
-                    .foregroundStyle(.primary)
+                HStack(spacing: 4) {
+                    Text(account.displayName)
+                        .font(.roundedBody)
+                        .foregroundStyle(.primary)
+                    
+                    AccountBadgesView(account: account, size: .small)
+                }
                 
                 Text("@\(account.acct)")
                     .font(.roundedCaption)
