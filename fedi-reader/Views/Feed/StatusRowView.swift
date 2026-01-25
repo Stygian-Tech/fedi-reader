@@ -75,17 +75,8 @@ struct StatusRowView: View {
             appState.navigate(to: .profile(status.account))
         } label: {
             HStack(spacing: 8) {
-                AsyncImage(url: status.account.avatarURL) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Circle()
-                        .fill(.white.opacity(0.5))
-                }
-                .frame(width: 24, height: 24)
-                .clipShape(Circle())
-                
+                ProfileAvatarView(url: status.account.avatarURL, size: 24, placeholderStyle: .light)
+
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.2.squarepath")
@@ -135,16 +126,7 @@ struct StatusRowView: View {
             Button {
                 appState.navigate(to: .profile(displayStatus.account))
             } label: {
-                AsyncImage(url: displayStatus.account.avatarURL) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Circle()
-                        .fill(.tertiary)
-                }
-                .frame(width: Constants.UI.avatarSize, height: Constants.UI.avatarSize)
-                .clipShape(Circle())
+                ProfileAvatarView(url: displayStatus.account.avatarURL, size: Constants.UI.avatarSize)
             }
             .buttonStyle(.plain)
             

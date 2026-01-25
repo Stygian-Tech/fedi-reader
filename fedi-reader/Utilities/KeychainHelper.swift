@@ -186,4 +186,16 @@ extension KeychainHelper {
     func deleteReadLaterToken(forService serviceType: ReadLaterServiceType, configId: String) async throws {
         try delete(forKey: "fedi-reader.readlater.\(serviceType.rawValue).\(configId)")
     }
+
+    func saveOAuthClientSecret(_ secret: String, forAccount accountId: String) async throws {
+        try save(secret, forKey: "fedi-reader.oauth.client_secret.\(accountId)")
+    }
+
+    func getOAuthClientSecret(forAccount accountId: String) async throws -> String {
+        try readString(forKey: "fedi-reader.oauth.client_secret.\(accountId)")
+    }
+
+    func deleteOAuthClientSecret(forAccount accountId: String) async throws {
+        try delete(forKey: "fedi-reader.oauth.client_secret.\(accountId)")
+    }
 }

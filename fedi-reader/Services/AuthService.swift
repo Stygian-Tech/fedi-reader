@@ -8,10 +8,12 @@
 import Foundation
 import SwiftData
 import AuthenticationServices
+import os
 
 @Observable
 @MainActor
 final class AuthService {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "Auth")
     private let client: MastodonClient
     private let keychain: KeychainHelper
     
@@ -34,13 +36,35 @@ final class AuthService {
     
     func loadAccounts(from modelContext: ModelContext) {
         let descriptor = FetchDescriptor<Account>(sortBy: [SortDescriptor(\.createdAt)])
-        
+
         do {
             accounts = try modelContext.fetch(descriptor)
             currentAccount = accounts.first(where: { $0.isActive }) ?? accounts.first
         } catch {
-            print("Failed to load accounts: \(error)")
+            Self.logger.error("Failed to load accounts: \(error.localizedDescription)")
         }
+    }
+
+    /// One-time migration: move OAuth client secrets from SwiftData to Keychain.
+    func migrateOAuthClientSecretsToKeychain(modelContext: ModelContext) async {
+        let key = "fedi-reader.migrated.oauth_client_secret"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+
+        let descriptor = FetchDescriptor<Account>()
+        guard let accounts = try? modelContext.fetch(descriptor) else { return }
+
+        for account in accounts {
+            guard let secret = account.clientSecret, !secret.isEmpty else { continue }
+            do {
+                try await keychain.saveOAuthClientSecret(secret, forAccount: account.id)
+                account.clientSecret = nil
+                try modelContext.save()
+            } catch {
+                Self.logger.error("Migration: failed to move client secret to Keychain")
+            }
+        }
+
+        UserDefaults.standard.set(true, forKey: key)
     }
     
     func setActiveAccount(_ account: Account, modelContext: ModelContext) {
@@ -62,7 +86,7 @@ final class AuthService {
         do {
             return try await keychain.getToken(forAccount: account.id)
         } catch {
-            print("Failed to get access token: \(error)")
+            Self.logger.error("Failed to get access token")
             return nil
         }
     }
@@ -126,9 +150,9 @@ final class AuthService {
                 accessToken: token.accessToken
             )
             
-            // Create or update local account
+            let accountId = "\(instance):\(mastodonAccount.id)"
             let account = Account(
-                id: "\(instance):\(mastodonAccount.id)",
+                id: accountId,
                 instance: instance,
                 username: mastodonAccount.username,
                 displayName: mastodonAccount.displayName,
@@ -141,11 +165,11 @@ final class AuthService {
                 statusesCount: mastodonAccount.statusesCount,
                 isActive: true,
                 clientId: clientId,
-                clientSecret: clientSecret
+                clientSecret: nil
             )
-            
-            // Store access token in keychain
+
             try await keychain.saveToken(token.accessToken, forAccount: account.id)
+            try await keychain.saveOAuthClientSecret(clientSecret, forAccount: account.id)
             
             // Deactivate other accounts
             for existingAccount in accounts {
@@ -177,10 +201,10 @@ final class AuthService {
     }
     
     func logout(account: Account, modelContext: ModelContext) async throws {
-        // Revoke token if possible
+        let token = await getAccessToken(for: account)
         if let clientId = account.clientId,
-           let clientSecret = account.clientSecret,
-           let token = await getAccessToken(for: account) {
+           let clientSecret = try? await keychain.getOAuthClientSecret(forAccount: account.id),
+           let token = token {
             try? await client.revokeToken(
                 instance: account.instance,
                 clientId: clientId,
@@ -188,9 +212,9 @@ final class AuthService {
                 token: token
             )
         }
-        
-        // Delete token from keychain
+
         try await keychain.deleteToken(forAccount: account.id)
+        try? await keychain.deleteOAuthClientSecret(forAccount: account.id)
         
         // Remove from SwiftData
         modelContext.delete(account)
@@ -309,17 +333,17 @@ extension AuthService {
                 url: authURL,
                 callbackURLScheme: Constants.OAuth.redirectScheme
             ) { callbackURL, error in
-                Task {
+                Task { @MainActor in
                     if let error {
                         continuation.resume(throwing: error)
                         return
                     }
-                    
+
                     guard let callbackURL else {
                         continuation.resume(throwing: FediReaderError.oauthError("No callback URL"))
                         return
                     }
-                    
+
                     do {
                         let account = try await self.handleCallback(url: callbackURL, modelContext: modelContext)
                         continuation.resume(returning: account)
@@ -328,10 +352,10 @@ extension AuthService {
                     }
                 }
             }
-            
+
             session.presentationContextProvider = presentationContext
             session.prefersEphemeralWebBrowserSession = false
-            
+
             if !session.start() {
                 continuation.resume(throwing: FediReaderError.oauthError("Failed to start auth session"))
             }
@@ -347,23 +371,23 @@ extension AuthService {
     @MainActor
     func authenticateWithWebSession(instance: String, presentationContext: ASWebAuthenticationPresentationContextProviding, modelContext: ModelContext) async throws -> Account {
         let authURL = try await initiateLogin(instance: instance)
-        
+
         return try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(
                 url: authURL,
                 callbackURLScheme: Constants.OAuth.redirectScheme
             ) { callbackURL, error in
-                Task {
+                Task { @MainActor in
                     if let error {
                         continuation.resume(throwing: error)
                         return
                     }
-                    
+
                     guard let callbackURL else {
                         continuation.resume(throwing: FediReaderError.oauthError("No callback URL"))
                         return
                     }
-                    
+
                     do {
                         let account = try await self.handleCallback(url: callbackURL, modelContext: modelContext)
                         continuation.resume(returning: account)

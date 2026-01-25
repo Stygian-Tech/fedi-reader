@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import os
 
 // MARK: - Tag View
 
@@ -77,7 +78,7 @@ struct TagExtractor {
 #Preview("Tag View") {
     VStack(spacing: 20) {
         TagView(tags: ["semantic search", "chat with notes", "auto-tagging", "encrypted"]) { tag in
-            print("Tapped: \(tag)")
+            Logger(subsystem: "app.fedi-reader", category: "TagView").debug("Tapped: \(tag)")
         }
         
         TagView(tags: TagExtractor.extractTags(from: "Check out #swiftui #ios #design #glassmorphism"))

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import os
 
 struct MentionsView: View {
     @Environment(AppState.self) private var appState
@@ -38,6 +39,8 @@ struct MentionsView: View {
                 } label: {
                     Image(systemName: "square.and.pencil")
                 }
+                .accessibilityLabel("New message")
+                .accessibilityHint("Opens composer to write a new direct message")
             }
         }
         .refreshable {
@@ -238,19 +241,10 @@ struct GroupedConversationRow: View {
                     }
             } else {
                 // 1:1: single avatar
-                AsyncImage(url: groupedConversation.primaryAccount?.avatarURL) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Circle()
-                        .fill(.tertiary)
-                }
-                .frame(width: 56, height: 56)
-                .clipShape(Circle())
-                .overlay(alignment: .bottomTrailing) {
-                    unreadIndicator
-                }
+                ProfileAvatarView(url: groupedConversation.primaryAccount?.avatarURL, size: 56)
+                    .overlay(alignment: .bottomTrailing) {
+                        unreadIndicator
+                    }
             }
             
             // Content
@@ -312,14 +306,10 @@ struct GroupAvatarView: View {
             if avatarsToShow.count == 2 {
                 // Two avatars: diagonal overlap
                 HStack(spacing: -16) {
-                    avatarImage(for: avatarsToShow[0])
-                        .frame(width: 40, height: 40)
-                        .clipShape(Circle())
+                    ProfileAvatarView(url: avatarsToShow[0].avatarURL, size: 40)
                         .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
-                    
-                    avatarImage(for: avatarsToShow[1])
-                        .frame(width: 40, height: 40)
-                        .clipShape(Circle())
+
+                    ProfileAvatarView(url: avatarsToShow[1].avatarURL, size: 40)
                         .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
                 }
                 .frame(width: 56, height: 56)
@@ -328,26 +318,18 @@ struct GroupAvatarView: View {
                 let gridSize: CGFloat = 28
                 VStack(spacing: -4) {
                     HStack(spacing: -4) {
-                        avatarImage(for: avatarsToShow[0])
-                            .frame(width: gridSize, height: gridSize)
-                            .clipShape(Circle())
+                        ProfileAvatarView(url: avatarsToShow[0].avatarURL, size: gridSize)
                             .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1))
-                        
-                        avatarImage(for: avatarsToShow[1])
-                            .frame(width: gridSize, height: gridSize)
-                            .clipShape(Circle())
+
+                        ProfileAvatarView(url: avatarsToShow[1].avatarURL, size: gridSize)
                             .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1))
                     }
                     HStack(spacing: -4) {
-                        avatarImage(for: avatarsToShow[2])
-                            .frame(width: gridSize, height: gridSize)
-                            .clipShape(Circle())
+                        ProfileAvatarView(url: avatarsToShow[2].avatarURL, size: gridSize)
                             .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1))
-                        
+
                         if avatarsToShow.count > 3 {
-                            avatarImage(for: avatarsToShow[3])
-                                .frame(width: gridSize, height: gridSize)
-                                .clipShape(Circle())
+                            ProfileAvatarView(url: avatarsToShow[3].avatarURL, size: gridSize)
                                 .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1))
                         } else if participants.count > 3 {
                             // Show +N indicator
@@ -369,22 +351,8 @@ struct GroupAvatarView: View {
                 .frame(width: 56, height: 56)
             } else {
                 // Fallback: single avatar
-                avatarImage(for: avatarsToShow.first)
-                    .frame(width: 56, height: 56)
-                    .clipShape(Circle())
+                ProfileAvatarView(url: avatarsToShow.first?.avatarURL, size: 56)
             }
-        }
-    }
-    
-    @ViewBuilder
-    private func avatarImage(for account: MastodonAccount?) -> some View {
-        AsyncImage(url: account?.avatarURL) { image in
-            image
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-        } placeholder: {
-            Circle()
-                .fill(.tertiary)
         }
     }
 }
@@ -618,8 +586,7 @@ struct GroupedConversationDetailView: View {
             await timelineService?.refreshConversations()
             await loadAllConversationThreads()
         } catch {
-            // Handle error (could show alert)
-            print("Failed to send message: \(error)")
+            Logger(subsystem: "app.fedi-reader", category: "Mentions").error("Failed to send message: \(error.localizedDescription)")
         }
     }
     
@@ -732,16 +699,7 @@ struct ChatMessageGroup: View {
                             appState.navigate(to: .profile(currentAccount))
                         }
                     } label: {
-                        AsyncImage(url: group.account.avatarURL) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Circle()
-                                .fill(.tertiary)
-                        }
-                        .frame(width: 32, height: 32)
-                        .clipShape(Circle())
+                        ProfileAvatarView(url: group.account.avatarURL, size: 32)
                     }
                     .buttonStyle(.plain)
                 } else {
@@ -760,16 +718,7 @@ struct ChatMessageGroup: View {
                     Button {
                         appState.navigate(to: .profile(group.account))
                     } label: {
-                        AsyncImage(url: group.account.avatarURL) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Circle()
-                                .fill(.tertiary)
-                        }
-                        .frame(width: 32, height: 32)
-                        .clipShape(Circle())
+                        ProfileAvatarView(url: group.account.avatarURL, size: 32)
                     }
                     .buttonStyle(.plain)
                 } else {
@@ -1250,17 +1199,8 @@ struct RecipientChip: View {
     
     var body: some View {
         HStack(spacing: 6) {
-            AsyncImage(url: account.avatarURL) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                Circle()
-                    .fill(.tertiary)
-            }
-            .frame(width: 20, height: 20)
-            .clipShape(Circle())
-            
+            ProfileAvatarView(url: account.avatarURL, size: 20)
+
             HStack(spacing: 4) {
                 Text(account.displayName)
                     .font(.roundedSubheadline)
@@ -1296,17 +1236,8 @@ struct UserSearchRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: account.avatarURL) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                Circle()
-                    .fill(.tertiary)
-            }
-            .frame(width: 44, height: 44)
-            .clipShape(Circle())
-            
+            ProfileAvatarView(url: account.avatarURL, size: 44)
+
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(account.displayName)

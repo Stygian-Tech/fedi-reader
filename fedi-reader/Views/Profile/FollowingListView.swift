@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import os
 
 struct FollowingListView: View {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "FollowingListView")
     let accountId: String
     let account: MastodonAccount
     @Environment(AppState.self) private var appState
@@ -76,7 +78,7 @@ struct FollowingListView: View {
             
             maxId = following.last?.id
         } catch {
-            print("Failed to load following: \(error)")
+            Self.logger.error("Failed to load following: \(error.localizedDescription)")
         }
     }
     
@@ -93,17 +95,8 @@ struct AccountRowView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: account.avatarURL) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                Circle()
-                    .fill(.tertiary)
-            }
-            .frame(width: 50, height: 50)
-            .clipShape(Circle())
-            
+            ProfileAvatarView(url: account.avatarURL, size: 50)
+
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Text(account.displayName)

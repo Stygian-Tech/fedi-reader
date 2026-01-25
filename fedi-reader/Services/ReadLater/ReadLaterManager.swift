@@ -7,10 +7,12 @@
 
 import Foundation
 import SwiftData
+import os
 
 @Observable
 @MainActor
 final class ReadLaterManager {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "ReadLater")
     private let keychain: KeychainHelper
     
     var configuredServices: [ReadLaterConfig] = []
@@ -49,7 +51,7 @@ final class ReadLaterManager {
                 initializeService(for: config)
             }
         } catch {
-            print("Failed to load read-later configs: \(error)")
+            Self.logger.error("Failed to load read-later configs: \(error.localizedDescription)")
         }
     }
     

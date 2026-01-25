@@ -127,17 +127,8 @@ struct UserFilterRow: View {
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 12) {
-                AsyncImage(url: account.avatarURL) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Circle()
-                        .fill(.tertiary)
-                }
-                .frame(width: Constants.UI.avatarSize, height: Constants.UI.avatarSize)
-                .clipShape(Circle())
-                
+                ProfileAvatarView(url: account.avatarURL, size: Constants.UI.avatarSize)
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(account.displayName)
                         .font(.roundedSubheadline.bold())

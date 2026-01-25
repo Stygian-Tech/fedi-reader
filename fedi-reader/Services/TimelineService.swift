@@ -141,15 +141,15 @@ final class TimelineService {
         
         isLoadingExplore = true
         error = nil
-        
+
+        let instance = account.instance
         do {
-            // Load trending statuses and links in parallel
             async let statusesTask = client.getTrendingStatuses(
-                instance: account.instance,
+                instance: instance,
                 accessToken: token
             )
             async let linksTask = client.getTrendingLinks(
-                instance: account.instance,
+                instance: instance,
                 accessToken: token
             )
             

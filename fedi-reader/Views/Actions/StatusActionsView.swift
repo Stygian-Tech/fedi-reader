@@ -63,6 +63,7 @@ struct StatusActionsBar: View {
         count: Int?,
         isActive: Bool,
         activeColor: Color,
+        accessibilityLabel: String,
         action: @escaping () async -> Void
     ) -> some View {
         Button {
@@ -75,8 +76,7 @@ struct StatusActionsBar: View {
                 Image(systemName: icon)
                     .font(iconFont)
                     .foregroundStyle(isActive ? activeColor : .secondary)
-                
-                // Always show count, even if 0, for consistency
+
                 Text(formatCount(count ?? 0))
                     .font(countFont)
                     .foregroundStyle(isActive ? activeColor : .secondary)
@@ -86,6 +86,9 @@ struct StatusActionsBar: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(isActive ? "Active, \(formatCount(count ?? 0))" : formatCount(count ?? 0))
+        .accessibilityHint("Double tap to \(accessibilityLabel.lowercased())")
     }
     
     private var iconFont: Font {
@@ -127,7 +130,8 @@ struct StatusActionsBar: View {
                 icon: "arrowshape.turn.up.left",
                 count: displayStatus.repliesCount,
                 isActive: false,
-                activeColor: .accentColor
+                activeColor: .accentColor,
+                accessibilityLabel: "Reply"
             ) {
                 appState.present(sheet: .compose(replyTo: status))
             }
@@ -137,7 +141,8 @@ struct StatusActionsBar: View {
                 icon: "arrow.2.squarepath",
                 count: reblogCount,
                 isActive: isReblogged,
-                activeColor: .green
+                activeColor: .green,
+                accessibilityLabel: "Boost"
             ) {
                 await toggleReblog()
             }
@@ -147,7 +152,8 @@ struct StatusActionsBar: View {
                 icon: isFavorited ? "star.fill" : "star",
                 count: favoriteCount,
                 isActive: isFavorited,
-                activeColor: .yellow
+                activeColor: .yellow,
+                accessibilityLabel: "Favorite"
             ) {
                 await toggleFavorite()
             }
@@ -157,7 +163,8 @@ struct StatusActionsBar: View {
                 icon: "quote.bubble",
                 count: nil,
                 isActive: false,
-                activeColor: .accentColor
+                activeColor: .accentColor,
+                accessibilityLabel: "Quote"
             ) {
                 appState.present(sheet: .compose(quote: status))
             }
@@ -373,20 +380,23 @@ struct StatusActionsToolbar: View {
             Task {
                 await action()
             }
-                } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: icon)
-                            .font(.roundedSubheadline)
-                            .foregroundStyle(isActive ? activeColor : .secondary)
-                        
-                        Text(label)
-                            .font(.roundedCaption2)
-                            .foregroundStyle(isActive ? activeColor : .secondary)
-                    }
-                }
+        } label: {
+            VStack(spacing: 2) {
+                Image(systemName: icon)
+                    .font(.roundedSubheadline)
+                    .foregroundStyle(isActive ? activeColor : .secondary)
+
+                Text(label)
+                    .font(.roundedCaption2)
+                    .foregroundStyle(isActive ? activeColor : .secondary)
+            }
+        }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(isActive ? "Active" : "Inactive")
+        .accessibilityHint("Double tap to \(label.lowercased())")
     }
-    
+
     private func toggleFavorite() async {
         guard let service = timelineWrapper.service else { return }
         

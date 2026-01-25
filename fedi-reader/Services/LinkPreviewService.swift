@@ -39,11 +39,17 @@ final class LinkPreviewService {
 
     // MARK: - Init
     init(configuration: URLSessionConfiguration = .default) {
-        configuration.timeoutIntervalForRequest = 10
-        configuration.httpAdditionalHeaders = [
+        let config: URLSessionConfiguration
+        if configuration === URLSessionConfiguration.default {
+            config = URLSessionConfiguration.ephemeral
+        } else {
+            config = configuration
+        }
+        config.timeoutIntervalForRequest = 10
+        config.httpAdditionalHeaders = [
             "User-Agent": Constants.userAgent
         ]
-        self.session = URLSession(configuration: configuration)
+        self.session = URLSession(configuration: config)
     }
 
     // MARK: - Public API

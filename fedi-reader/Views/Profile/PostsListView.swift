@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import os
 
 struct PostsListView: View {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "PostsListView")
     let accountId: String
     let account: MastodonAccount
     @Environment(AppState.self) private var appState
@@ -74,7 +76,7 @@ struct PostsListView: View {
             
             maxId = posts.last?.id
         } catch {
-            print("Failed to load posts: \(error)")
+            Self.logger.error("Failed to load posts: \(error.localizedDescription)")
         }
     }
     

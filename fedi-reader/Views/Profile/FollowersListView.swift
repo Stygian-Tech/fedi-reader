@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import os
 
 struct FollowersListView: View {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "FollowersListView")
     let accountId: String
     let account: MastodonAccount
     @Environment(AppState.self) private var appState
@@ -76,7 +78,7 @@ struct FollowersListView: View {
             
             maxId = followers.last?.id
         } catch {
-            print("Failed to load followers: \(error)")
+            Self.logger.error("Failed to load followers: \(error.localizedDescription)")
         }
     }
     

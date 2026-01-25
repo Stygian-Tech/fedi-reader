@@ -17,7 +17,7 @@ final class AttributionChecker {
     private let cacheLimit = 500
     
     init() {
-        let config = URLSessionConfiguration.default
+        let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 10
         config.httpAdditionalHeaders = [
             "User-Agent": Constants.userAgent
