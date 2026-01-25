@@ -38,6 +38,7 @@ final class ReadLaterManager {
     // MARK: - Configuration Loading
     
     func loadConfigurations(from modelContext: ModelContext) {
+        Self.logger.info("Loading read-later service configurations")
         let descriptor = FetchDescriptor<ReadLaterConfig>(
             sortBy: [SortDescriptor(\.createdAt)]
         )
@@ -45,6 +46,8 @@ final class ReadLaterManager {
         do {
             configuredServices = try modelContext.fetch(descriptor)
             primaryService = configuredServices.first(where: { $0.isPrimary }) ?? configuredServices.first
+            
+            Self.logger.info("Loaded \(configuredServices.count) read-later service configurations, primary: \(primaryService?.service?.rawValue ?? "none", privacy: .public)")
             
             // Initialize services for configured configs
             for config in configuredServices {
@@ -75,6 +78,7 @@ final class ReadLaterManager {
     // MARK: - Save to Service
     
     func save(url: URL, title: String?, to serviceType: ReadLaterServiceType) async throws {
+        Self.logger.info("Saving to read-later service: \(serviceType.rawValue, privacy: .public), URL: \(url.absoluteString, privacy: .public), title: \(title ?? "nil", privacy: .public)")
         isLoading = true
         defer { isLoading = false }
         
@@ -84,6 +88,7 @@ final class ReadLaterManager {
             switch serviceType {
             case .pocket:
                 guard let service = pocketService else {
+                    Self.logger.error("Pocket service not configured")
                     throw FediReaderError.readLaterError("Pocket not configured")
                 }
                 try await service.save(url: url, title: title)
@@ -91,6 +96,7 @@ final class ReadLaterManager {
                 
             case .instapaper:
                 guard let service = instapaperService else {
+                    Self.logger.error("Instapaper service not configured")
                     throw FediReaderError.readLaterError("Instapaper not configured")
                 }
                 try await service.save(url: url, title: title)
@@ -98,6 +104,7 @@ final class ReadLaterManager {
                 
             case .omnivore:
                 guard let service = omnivoreService else {
+                    Self.logger.error("Omnivore service not configured")
                     throw FediReaderError.readLaterError("Omnivore not configured")
                 }
                 try await service.save(url: url, title: title)
@@ -105,6 +112,7 @@ final class ReadLaterManager {
                 
             case .readwise:
                 guard let service = readwiseService else {
+                    Self.logger.error("Readwise service not configured")
                     throw FediReaderError.readLaterError("Readwise not configured")
                 }
                 try await service.save(url: url, title: title)
@@ -112,15 +120,18 @@ final class ReadLaterManager {
                 
             case .raindrop:
                 guard let service = raindropService else {
+                    Self.logger.error("Raindrop service not configured")
                     throw FediReaderError.readLaterError("Raindrop not configured")
                 }
                 try await service.save(url: url, title: title)
                 result = .success(url: url, service: serviceType)
             }
             
+            Self.logger.info("Successfully saved to \(serviceType.rawValue, privacy: .public)")
             lastSaveResult = result
             NotificationCenter.default.post(name: .readLaterDidSave, object: result)
         } catch {
+            Self.logger.error("Failed to save to \(serviceType.rawValue, privacy: .public): \(error.localizedDescription)")
             lastSaveResult = .failure(url: url, service: serviceType, error: error)
             throw error
         }
@@ -134,6 +145,7 @@ final class ReadLaterManager {
         additionalConfig: Data? = nil,
         modelContext: ModelContext
     ) async throws {
+        Self.logger.info("Configuring read-later service: \(serviceType.rawValue, privacy: .public)")
         let config = ReadLaterConfig(
             serviceType: serviceType.rawValue,
             configData: additionalConfig
@@ -141,6 +153,7 @@ final class ReadLaterManager {
         
         // Save token to keychain
         try await keychain.saveReadLaterToken(token, forService: serviceType, configId: config.id)
+        Self.logger.debug("Saved token to Keychain for service: \(serviceType.rawValue, privacy: .public)")
         
         // Save config to SwiftData
         modelContext.insert(config)
@@ -151,17 +164,25 @@ final class ReadLaterManager {
         if primaryService == nil {
             primaryService = config
             config.isPrimary = true
+            Self.logger.info("Set as primary service: \(serviceType.rawValue, privacy: .public)")
         }
         
         // Initialize service
         initializeService(for: config)
+        Self.logger.info("Service configured successfully: \(serviceType.rawValue, privacy: .public)")
     }
     
     func removeService(_ config: ReadLaterConfig, modelContext: ModelContext) async throws {
-        guard let serviceType = config.service else { return }
+        guard let serviceType = config.service else {
+            Self.logger.warning("Attempted to remove service with invalid type")
+            return
+        }
+        
+        Self.logger.info("Removing read-later service: \(serviceType.rawValue, privacy: .public)")
         
         // Remove token from keychain
         try await keychain.deleteReadLaterToken(forService: serviceType, configId: config.id)
+        Self.logger.debug("Removed token from Keychain")
         
         // Remove from SwiftData
         modelContext.delete(config)
@@ -173,6 +194,7 @@ final class ReadLaterManager {
         if primaryService?.id == config.id {
             primaryService = configuredServices.first
             primaryService?.isPrimary = true
+            Self.logger.info("Switched primary service to: \(primaryService?.service?.rawValue ?? "none", privacy: .public)")
         }
         
         // Clear service instance
@@ -183,6 +205,8 @@ final class ReadLaterManager {
         case .readwise: readwiseService = nil
         case .raindrop: raindropService = nil
         }
+        
+        Self.logger.info("Service removed successfully: \(serviceType.rawValue, privacy: .public)")
     }
     
     func setPrimaryService(_ config: ReadLaterConfig, modelContext: ModelContext) {

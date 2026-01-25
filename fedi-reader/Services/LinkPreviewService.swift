@@ -6,11 +6,13 @@
 //
 
 import Foundation
+import os
 
 @Observable
 @MainActor
 final class LinkPreviewService {
     static let shared = LinkPreviewService()
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "LinkPreviewService")
 
     // MARK: - Types
     struct LinkPreview: Hashable, Sendable {
@@ -54,7 +56,12 @@ final class LinkPreviewService {
 
     // MARK: - Public API
     func preview(for url: URL) async -> LinkPreview? {
-        if let cached = cache[url] { return cached }
+        if let cached = cache[url] {
+            Self.logger.debug("Cache hit for preview: \(url.absoluteString, privacy: .public)")
+            return cached
+        }
+        
+        Self.logger.info("Fetching preview for: \(url.absoluteString, privacy: .public)")
         isLoading = true
         defer { isLoading = false }
 
@@ -62,9 +69,14 @@ final class LinkPreviewService {
         let headResult = await head(url)
         let finalURL = headResult.finalURL ?? url
         let contentType = headResult.contentType ?? "text/html"
+        
+        if finalURL != url {
+            Self.logger.debug("URL redirected: \(url.absoluteString, privacy: .public) -> \(finalURL.absoluteString, privacy: .public)")
+        }
 
         // Only fetch HTML for previews
         guard (contentType.contains("text/html") || contentType.contains("application/xhtml")) else {
+            Self.logger.debug("Non-HTML content type (\(contentType, privacy: .public)), skipping HTML fetch")
             let preview = LinkPreview(
                 url: url,
                 finalURL: finalURL,
@@ -95,14 +107,18 @@ final class LinkPreviewService {
             fediverseCreator: creator.name,
             fediverseCreatorURL: creator.url
         )
+        
+        Self.logger.info("Preview fetched: title=\(parsed.title ?? "nil", privacy: .public), hasImage=\(parsed.imageURL != nil), fediverseCreator=\(creator.name ?? "nil", privacy: .public)")
         cache(preview)
         return preview
     }
 
     func previews(for urls: [URL]) async -> [URL: LinkPreview] {
+        let uniqueURLs = Array(Set(urls))
+        Self.logger.info("Fetching previews for \(uniqueURLs.count) URLs")
         var results: [URL: LinkPreview] = [:]
         await withTaskGroup(of: (URL, LinkPreview?).self) { group in
-            for url in urls {
+            for url in uniqueURLs {
                 group.addTask { [weak self] in
                     guard let self else { return (url, nil) }
                     return (url, await self.preview(for: url))
@@ -112,6 +128,7 @@ final class LinkPreviewService {
                 if let preview { results[url] = preview }
             }
         }
+        Self.logger.info("Fetched \(results.count) previews from \(uniqueURLs.count) URLs")
         return results
     }
 
@@ -128,11 +145,19 @@ final class LinkPreviewService {
 
     func prefetchFediverseCreators(for urls: [URL]) async {
         let uniqueURLs = Array(Set(urls))
-        guard !uniqueURLs.isEmpty else { return }
+        guard !uniqueURLs.isEmpty else {
+            Self.logger.debug("No URLs to prefetch fediverse creators")
+            return
+        }
+        Self.logger.debug("Prefetching fediverse creators for \(uniqueURLs.count) URLs")
         _ = await previews(for: uniqueURLs)
     }
 
-    func clearCache() { cache.removeAll() }
+    func clearCache() {
+        let count = cache.count
+        cache.removeAll()
+        Self.logger.info("Cleared preview cache: \(count) items removed")
+    }
 
     // MARK: - Networking
     private func head(_ url: URL) async -> (finalURL: URL?, contentType: String?) {
@@ -143,8 +168,11 @@ final class LinkPreviewService {
             let http = response as? HTTPURLResponse
             let type = http?.value(forHTTPHeaderField: "Content-Type")
             let finalURL = http?.url
+            let statusCode = http?.statusCode ?? 0
+            Self.logger.debug("HEAD request: \(url.absoluteString, privacy: .public) -> \(statusCode), contentType: \(type ?? "nil", privacy: .public)")
             return (finalURL, type)
         } catch {
+            Self.logger.error("HEAD request failed for \(url.absoluteString, privacy: .public): \(error.localizedDescription)")
             return (nil, nil)
         }
     }
@@ -155,9 +183,14 @@ final class LinkPreviewService {
         // Request only the first ~32KB; meta tags typically live in <head>
         request.setValue("bytes=0-32767", forHTTPHeaderField: "Range")
         do {
-            let (data, _) = try await session.data(for: request)
-            return String(data: data, encoding: .utf8) ?? ""
+            let (data, response) = try await session.data(for: request)
+            let http = response as? HTTPURLResponse
+            let statusCode = http?.statusCode ?? 0
+            let html = String(data: data, encoding: .utf8) ?? ""
+            Self.logger.debug("Fetched HTML head: \(url.absoluteString, privacy: .public) -> \(statusCode), size: \(data.count) bytes, html length: \(html.count)")
+            return html
         } catch {
+            Self.logger.error("Failed to fetch HTML head for \(url.absoluteString, privacy: .public): \(error.localizedDescription)")
             return ""
         }
     }
@@ -228,7 +261,9 @@ final class LinkPreviewService {
         if cache.count >= cacheLimit {
             let keysToRemove = Array(cache.keys.prefix(cacheLimit / 4))
             for key in keysToRemove { cache.removeValue(forKey: key) }
+            Self.logger.debug("Cache evicted \(keysToRemove.count) items (limit: \(cacheLimit))")
         }
         cache[preview.url] = preview
+        Self.logger.debug("Cached preview for: \(preview.url.absoluteString, privacy: .public), cache size: \(cache.count)")
     }
 }

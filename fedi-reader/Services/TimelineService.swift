@@ -7,10 +7,13 @@
 
 import Foundation
 import SwiftData
+import os
 
 @Observable
 @MainActor
 final class TimelineService {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "TimelineService")
+    
     private let client: MastodonClient
     private let authService: AuthService
     
@@ -56,14 +59,19 @@ final class TimelineService {
     // MARK: - Home Timeline
     
     func loadHomeTimeline(refresh: Bool = false) async {
-        guard !isLoadingHome else { return }
+        guard !isLoadingHome else {
+            Self.logger.debug("Home timeline load already in progress, skipping")
+            return
+        }
         
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for home timeline load")
             error = FediReaderError.noActiveAccount
             return
         }
         
+        Self.logger.info("Loading home timeline, refresh: \(refresh), current count: \(homeTimeline.count), maxId: \(homeMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingHome = true
         error = nil
         
@@ -77,16 +85,20 @@ final class TimelineService {
             
             if refresh {
                 homeTimeline = statuses
+                Self.logger.info("Home timeline refreshed: \(statuses.count) statuses")
             } else {
                 homeTimeline.append(contentsOf: statuses)
+                Self.logger.info("Home timeline loaded more: \(statuses.count) new statuses, total: \(homeTimeline.count)")
             }
             
             // Update pagination cursor
             if let lastStatus = statuses.last {
                 homeMaxId = lastStatus.id
+                Self.logger.debug("Updated home timeline maxId: \(lastStatus.id.prefix(8), privacy: .public)")
             }
             if let firstStatus = statuses.first, refresh {
                 homeMinId = firstStatus.id
+                Self.logger.debug("Updated home timeline minId: \(firstStatus.id.prefix(8), privacy: .public)")
             }
 
             Task {
@@ -95,11 +107,13 @@ final class TimelineService {
             
             NotificationCenter.default.post(name: .timelineDidRefresh, object: TimelineType.home)
         } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error loading home timeline")
             // Token might be expired - verify it
             self.error = err
             // Post notification so UI can handle re-auth
             NotificationCenter.default.post(name: .accountDidChange, object: nil)
         } catch {
+            Self.logger.error("Error loading home timeline: \(error.localizedDescription)")
             self.error = error
         }
         
@@ -131,14 +145,19 @@ final class TimelineService {
     // MARK: - Explore / Trending
     
     func loadExploreContent() async {
-        guard !isLoadingExplore else { return }
+        guard !isLoadingExplore else {
+            Self.logger.debug("Explore content load already in progress, skipping")
+            return
+        }
         
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for explore content load")
             error = FediReaderError.noActiveAccount
             return
         }
         
+        Self.logger.info("Loading explore content")
         isLoadingExplore = true
         error = nil
 
@@ -158,17 +177,22 @@ final class TimelineService {
             exploreStatuses = statuses
             trendingLinks = links
             
+            Self.logger.info("Explore content loaded: \(statuses.count) statuses, \(links.count) links")
+            
             if let lastStatus = statuses.last {
                 exploreMaxId = lastStatus.id
+                Self.logger.debug("Updated explore maxId: \(lastStatus.id.prefix(8), privacy: .public)")
             }
 
             Task {
                 await prefetchFediverseCreators(for: exploreStatuses)
             }
         } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error loading explore content")
             self.error = err
             NotificationCenter.default.post(name: .accountDidChange, object: nil)
         } catch {
+            Self.logger.error("Error loading explore content: \(error.localizedDescription)")
             self.error = error
         }
         
@@ -205,14 +229,19 @@ final class TimelineService {
     // MARK: - Mentions
     
     func loadMentions(refresh: Bool = false) async {
-        guard !isLoadingMentions else { return }
+        guard !isLoadingMentions else {
+            Self.logger.debug("Mentions load already in progress, skipping")
+            return
+        }
         
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for mentions load")
             error = FediReaderError.noActiveAccount
             return
         }
         
+        Self.logger.info("Loading mentions, refresh: \(refresh), current count: \(mentions.count), maxId: \(mentionsMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingMentions = true
         error = nil
         
@@ -226,19 +255,24 @@ final class TimelineService {
             
             if refresh {
                 mentions = notifications
+                Self.logger.info("Mentions refreshed: \(notifications.count) mentions")
             } else {
                 mentions.append(contentsOf: notifications)
+                Self.logger.info("Mentions loaded more: \(notifications.count) new mentions, total: \(mentions.count)")
             }
             
             if let lastMention = notifications.last {
                 mentionsMaxId = lastMention.id
+                Self.logger.debug("Updated mentions maxId: \(lastMention.id.prefix(8), privacy: .public)")
             }
             
             NotificationCenter.default.post(name: .timelineDidRefresh, object: TimelineType.mentions)
         } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error loading mentions")
             self.error = err
             NotificationCenter.default.post(name: .accountDidChange, object: nil)
         } catch {
+            Self.logger.error("Error loading mentions: \(error.localizedDescription)")
             self.error = error
         }
         
@@ -261,14 +295,19 @@ final class TimelineService {
     // MARK: - Conversations
     
     func loadConversations(refresh: Bool = false) async {
-        guard !isLoadingConversations else { return }
+        guard !isLoadingConversations else {
+            Self.logger.debug("Conversations load already in progress, skipping")
+            return
+        }
         
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for conversations load")
             error = FediReaderError.noActiveAccount
             return
         }
         
+        Self.logger.info("Loading conversations, refresh: \(refresh), current count: \(conversations.count), maxId: \(conversationsMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingConversations = true
         error = nil
         
@@ -282,19 +321,24 @@ final class TimelineService {
             
             if refresh {
                 conversations = items
+                Self.logger.info("Conversations refreshed: \(items.count) conversations")
             } else {
                 conversations.append(contentsOf: items)
+                Self.logger.info("Conversations loaded more: \(items.count) new conversations, total: \(conversations.count)")
             }
             
             if let lastConversation = items.last {
                 conversationsMaxId = lastConversation.id
+                Self.logger.debug("Updated conversations maxId: \(lastConversation.id.prefix(8), privacy: .public)")
             }
             
             NotificationCenter.default.post(name: .timelineDidRefresh, object: TimelineType.mentions)
         } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error loading conversations")
             self.error = err
             NotificationCenter.default.post(name: .accountDidChange, object: nil)
         } catch {
+            Self.logger.error("Error loading conversations: \(error.localizedDescription)")
             self.error = error
         }
         
@@ -352,24 +396,30 @@ final class TimelineService {
     func favorite(status: Status) async throws -> Status {
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for favorite action")
             throw FediReaderError.noActiveAccount
         }
         
         let targetStatus = status.displayStatus
+        let isCurrentlyFavorited = targetStatus.favourited == true
+        
+        Self.logger.info("Toggling favorite for status: \(targetStatus.id.prefix(8), privacy: .public), currently favorited: \(isCurrentlyFavorited)")
         
         let updatedStatus: Status
-        if targetStatus.favourited == true {
+        if isCurrentlyFavorited {
             updatedStatus = try await client.unfavorite(
                 instance: account.instance,
                 accessToken: token,
                 statusId: targetStatus.id
             )
+            Self.logger.info("Unfavorited status: \(targetStatus.id.prefix(8), privacy: .public)")
         } else {
             updatedStatus = try await client.favorite(
                 instance: account.instance,
                 accessToken: token,
                 statusId: targetStatus.id
             )
+            Self.logger.info("Favorited status: \(targetStatus.id.prefix(8), privacy: .public)")
         }
         
         updateStatusInTimelines(updatedStatus)
@@ -407,24 +457,30 @@ final class TimelineService {
     func reblog(status: Status) async throws -> Status {
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for reblog action")
             throw FediReaderError.noActiveAccount
         }
         
         let targetStatus = status.displayStatus
+        let isCurrentlyReblogged = targetStatus.reblogged == true
+        
+        Self.logger.info("Toggling reblog for status: \(targetStatus.id.prefix(8), privacy: .public), currently reblogged: \(isCurrentlyReblogged)")
         
         let updatedStatus: Status
-        if targetStatus.reblogged == true {
+        if isCurrentlyReblogged {
             updatedStatus = try await client.unreblog(
                 instance: account.instance,
                 accessToken: token,
                 statusId: targetStatus.id
             )
+            Self.logger.info("Unreblogged status: \(targetStatus.id.prefix(8), privacy: .public)")
         } else {
             updatedStatus = try await client.reblog(
                 instance: account.instance,
                 accessToken: token,
                 statusId: targetStatus.id
             )
+            Self.logger.info("Reblogged status: \(targetStatus.id.prefix(8), privacy: .public)")
         }
         
         updateStatusInTimelines(updatedStatus)
@@ -462,24 +518,30 @@ final class TimelineService {
     func bookmark(status: Status) async throws -> Status {
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for bookmark action")
             throw FediReaderError.noActiveAccount
         }
         
         let targetStatus = status.displayStatus
+        let isCurrentlyBookmarked = targetStatus.bookmarked == true
+        
+        Self.logger.info("Toggling bookmark for status: \(targetStatus.id.prefix(8), privacy: .public), currently bookmarked: \(isCurrentlyBookmarked)")
         
         let updatedStatus: Status
-        if targetStatus.bookmarked == true {
+        if isCurrentlyBookmarked {
             updatedStatus = try await client.unbookmark(
                 instance: account.instance,
                 accessToken: token,
                 statusId: targetStatus.id
             )
+            Self.logger.info("Unbookmarked status: \(targetStatus.id.prefix(8), privacy: .public)")
         } else {
             updatedStatus = try await client.bookmark(
                 instance: account.instance,
                 accessToken: token,
                 statusId: targetStatus.id
             )
+            Self.logger.info("Bookmarked status: \(targetStatus.id.prefix(8), privacy: .public)")
         }
         
         updateStatusInTimelines(updatedStatus)
@@ -491,18 +553,23 @@ final class TimelineService {
     func reply(to status: Status, content: String) async throws -> Status {
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for reply action")
             throw FediReaderError.noActiveAccount
         }
         
         let targetStatus = status.displayStatus
+        Self.logger.info("Replying to status: \(targetStatus.id.prefix(8), privacy: .public), content length: \(content.count)")
         
-        return try await client.postStatus(
+        let result = try await client.postStatus(
             instance: account.instance,
             accessToken: token,
             status: content,
             inReplyToId: targetStatus.id,
             visibility: targetStatus.visibility
         )
+        
+        Self.logger.info("Reply posted successfully: \(result.id.prefix(8), privacy: .public)")
+        return result
     }
     
     func quoteBoost(status: Status, content: String) async throws -> Status {
@@ -596,23 +663,31 @@ final class TimelineService {
     // MARK: - Lists
     
     func loadLists() async {
-        guard !isLoadingLists else { return }
+        guard !isLoadingLists else {
+            Self.logger.debug("Lists load already in progress, skipping")
+            return
+        }
         
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for lists load")
             error = FediReaderError.noActiveAccount
             return
         }
         
+        Self.logger.info("Loading lists")
         isLoadingLists = true
         error = nil
         
         do {
             lists = try await client.getLists(instance: account.instance, accessToken: token)
+            Self.logger.info("Lists loaded: \(lists.count) lists")
         } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error loading lists")
             self.error = err
             NotificationCenter.default.post(name: .accountDidChange, object: nil)
         } catch {
+            Self.logger.error("Error loading lists: \(error.localizedDescription)")
             self.error = error
         }
         
@@ -620,14 +695,19 @@ final class TimelineService {
     }
     
     func loadListTimeline(listId: String, refresh: Bool = false) async {
-        guard !isLoadingListTimeline else { return }
+        guard !isLoadingListTimeline else {
+            Self.logger.debug("List timeline load already in progress, skipping")
+            return
+        }
         
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for list timeline load")
             error = FediReaderError.noActiveAccount
             return
         }
         
+        Self.logger.info("Loading list timeline \(listId.prefix(8), privacy: .public), refresh: \(refresh), current count: \(listTimeline.count), maxId: \(listTimelineMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingListTimeline = true
         error = nil
         
@@ -642,21 +722,26 @@ final class TimelineService {
             
             if refresh {
                 listTimeline = statuses
+                Self.logger.info("List timeline refreshed: \(statuses.count) statuses")
             } else {
                 listTimeline.append(contentsOf: statuses)
+                Self.logger.info("List timeline loaded more: \(statuses.count) new statuses, total: \(listTimeline.count)")
             }
             
             if let lastStatus = statuses.last {
                 listTimelineMaxId = lastStatus.id
+                Self.logger.debug("Updated list timeline maxId: \(lastStatus.id.prefix(8), privacy: .public)")
             }
             
             Task {
                 await prefetchFediverseCreators(for: listTimeline)
             }
         } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error loading list timeline")
             self.error = err
             NotificationCenter.default.post(name: .accountDidChange, object: nil)
         } catch {
+            Self.logger.error("Error loading list timeline: \(error.localizedDescription)")
             self.error = error
         }
         
@@ -677,14 +762,19 @@ final class TimelineService {
     }
     
     func loadListAccounts(listId: String, refresh: Bool = false) async {
-        guard !isLoadingListAccounts else { return }
+        guard !isLoadingListAccounts else {
+            Self.logger.debug("List accounts load already in progress, skipping")
+            return
+        }
         
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for list accounts load")
             error = FediReaderError.noActiveAccount
             return
         }
         
+        Self.logger.info("Loading list accounts for list \(listId.prefix(8), privacy: .public), refresh: \(refresh), current count: \(listAccounts.count), maxId: \(listAccountsMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingListAccounts = true
         error = nil
         
@@ -699,17 +789,22 @@ final class TimelineService {
             
             if refresh {
                 listAccounts = accounts
+                Self.logger.info("List accounts refreshed: \(accounts.count) accounts")
             } else {
                 listAccounts.append(contentsOf: accounts)
+                Self.logger.info("List accounts loaded more: \(accounts.count) new accounts, total: \(listAccounts.count)")
             }
             
             if let lastAccount = accounts.last {
                 listAccountsMaxId = lastAccount.id
+                Self.logger.debug("Updated list accounts maxId: \(lastAccount.id.prefix(8), privacy: .public)")
             }
         } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error loading list accounts")
             self.error = err
             NotificationCenter.default.post(name: .accountDidChange, object: nil)
         } catch {
+            Self.logger.error("Error loading list accounts: \(error.localizedDescription)")
             self.error = error
         }
         

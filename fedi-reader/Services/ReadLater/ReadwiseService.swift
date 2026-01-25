@@ -6,8 +6,10 @@
 //
 
 import Foundation
+import os
 
 final class ReadwiseService: ReadLaterServiceProtocol {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "ReadLater.Readwise")
     private let config: ReadLaterConfig
     private let keychain: KeychainHelper
     private let session: URLSession
@@ -42,14 +44,17 @@ final class ReadwiseService: ReadLaterServiceProtocol {
     }
     
     func setAccessToken(_ token: String) async throws {
+        Self.logger.info("Setting Readwise access token")
         // Verify token works
         let isValid = try await verifyToken(token)
         guard isValid else {
+            Self.logger.error("Readwise token verification failed")
             throw FediReaderError.readLaterError("Invalid Readwise token")
         }
         
         accessToken = token
         try await keychain.saveReadLaterToken(token, forService: .readwise, configId: config.id)
+        Self.logger.info("Readwise access token saved to Keychain")
     }
     
     private func verifyToken(_ token: String) async throws -> Bool {
@@ -70,7 +75,9 @@ final class ReadwiseService: ReadLaterServiceProtocol {
     // MARK: - Save
     
     func save(url: URL, title: String?) async throws {
+        Self.logger.info("Saving to Readwise: \(url.absoluteString, privacy: .public), title: \(title ?? "nil", privacy: .public)")
         guard let accessToken else {
+            Self.logger.error("Readwise token not configured")
             throw FediReaderError.readLaterError("Readwise token not configured")
         }
         
@@ -97,18 +104,23 @@ final class ReadwiseService: ReadLaterServiceProtocol {
         let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("Invalid response type from Readwise")
             throw FediReaderError.readLaterError("Invalid response from Readwise")
         }
         
         switch httpResponse.statusCode {
         case 200, 201:
+            Self.logger.info("Successfully saved to Readwise")
             return // Success
         case 401:
+            Self.logger.error("Readwise authentication expired")
             throw FediReaderError.readLaterError("Readwise authentication expired")
         case 429:
+            Self.logger.warning("Readwise rate limit exceeded")
             throw FediReaderError.readLaterError("Readwise rate limit exceeded")
         default:
             let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            Self.logger.error("Readwise error: \(message, privacy: .public)")
             throw FediReaderError.readLaterError("Readwise error: \(message)")
         }
     }

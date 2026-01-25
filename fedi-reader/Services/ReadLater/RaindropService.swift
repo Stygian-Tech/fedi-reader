@@ -6,8 +6,10 @@
 //
 
 import Foundation
+import os
 
 final class RaindropService: ReadLaterServiceProtocol {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "ReadLater.Raindrop")
     private let config: ReadLaterConfig
     private let keychain: KeychainHelper
     private let session: URLSession
@@ -62,6 +64,7 @@ final class RaindropService: ReadLaterServiceProtocol {
     }
     
     func exchangeCodeForToken(code: String, clientId: String, clientSecret: String) async throws {
+        Self.logger.info("Exchanging Raindrop authorization code for access token")
         let url = URL(string: Constants.ReadLater.raindropTokenURL)!
         
         var request = URLRequest(url: url)
@@ -80,13 +83,19 @@ final class RaindropService: ReadLaterServiceProtocol {
         
         let (data, response) = try await session.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("Invalid response type for Raindrop token exchange")
+            throw FediReaderError.readLaterError("Failed to get Raindrop access token")
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            Self.logger.error("Raindrop token exchange failed with status: \(httpResponse.statusCode)")
             throw FediReaderError.readLaterError("Failed to get Raindrop access token")
         }
         
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let token = json["access_token"] as? String else {
+            Self.logger.error("Invalid Raindrop token response format")
             throw FediReaderError.readLaterError("Invalid Raindrop response")
         }
         
@@ -100,6 +109,7 @@ final class RaindropService: ReadLaterServiceProtocol {
         }
         
         try await keychain.saveReadLaterToken(tokenString, forService: .raindrop, configId: config.id)
+        Self.logger.info("Raindrop tokens saved to Keychain")
     }
     
     func setAccessToken(_ token: String, refreshToken: String? = nil) async throws {
@@ -117,7 +127,9 @@ final class RaindropService: ReadLaterServiceProtocol {
     // MARK: - Save
     
     func save(url: URL, title: String?) async throws {
+        Self.logger.info("Saving to Raindrop: \(url.absoluteString, privacy: .public), title: \(title ?? "nil", privacy: .public)")
         guard let accessToken else {
+            Self.logger.error("Not authenticated with Raindrop")
             throw FediReaderError.readLaterError("Not authenticated with Raindrop")
         }
         
@@ -142,11 +154,13 @@ final class RaindropService: ReadLaterServiceProtocol {
         
         if collectionId >= 0 {
             body["collection"] = ["$id": collectionId]
+            Self.logger.debug("Using collection ID: \(collectionId)")
         }
         
         // Add default tags from config
         if let tags = getDefaultTags(), !tags.isEmpty {
             body["tags"] = tags
+            Self.logger.debug("Adding tags: \(tags.joined(separator: ", "), privacy: .public)")
         }
         
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -154,22 +168,27 @@ final class RaindropService: ReadLaterServiceProtocol {
         let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("Invalid response type from Raindrop")
             throw FediReaderError.readLaterError("Invalid response from Raindrop")
         }
         
         switch httpResponse.statusCode {
         case 200, 201:
+            Self.logger.info("Successfully saved to Raindrop")
             return // Success
         case 401:
+            Self.logger.warning("Raindrop authentication expired, attempting token refresh")
             // Try to refresh token
             if refreshToken != nil {
                 try await refreshAccessToken()
                 try await save(url: url, title: title)
             } else {
+                Self.logger.error("No refresh token available for Raindrop")
                 throw FediReaderError.readLaterError("Raindrop authentication expired")
             }
         default:
             let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            Self.logger.error("Raindrop error: \(message, privacy: .public)")
             throw FediReaderError.readLaterError("Raindrop error: \(message)")
         }
     }

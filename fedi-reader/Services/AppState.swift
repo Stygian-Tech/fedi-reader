@@ -7,10 +7,13 @@
 
 import Foundation
 import SwiftData
+import os
 
 @Observable
 @MainActor
 final class AppState {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "AppState")
+    
     // Services
     let client: MastodonClient
     let authService: AuthService
@@ -31,6 +34,7 @@ final class AppState {
     var presentedAlert: AlertItem?
     
     init() {
+        Self.logger.info("Initializing AppState")
         self.client = MastodonClient()
         self.authService = AuthService(client: client)
     }
@@ -57,6 +61,7 @@ final class AppState {
     // MARK: - Error Handling
     
     func handleError(_ error: Error) {
+        Self.logger.error("Handling error: \(error.localizedDescription)")
         self.error = error
         
         // Show alert for user-facing errors
@@ -67,6 +72,7 @@ final class AppState {
             if fediError == .unauthorized {
                 title = "Authentication Required"
                 message = "Your session has expired. Please log in again."
+                Self.logger.notice("Unauthorized error - session expired")
             } else {
                 title = "Error"
                 message = fediError.localizedDescription
@@ -76,10 +82,12 @@ final class AppState {
                 title: title,
                 message: message
             )
+            Self.logger.info("Presented error alert: \(title, privacy: .public)")
         }
     }
     
     func clearError() {
+        Self.logger.debug("Clearing error state")
         error = nil
         presentedAlert = nil
     }
@@ -87,24 +95,35 @@ final class AppState {
     // MARK: - Navigation
     
     func navigate(to destination: NavigationDestination) {
+        Self.logger.info("Navigating to: \(String(describing: destination), privacy: .public)")
         navigationPath.append(destination)
     }
     
     func navigateBack() {
         if !navigationPath.isEmpty {
+            let previous = navigationPath.last
             navigationPath.removeLast()
+            Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
+        } else {
+            Self.logger.debug("Navigate back called but navigation path is empty")
         }
     }
     
     func navigateToRoot() {
+        let count = navigationPath.count
         navigationPath.removeAll()
+        Self.logger.info("Navigating to root, cleared \(count) destinations")
     }
     
     func present(sheet: SheetDestination) {
+        Self.logger.info("Presenting sheet: \(sheet.id, privacy: .public)")
         presentedSheet = sheet
     }
     
     func dismissSheet() {
+        if let sheet = presentedSheet {
+            Self.logger.info("Dismissing sheet: \(sheet.id, privacy: .public)")
+        }
         presentedSheet = nil
     }
 }

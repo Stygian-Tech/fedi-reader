@@ -6,10 +6,13 @@
 //
 
 import Foundation
+import os
 
 @Observable
 @MainActor
 final class LinkFilterService {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "LinkFilterService")
+    
     private let attributionChecker: AttributionChecker
     
     // Per-feed cached link statuses (feedId -> linkStatuses)
@@ -40,7 +43,9 @@ final class LinkFilterService {
     
     /// Switch to a different feed
     func switchToFeed(_ feedId: String) {
+        let previousFeedId = activeFeedId
         activeFeedId = feedId
+        Self.logger.info("Switched feed from '\(previousFeedId, privacy: .public)' to '\(feedId, privacy: .public)', cached items: \(getCachedContent(for: feedId).count)")
     }
     
     /// Check if feed has cached content
@@ -63,7 +68,8 @@ final class LinkFilterService {
     
     /// Filters statuses to only those with external links (excluding quote posts)
     func filterToLinks(_ statuses: [Status]) -> [Status] {
-        statuses.filter { status in
+        Self.logger.debug("Filtering \(statuses.count) statuses to links only")
+        let filtered = statuses.filter { status in
             let targetStatus = status.displayStatus
             
             // Exclude quote posts
@@ -80,16 +86,21 @@ final class LinkFilterService {
             let links = extractExternalLinks(from: targetStatus)
             return !links.isEmpty
         }
+        Self.logger.debug("Filtered to \(filtered.count) link statuses (\(filtered.count * 100 / max(statuses.count, 1))%)")
+        return filtered
     }
     
     /// Processes statuses into LinkStatus objects for a specific feed
     func processStatuses(_ statuses: [Status], for feedId: String) async -> [LinkStatus] {
+        Self.logger.info("Processing \(statuses.count) statuses for feed '\(feedId, privacy: .public)'")
         loadingFeeds.insert(feedId)
         defer { loadingFeeds.remove(feedId) }
         
         let filtered = filterToLinks(statuses)
         
         var linkStatuses: [LinkStatus] = []
+        var cardCount = 0
+        var contentLinkCount = 0
         
         for status in filtered {
             let targetStatus = status.displayStatus
@@ -107,6 +118,7 @@ final class LinkFilterService {
                 description = card.description.isEmpty ? nil : card.description
                 imageURL = card.imageURL
                 providerName = card.providerName
+                cardCount += 1
             } else {
                 // Extract from content
                 let links = extractExternalLinks(from: targetStatus)
@@ -115,6 +127,7 @@ final class LinkFilterService {
                 description = nil
                 imageURL = nil
                 providerName = primaryURL.flatMap { HTMLParser.extractDomain(from: $0) }
+                contentLinkCount += 1
             }
             
             guard let url = primaryURL else { continue }
@@ -134,6 +147,7 @@ final class LinkFilterService {
         }
         
         feedCache[feedId] = linkStatuses
+        Self.logger.info("Processed feed '\(feedId, privacy: .public)': \(linkStatuses.count) link statuses (\(cardCount) from cards, \(contentLinkCount) from content)")
         return linkStatuses
     }
     
@@ -144,14 +158,25 @@ final class LinkFilterService {
     
     /// Enriches link statuses with author attribution from HEAD requests
     func enrichWithAttributions() async {
-        guard !linkStatuses.isEmpty else { return }
+        guard !linkStatuses.isEmpty else {
+            Self.logger.debug("No link statuses to enrich with attributions")
+            return
+        }
         
+        let statusesNeedingAttribution = linkStatuses.filter { $0.authorAttribution == nil }
+        guard !statusesNeedingAttribution.isEmpty else {
+            Self.logger.debug("All link statuses already have attribution")
+            return
+        }
+        
+        Self.logger.info("Enriching \(statusesNeedingAttribution.count) link statuses with attributions (batch size: 5)")
         isLoadingAttributions = true
         defer { isLoadingAttributions = false }
         
         // Process attributions in batches to avoid overwhelming the network
         let batchSize = 5
         let currentFeedId = activeFeedId
+        var attributionCount = 0
         
         for batchStart in stride(from: 0, to: linkStatuses.count, by: batchSize) {
             let batchEnd = min(batchStart + batchSize, linkStatuses.count)
@@ -177,10 +202,13 @@ final class LinkFilterService {
                         cached[index].authorAttribution = attribution.name
                         cached[index].authorURL = attribution.url
                         feedCache[currentFeedId] = cached
+                        attributionCount += 1
                     }
                 }
             }
         }
+        
+        Self.logger.info("Attribution enrichment complete: \(attributionCount) attributions found")
     }
     
     /// Pre-fetch content for adjacent feeds (call in background)
@@ -189,7 +217,10 @@ final class LinkFilterService {
         allFeedIds: [String],
         loadContent: @escaping (String) async -> [Status]
     ) async {
-        guard let currentIndex = allFeedIds.firstIndex(of: currentFeedId) else { return }
+        guard let currentIndex = allFeedIds.firstIndex(of: currentFeedId) else {
+            Self.logger.debug("Current feed ID not found in all feed IDs, skipping prefetch")
+            return
+        }
         
         // Get adjacent feed IDs (previous and next)
         var adjacentIds: [String] = []
@@ -200,11 +231,16 @@ final class LinkFilterService {
             adjacentIds.append(allFeedIds[currentIndex + 1])
         }
         
+        Self.logger.debug("Prefetching adjacent feeds: \(adjacentIds.map { $0 }, privacy: .public)")
+        
         // Prefetch feeds that don't have cached content
         for feedId in adjacentIds {
             if !hasCachedContent(for: feedId) && !isLoadingFeed(feedId) {
+                Self.logger.debug("Prefetching feed '\(feedId, privacy: .public)'")
                 let statuses = await loadContent(feedId)
                 _ = await processStatuses(statuses, for: feedId)
+            } else {
+                Self.logger.debug("Skipping prefetch for feed '\(feedId, privacy: .public)' (has cache: \(hasCachedContent(for: feedId)), loading: \(isLoadingFeed(feedId)))")
             }
         }
     }
@@ -287,7 +323,9 @@ final class LinkFilterService {
     // MARK: - Clear
     
     func clear() {
+        let count = linkStatuses.count
         linkStatuses = []
+        Self.logger.info("Cleared link statuses: \(count) items removed")
     }
 }
 

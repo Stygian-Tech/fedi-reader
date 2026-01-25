@@ -6,8 +6,10 @@
 //
 
 import Foundation
+import os
 
 final class InstapaperService: ReadLaterServiceProtocol {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "ReadLater.Instapaper")
     private let config: ReadLaterConfig
     private let keychain: KeychainHelper
     private let session: URLSession
@@ -44,6 +46,7 @@ final class InstapaperService: ReadLaterServiceProtocol {
     }
     
     func authenticateWithCredentials(username: String, password: String) async throws {
+        Self.logger.info("Authenticating Instapaper with credentials")
         let url = URL(string: Constants.ReadLater.instapaperAuthURL)!
         
         var request = URLRequest(url: url)
@@ -56,13 +59,19 @@ final class InstapaperService: ReadLaterServiceProtocol {
         
         let (data, response) = try await session.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("Invalid response type for Instapaper authentication")
+            throw FediReaderError.readLaterError("Instapaper authentication failed")
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            Self.logger.error("Instapaper authentication failed with status: \(httpResponse.statusCode)")
             throw FediReaderError.readLaterError("Instapaper authentication failed")
         }
         
         // Parse OAuth response
         guard let responseString = String(data: data, encoding: .utf8) else {
+            Self.logger.error("Invalid Instapaper response format")
             throw FediReaderError.readLaterError("Invalid Instapaper response")
         }
         
@@ -76,6 +85,7 @@ final class InstapaperService: ReadLaterServiceProtocol {
         
         guard let token = params["oauth_token"],
               let tokenSecret = params["oauth_token_secret"] else {
+            Self.logger.error("Missing OAuth tokens in Instapaper response")
             throw FediReaderError.readLaterError("Missing OAuth tokens")
         }
         
@@ -88,12 +98,15 @@ final class InstapaperService: ReadLaterServiceProtocol {
             forService: .instapaper,
             configId: config.id
         )
+        Self.logger.info("Instapaper authentication successful")
     }
     
     // MARK: - Save
     
     func save(url: URL, title: String?) async throws {
+        Self.logger.info("Saving to Instapaper: \(url.absoluteString, privacy: .public), title: \(title ?? "nil", privacy: .public)")
         guard isAuthenticated else {
+            Self.logger.error("Not authenticated with Instapaper")
             throw FediReaderError.readLaterError("Not authenticated with Instapaper")
         }
         
@@ -116,9 +129,16 @@ final class InstapaperService: ReadLaterServiceProtocol {
         
         let (_, response) = try await session.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 || httpResponse.statusCode == 201 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("Invalid response type for Instapaper save")
             throw FediReaderError.readLaterError("Failed to save to Instapaper")
         }
+        
+        guard httpResponse.statusCode == 200 || httpResponse.statusCode == 201 else {
+            Self.logger.error("Instapaper save failed with status: \(httpResponse.statusCode)")
+            throw FediReaderError.readLaterError("Failed to save to Instapaper")
+        }
+        
+        Self.logger.info("Successfully saved to Instapaper")
     }
 }

@@ -35,11 +35,13 @@ final class AuthService {
     // MARK: - Account Management
     
     func loadAccounts(from modelContext: ModelContext) {
+        Self.logger.info("Loading accounts from SwiftData")
         let descriptor = FetchDescriptor<Account>(sortBy: [SortDescriptor(\.createdAt)])
 
         do {
             accounts = try modelContext.fetch(descriptor)
             currentAccount = accounts.first(where: { $0.isActive }) ?? accounts.first
+            Self.logger.info("Loaded \(accounts.count) accounts, current: \(currentAccount?.username ?? "none", privacy: .public)@\(currentAccount?.instance ?? "none", privacy: .public)")
         } catch {
             Self.logger.error("Failed to load accounts: \(error.localizedDescription)")
         }
@@ -48,26 +50,39 @@ final class AuthService {
     /// One-time migration: move OAuth client secrets from SwiftData to Keychain.
     func migrateOAuthClientSecretsToKeychain(modelContext: ModelContext) async {
         let key = "fedi-reader.migrated.oauth_client_secret"
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        guard !UserDefaults.standard.bool(forKey: key) else {
+            Self.logger.debug("OAuth client secret migration already completed")
+            return
+        }
 
+        Self.logger.info("Starting OAuth client secret migration to Keychain")
         let descriptor = FetchDescriptor<Account>()
-        guard let accounts = try? modelContext.fetch(descriptor) else { return }
+        guard let accounts = try? modelContext.fetch(descriptor) else {
+            Self.logger.error("Failed to fetch accounts for migration")
+            return
+        }
 
+        var migratedCount = 0
         for account in accounts {
             guard let secret = account.clientSecret, !secret.isEmpty else { continue }
             do {
                 try await keychain.saveOAuthClientSecret(secret, forAccount: account.id)
                 account.clientSecret = nil
                 try modelContext.save()
+                migratedCount += 1
             } catch {
-                Self.logger.error("Migration: failed to move client secret to Keychain")
+                Self.logger.error("Migration: failed to move client secret to Keychain for account \(account.id, privacy: .public)")
             }
         }
 
         UserDefaults.standard.set(true, forKey: key)
+        Self.logger.info("OAuth client secret migration complete: \(migratedCount) accounts migrated")
     }
     
     func setActiveAccount(_ account: Account, modelContext: ModelContext) {
+        let previousAccount = currentAccount?.id
+        Self.logger.notice("Switching active account from \(previousAccount?.prefix(8) ?? "none", privacy: .public) to \(account.id.prefix(8), privacy: .public) (\(account.username, privacy: .public)@\(account.instance, privacy: .public))")
+        
         // Deactivate all accounts
         for acc in accounts {
             acc.isActive = false
@@ -84,9 +99,15 @@ final class AuthService {
     
     func getAccessToken(for account: Account) async -> String? {
         do {
-            return try await keychain.getToken(forAccount: account.id)
+            let token = try await keychain.getToken(forAccount: account.id)
+            if token != nil {
+                Self.logger.debug("Retrieved access token for account: \(account.id.prefix(8), privacy: .public)")
+            } else {
+                Self.logger.warning("No access token found for account: \(account.id.prefix(8), privacy: .public)")
+            }
+            return token
         } catch {
-            Self.logger.error("Failed to get access token")
+            Self.logger.error("Failed to get access token for account \(account.id.prefix(8), privacy: .public): \(error.localizedDescription)")
             return nil
         }
     }
@@ -94,20 +115,24 @@ final class AuthService {
     // MARK: - OAuth Flow
     
     func initiateLogin(instance: String) async throws -> URL {
+        Self.logger.notice("Initiating OAuth login for instance: \(instance, privacy: .public)")
         isAuthenticating = true
         authError = nil
         
         // Normalize instance URL
         let normalizedInstance = normalizeInstance(instance)
+        Self.logger.debug("Normalized instance: \(normalizedInstance, privacy: .public)")
         
         do {
             // Register app with instance
+            Self.logger.info("Registering app with instance")
             let app = try await client.registerApp(instance: normalizedInstance)
             
             // Store pending auth state
             pendingInstance = normalizedInstance
             pendingClientId = app.clientId
             pendingClientSecret = app.clientSecret
+            Self.logger.debug("App registered, client ID: \(app.clientId.prefix(8), privacy: .public)")
             
             // Build authorization URL
             let authURL = try client.buildAuthorizationURL(
@@ -115,8 +140,10 @@ final class AuthService {
                 clientId: app.clientId
             )
             
+            Self.logger.info("OAuth authorization URL generated")
             return authURL
         } catch {
+            Self.logger.error("Failed to initiate login: \(error.localizedDescription)")
             isAuthenticating = false
             authError = error
             throw error
@@ -124,19 +151,23 @@ final class AuthService {
     }
     
     func handleCallback(url: URL, modelContext: ModelContext) async throws -> Account {
+        Self.logger.info("Handling OAuth callback")
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
+            Self.logger.error("OAuth callback missing authorization code")
             throw FediReaderError.oauthError("Missing authorization code")
         }
         
         guard let instance = pendingInstance,
               let clientId = pendingClientId,
               let clientSecret = pendingClientSecret else {
+            Self.logger.error("OAuth callback with no pending authentication state")
             throw FediReaderError.oauthError("No pending authentication")
         }
         
         do {
             // Exchange code for token
+            Self.logger.info("Exchanging authorization code for access token")
             let token = try await client.exchangeCodeForToken(
                 instance: instance,
                 clientId: clientId,
@@ -145,6 +176,7 @@ final class AuthService {
             )
             
             // Verify credentials and get account info
+            Self.logger.info("Verifying credentials")
             let mastodonAccount = try await client.verifyCredentials(
                 instance: instance,
                 accessToken: token.accessToken
@@ -168,6 +200,7 @@ final class AuthService {
                 clientSecret: nil
             )
 
+            Self.logger.info("Saving token and client secret to Keychain")
             try await keychain.saveToken(token.accessToken, forAccount: account.id)
             try await keychain.saveOAuthClientSecret(clientSecret, forAccount: account.id)
             
@@ -190,10 +223,12 @@ final class AuthService {
             pendingClientSecret = nil
             isAuthenticating = false
             
+            Self.logger.notice("Login successful: \(account.username, privacy: .public)@\(account.instance, privacy: .public)")
             NotificationCenter.default.post(name: .accountDidLogin, object: account)
             
             return account
         } catch {
+            Self.logger.error("OAuth callback failed: \(error.localizedDescription)")
             isAuthenticating = false
             authError = error
             throw error
@@ -201,18 +236,23 @@ final class AuthService {
     }
     
     func logout(account: Account, modelContext: ModelContext) async throws {
+        Self.logger.notice("Logging out account: \(account.username, privacy: .public)@\(account.instance, privacy: .public)")
         let token = await getAccessToken(for: account)
         if let clientId = account.clientId,
            let clientSecret = try? await keychain.getOAuthClientSecret(forAccount: account.id),
            let token = token {
+            Self.logger.info("Revoking OAuth token")
             try? await client.revokeToken(
                 instance: account.instance,
                 clientId: clientId,
                 clientSecret: clientSecret,
                 token: token
             )
+        } else {
+            Self.logger.debug("Skipping token revocation (missing credentials)")
         }
 
+        Self.logger.info("Removing credentials from Keychain")
         try await keychain.deleteToken(forAccount: account.id)
         try? await keychain.deleteOAuthClientSecret(forAccount: account.id)
         
@@ -226,8 +266,10 @@ final class AuthService {
         if currentAccount?.id == account.id {
             currentAccount = accounts.first
             currentAccount?.isActive = true
+            Self.logger.info("Switched to account: \(currentAccount?.username ?? "none", privacy: .public)")
         }
         
+        Self.logger.notice("Logout complete for account: \(account.id.prefix(8), privacy: .public)")
         NotificationCenter.default.post(name: .accountDidLogout, object: account)
     }
     

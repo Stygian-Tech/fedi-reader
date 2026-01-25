@@ -6,10 +6,13 @@
 //
 
 import Foundation
+import os
 
 @Observable
 @MainActor
 final class AttributionChecker {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "AttributionChecker")
+    
     private let session: URLSession
     
     // Cache for attribution results
@@ -32,30 +35,38 @@ final class AttributionChecker {
     func checkAttribution(for url: URL) async -> AuthorAttribution? {
         // Check cache first
         if let cached = cache[url] {
+            Self.logger.debug("Cache hit for attribution: \(url.absoluteString, privacy: .public), name: \(cached.name ?? "nil", privacy: .public)")
             return cached
         }
         
+        Self.logger.debug("Checking attribution for: \(url.absoluteString, privacy: .public)")
+        
         // Try HEAD request first (faster, checks headers)
         if let attribution = await checkHeaderAttribution(for: url) {
+            Self.logger.info("Attribution found via HEAD: \(url.absoluteString, privacy: .public), name: \(attribution.name ?? "nil", privacy: .public), source: \(attribution.source.rawValue, privacy: .public)")
             cacheResult(attribution, for: url)
             return attribution
         }
         
         // Fall back to fetching HTML meta tags
         if let attribution = await checkMetaAttribution(for: url) {
+            Self.logger.info("Attribution found via meta tags: \(url.absoluteString, privacy: .public), name: \(attribution.name ?? "nil", privacy: .public), source: \(attribution.source.rawValue, privacy: .public)")
             cacheResult(attribution, for: url)
             return attribution
         }
         
+        Self.logger.debug("No attribution found for: \(url.absoluteString, privacy: .public)")
         return nil
     }
     
     /// Batch check attributions for multiple URLs
     func checkAttributions(for urls: [URL]) async -> [URL: AuthorAttribution] {
+        let uniqueURLs = Array(Set(urls))
+        Self.logger.info("Batch checking attributions for \(uniqueURLs.count) URLs")
         var results: [URL: AuthorAttribution] = [:]
         
         await withTaskGroup(of: (URL, AuthorAttribution?).self) { group in
-            for url in urls {
+            for url in uniqueURLs {
                 group.addTask {
                     let attribution = await self.checkAttribution(for: url)
                     return (url, attribution)
@@ -69,6 +80,7 @@ final class AttributionChecker {
             }
         }
         
+        Self.logger.info("Batch attribution check complete: \(results.count) attributions found from \(uniqueURLs.count) URLs")
         return results
     }
     
@@ -82,27 +94,35 @@ final class AttributionChecker {
             let (_, response) = try await session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
+                Self.logger.debug("Invalid HTTP response for HEAD request: \(url.absoluteString, privacy: .public)")
                 return nil
             }
+            
+            let statusCode = httpResponse.statusCode
+            Self.logger.debug("HEAD request for attribution: \(url.absoluteString, privacy: .public) -> \(statusCode)")
             
             // Check Link header for author relation
             if let linkHeader = httpResponse.value(forHTTPHeaderField: "Link") {
                 if let attribution = parseLinkHeader(linkHeader) {
+                    Self.logger.debug("Found attribution in Link header: \(url.absoluteString, privacy: .public)")
                     return attribution
                 }
             }
             
             // Check custom author headers
             if let author = httpResponse.value(forHTTPHeaderField: "X-Author") {
+                Self.logger.debug("Found attribution in X-Author header: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .linkHeader)
             }
             
             if let author = httpResponse.value(forHTTPHeaderField: "Author") {
+                Self.logger.debug("Found attribution in Author header: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .linkHeader)
             }
             
             return nil
         } catch {
+            Self.logger.error("HEAD request failed for attribution check: \(url.absoluteString, privacy: .public), error: \(error.localizedDescription)")
             return nil
         }
     }
@@ -157,9 +177,13 @@ final class AttributionChecker {
         request.setValue("bytes=0-16384", forHTTPHeaderField: "Range")
         
         do {
-            let (data, _) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
+            let http = response as? HTTPURLResponse
+            let statusCode = http?.statusCode ?? 0
+            Self.logger.debug("GET request for meta attribution: \(url.absoluteString, privacy: .public) -> \(statusCode), size: \(data.count) bytes")
             
             guard let html = String(data: data, encoding: .utf8) else {
+                Self.logger.debug("Failed to decode HTML for attribution: \(url.absoluteString, privacy: .public)")
                 return nil
             }
             
@@ -167,16 +191,19 @@ final class AttributionChecker {
             
             // 1. Standard meta author tag
             if let author = extractMetaContent(from: html, name: "author") {
+                Self.logger.debug("Found attribution in meta author tag: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .metaTag)
             }
             
             // 2. Open Graph article:author
             if let author = extractMetaProperty(from: html, property: "article:author") {
+                Self.logger.debug("Found attribution in OG article:author: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .openGraph)
             }
             
             // 3. Open Graph og:article:author
             if let author = extractMetaProperty(from: html, property: "og:article:author") {
+                Self.logger.debug("Found attribution in OG og:article:author: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: author, url: nil, source: .openGraph)
             }
             
@@ -184,26 +211,31 @@ final class AttributionChecker {
             if let creator = extractMetaContent(from: html, name: "twitter:creator") {
                 // Remove @ prefix if present
                 let name = creator.hasPrefix("@") ? String(creator.dropFirst()) : creator
+                Self.logger.debug("Found attribution in Twitter creator: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: name, url: nil, source: .twitterCard)
             }
 
             // 5. Fediverse creator (Mastodon-specific)
             if let creator = extractMetaContent(from: html, name: "fediverse:creator") {
+                Self.logger.debug("Found attribution in Fediverse creator: \(url.absoluteString, privacy: .public)")
                 return AuthorAttribution(name: creator, url: nil, source: .metaTag)
             }
             
             // 6. JSON-LD structured data
             if let attribution = extractJSONLDAuthor(from: html) {
+                Self.logger.debug("Found attribution in JSON-LD: \(url.absoluteString, privacy: .public)")
                 return attribution
             }
             
             // 7. Link rel="author" in HTML
             if let authorLink = extractLinkRelAuthor(from: html) {
+                Self.logger.debug("Found attribution in link rel=author: \(url.absoluteString, privacy: .public)")
                 return authorLink
             }
             
             return nil
         } catch {
+            Self.logger.error("GET request failed for meta attribution: \(url.absoluteString, privacy: .public), error: \(error.localizedDescription)")
             return nil
         }
     }
@@ -334,13 +366,17 @@ final class AttributionChecker {
             for key in keysToRemove {
                 cache.removeValue(forKey: key)
             }
+            Self.logger.debug("Attribution cache evicted \(keysToRemove.count) items (limit: \(cacheLimit))")
         }
         
         cache[url] = attribution
+        Self.logger.debug("Cached attribution for: \(url.absoluteString, privacy: .public), cache size: \(cache.count)")
     }
     
     func clearCache() {
+        let count = cache.count
         cache.removeAll()
+        Self.logger.info("Cleared attribution cache: \(count) items removed")
     }
 
     func cacheCountForTesting() -> Int {

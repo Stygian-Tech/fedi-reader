@@ -6,8 +6,10 @@
 //
 
 import Foundation
+import os
 
 final class OmnivoreService: ReadLaterServiceProtocol {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "ReadLater.Omnivore")
     private let config: ReadLaterConfig
     private let keychain: KeychainHelper
     private let session: URLSession
@@ -42,14 +44,18 @@ final class OmnivoreService: ReadLaterServiceProtocol {
     }
     
     func setAPIKey(_ key: String) async throws {
+        Self.logger.info("Setting Omnivore API key")
         apiKey = key
         try await keychain.saveReadLaterToken(key, forService: .omnivore, configId: config.id)
+        Self.logger.info("Omnivore API key saved to Keychain")
     }
     
     // MARK: - Save
     
     func save(url: URL, title: String?) async throws {
+        Self.logger.info("Saving to Omnivore: \(url.absoluteString, privacy: .public), title: \(title ?? "nil", privacy: .public)")
         guard let apiKey else {
+            Self.logger.error("Omnivore API key not configured")
             throw FediReaderError.readLaterError("Omnivore API key not configured")
         }
         
@@ -93,8 +99,13 @@ final class OmnivoreService: ReadLaterServiceProtocol {
         
         let (data, response) = try await session.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("Invalid response type for Omnivore save")
+            throw FediReaderError.readLaterError("Failed to save to Omnivore")
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            Self.logger.error("Omnivore save failed with status: \(httpResponse.statusCode)")
             throw FediReaderError.readLaterError("Failed to save to Omnivore")
         }
         
@@ -105,8 +116,11 @@ final class OmnivoreService: ReadLaterServiceProtocol {
            let errorCodes = saveUrl["errorCodes"] as? [String],
            !errorCodes.isEmpty {
             let message = saveUrl["message"] as? String ?? errorCodes.joined(separator: ", ")
+            Self.logger.error("Omnivore GraphQL error: \(message, privacy: .public)")
             throw FediReaderError.readLaterError("Omnivore error: \(message)")
         }
+        
+        Self.logger.info("Successfully saved to Omnivore")
     }
     
     // MARK: - Additional Features

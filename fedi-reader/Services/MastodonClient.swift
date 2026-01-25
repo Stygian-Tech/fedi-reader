@@ -6,10 +6,13 @@
 //
 
 import Foundation
+import os
 
 @Observable
 @MainActor
 final class MastodonClient {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "MastodonClient")
+    
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -96,76 +99,129 @@ final class MastodonClient {
     // MARK: - Request Execution
     
     private func execute<T: Decodable>(_ request: URLRequest) async throws -> T {
-        let (data, response) = try await session.data(for: request)
+        let startTime = Date()
+        let method = request.httpMethod ?? "GET"
+        let url = request.url?.absoluteString ?? "unknown"
         
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw FediReaderError.invalidResponse
-        }
+        Self.logger.info("API request: \(method) \(url, privacy: .public)")
         
-        // Update rate limit info
-        updateRateLimits(from: httpResponse)
-        
-        switch httpResponse.statusCode {
-        case 200..<300:
-            do {
-                return try decoder.decode(T.self, from: data)
-            } catch {
-                throw FediReaderError.decodingError(error)
+        do {
+            let (data, response) = try await session.data(for: request)
+            let duration = Date().timeIntervalSince(startTime)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                Self.logger.error("Invalid response type for \(url, privacy: .public)")
+                throw FediReaderError.invalidResponse
             }
             
-        case 401:
-            throw FediReaderError.unauthorized
+            let statusCode = httpResponse.statusCode
+            let dataSize = data.count
             
-        case 429:
-            let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After")
-                .flatMap { Double($0) }
-            throw FediReaderError.rateLimited(retryAfter: retryAfter)
+            // Update rate limit info
+            updateRateLimits(from: httpResponse)
             
-        default:
-            let message = String(data: data, encoding: .utf8)
-            throw FediReaderError.serverError(statusCode: httpResponse.statusCode, message: message)
+            switch statusCode {
+            case 200..<300:
+                do {
+                    let result = try decoder.decode(T.self, from: data)
+                    Self.logger.info("API success: \(method) \(url, privacy: .public) - \(statusCode) (\(dataSize) bytes) in \(String(format: "%.2f", duration))s")
+                    return result
+                } catch {
+                    Self.logger.error("Decoding error for \(method) \(url, privacy: .public): \(error.localizedDescription)")
+                    throw FediReaderError.decodingError(error)
+                }
+                
+            case 401:
+                Self.logger.error("Unauthorized: \(method) \(url, privacy: .public)")
+                throw FediReaderError.unauthorized
+                
+            case 429:
+                let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After")
+                    .flatMap { Double($0) }
+                Self.logger.warning("Rate limited: \(method) \(url, privacy: .public), retry after: \(retryAfter?.description ?? "unknown")")
+                throw FediReaderError.rateLimited(retryAfter: retryAfter)
+                
+            default:
+                let message = String(data: data, encoding: .utf8)
+                Self.logger.error("Server error: \(method) \(url, privacy: .public) - \(statusCode): \(message ?? "no message", privacy: .public)")
+                throw FediReaderError.serverError(statusCode: statusCode, message: message)
+            }
+        } catch let error as FediReaderError {
+            throw error
+        } catch {
+            let duration = Date().timeIntervalSince(startTime)
+            Self.logger.error("Network error: \(method) \(url, privacy: .public) after \(String(format: "%.2f", duration))s: \(error.localizedDescription)")
+            throw error
         }
     }
     
     private func executeNoContent(_ request: URLRequest) async throws {
-        let (data, response) = try await session.data(for: request)
+        let startTime = Date()
+        let method = request.httpMethod ?? "GET"
+        let url = request.url?.absoluteString ?? "unknown"
         
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw FediReaderError.invalidResponse
-        }
+        Self.logger.info("API request (no content): \(method) \(url, privacy: .public)")
         
-        updateRateLimits(from: httpResponse)
-        
-        switch httpResponse.statusCode {
-        case 200..<300:
-            return
-        case 401:
-            throw FediReaderError.unauthorized
-        case 429:
-            let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After")
-                .flatMap { Double($0) }
-            throw FediReaderError.rateLimited(retryAfter: retryAfter)
-        default:
-            let message = String(data: data, encoding: .utf8)
-            throw FediReaderError.serverError(statusCode: httpResponse.statusCode, message: message)
+        do {
+            let (data, response) = try await session.data(for: request)
+            let duration = Date().timeIntervalSince(startTime)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                Self.logger.error("Invalid response type for \(url, privacy: .public)")
+                throw FediReaderError.invalidResponse
+            }
+            
+            let statusCode = httpResponse.statusCode
+            
+            updateRateLimits(from: httpResponse)
+            
+            switch statusCode {
+            case 200..<300:
+                Self.logger.info("API success: \(method) \(url, privacy: .public) - \(statusCode) in \(String(format: "%.2f", duration))s")
+                return
+            case 401:
+                Self.logger.error("Unauthorized: \(method) \(url, privacy: .public)")
+                throw FediReaderError.unauthorized
+            case 429:
+                let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After")
+                    .flatMap { Double($0) }
+                Self.logger.warning("Rate limited: \(method) \(url, privacy: .public), retry after: \(retryAfter?.description ?? "unknown")")
+                throw FediReaderError.rateLimited(retryAfter: retryAfter)
+            default:
+                let message = String(data: data, encoding: .utf8)
+                Self.logger.error("Server error: \(method) \(url, privacy: .public) - \(statusCode): \(message ?? "no message", privacy: .public)")
+                throw FediReaderError.serverError(statusCode: statusCode, message: message)
+            }
+        } catch let error as FediReaderError {
+            throw error
+        } catch {
+            let duration = Date().timeIntervalSince(startTime)
+            Self.logger.error("Network error: \(method) \(url, privacy: .public) after \(String(format: "%.2f", duration))s: \(error.localizedDescription)")
+            throw error
         }
     }
     
     private func updateRateLimits(from response: HTTPURLResponse) {
         if let remaining = response.value(forHTTPHeaderField: "X-RateLimit-Remaining"),
            let remainingInt = Int(remaining) {
+            let previousRemaining = rateLimitRemaining
             rateLimitRemaining = remainingInt
+            if previousRemaining != remainingInt {
+                Self.logger.debug("Rate limit updated: \(remainingInt) remaining")
+            }
         }
         
         if let reset = response.value(forHTTPHeaderField: "X-RateLimit-Reset"),
            let resetTime = ISO8601DateFormatter().date(from: reset) {
             rateLimitReset = resetTime
+            Self.logger.debug("Rate limit resets at: \(resetTime.formatted())")
         }
     }
     
     // MARK: - OAuth / App Registration
     
     func registerApp(instance: String) async throws -> OAuthApplication {
+        Self.logger.info("Registering app on instance: \(instance, privacy: .public)")
         let url = try buildURL(instance: instance, path: Constants.API.apps)
         
         let params: [String: String] = [
@@ -178,7 +234,9 @@ final class MastodonClient {
         let body = try encoder.encode(params)
         let request = buildRequest(url: url, method: "POST", body: body)
         
-        return try await execute(request)
+        let result = try await execute(request)
+        Self.logger.info("App registered successfully on \(instance, privacy: .public)")
+        return result
     }
     
     func buildAuthorizationURL(instance: String, clientId: String) throws -> URL {
@@ -198,6 +256,7 @@ final class MastodonClient {
         clientSecret: String,
         code: String
     ) async throws -> OAuthToken {
+        Self.logger.info("Exchanging OAuth code for token on instance: \(instance, privacy: .public)")
         let url = try buildURL(instance: instance, path: Constants.API.oauthToken)
         
         let params: [String: String] = [
@@ -212,10 +271,13 @@ final class MastodonClient {
         let body = try encoder.encode(params)
         let request = buildRequest(url: url, method: "POST", body: body)
         
-        return try await execute(request)
+        let result = try await execute(request)
+        Self.logger.info("OAuth token exchange successful for \(instance, privacy: .public)")
+        return result
     }
     
     func revokeToken(instance: String, clientId: String, clientSecret: String, token: String) async throws {
+        Self.logger.info("Revoking OAuth token on instance: \(instance, privacy: .public)")
         let url = try buildURL(instance: instance, path: Constants.API.oauthRevoke)
         
         let params: [String: String] = [
@@ -228,17 +290,22 @@ final class MastodonClient {
         let request = buildRequest(url: url, method: "POST", body: body)
         
         try await executeNoContent(request)
+        Self.logger.info("OAuth token revoked successfully for \(instance, privacy: .public)")
     }
     
     // MARK: - Account
     
     func verifyCredentials(instance: String, accessToken: String) async throws -> MastodonAccount {
+        Self.logger.info("Verifying credentials on instance: \(instance, privacy: .public)")
         let url = try buildURL(instance: instance, path: Constants.API.verifyCredentials)
         let request = buildRequest(url: url, accessToken: accessToken)
-        return try await execute(request)
+        let account = try await execute(request) as MastodonAccount
+        Self.logger.info("Credentials verified for account: \(account.username, privacy: .public)@\(instance, privacy: .public)")
+        return account
     }
     
     func getAccount(instance: String, accessToken: String, id: String) async throws -> MastodonAccount {
+        Self.logger.debug("Fetching account \(id, privacy: .public) from instance: \(instance, privacy: .public)")
         let url = try buildURL(instance: instance, path: "\(Constants.API.accounts)/\(id)")
         let request = buildRequest(url: url, accessToken: accessToken)
         return try await execute(request)
@@ -255,6 +322,7 @@ final class MastodonClient {
         excludeReblogs: Bool = false,
         onlyMedia: Bool = false
     ) async throws -> [Status] {
+        Self.logger.debug("Fetching account statuses for \(accountId, privacy: .public), limit: \(limit), maxId: \(maxId?.prefix(8) ?? "nil", privacy: .public)")
         var queryItems = [
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "exclude_replies", value: String(excludeReplies)),
@@ -266,7 +334,9 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: "\(Constants.API.accounts)/\(accountId)/statuses", queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        return try await execute(request)
+        let statuses = try await execute(request) as [Status]
+        Self.logger.debug("Fetched \(statuses.count) account statuses for \(accountId, privacy: .public)")
+        return statuses
     }
     
     func getRelationships(instance: String, accessToken: String, ids: [String]) async throws -> [Relationship] {
@@ -316,6 +386,7 @@ final class MastodonClient {
         minId: String? = nil,
         limit: Int = Constants.Pagination.defaultLimit
     ) async throws -> [Status] {
+        Self.logger.info("Fetching home timeline, limit: \(limit), maxId: \(maxId?.prefix(8) ?? "nil", privacy: .public), sinceId: \(sinceId?.prefix(8) ?? "nil", privacy: .public)")
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let maxId { queryItems.append(URLQueryItem(name: "max_id", value: maxId)) }
         if let sinceId { queryItems.append(URLQueryItem(name: "since_id", value: sinceId)) }
@@ -323,7 +394,9 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: Constants.API.homeTimeline, queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        return try await execute(request)
+        let statuses = try await execute(request) as [Status]
+        Self.logger.info("Home timeline loaded: \(statuses.count) statuses")
+        return statuses
     }
     
     func getPublicTimeline(
@@ -358,6 +431,7 @@ final class MastodonClient {
         limit: Int = 20,
         offset: Int = 0
     ) async throws -> [Status] {
+        Self.logger.debug("Fetching trending statuses, limit: \(limit), offset: \(offset)")
         let queryItems = [
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "offset", value: String(offset))
@@ -365,7 +439,9 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: Constants.API.trendingStatuses, queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        return try await execute(request)
+        let statuses = try await execute(request) as [Status]
+        Self.logger.debug("Fetched \(statuses.count) trending statuses")
+        return statuses
     }
     
     func getTrendingLinks(
@@ -374,6 +450,7 @@ final class MastodonClient {
         limit: Int = 20,
         offset: Int = 0
     ) async throws -> [TrendingLink] {
+        Self.logger.debug("Fetching trending links, limit: \(limit), offset: \(offset)")
         let queryItems = [
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "offset", value: String(offset))
@@ -381,7 +458,9 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: Constants.API.trendingLinks, queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        return try await execute(request)
+        let links = try await execute(request) as [TrendingLink]
+        Self.logger.debug("Fetched \(links.count) trending links")
+        return links
     }
     
     func getTrendingTags(
@@ -440,7 +519,8 @@ final class MastodonClient {
         sinceId: String? = nil,
         limit: Int = Constants.Pagination.defaultLimit
     ) async throws -> [MastodonNotification] {
-        try await getNotifications(
+        Self.logger.info("Fetching mentions, limit: \(limit), maxId: \(maxId?.prefix(8) ?? "nil", privacy: .public)")
+        let notifications = try await getNotifications(
             instance: instance,
             accessToken: accessToken,
             types: [.mention],
@@ -448,6 +528,8 @@ final class MastodonClient {
             sinceId: sinceId,
             limit: limit
         )
+        Self.logger.info("Fetched \(notifications.count) mentions")
+        return notifications
     }
 
     func getConversations(
@@ -457,13 +539,16 @@ final class MastodonClient {
         sinceId: String? = nil,
         limit: Int = Constants.Pagination.defaultLimit
     ) async throws -> [MastodonConversation] {
+        Self.logger.info("Fetching conversations, limit: \(limit), maxId: \(maxId?.prefix(8) ?? "nil", privacy: .public)")
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let maxId { queryItems.append(URLQueryItem(name: "max_id", value: maxId)) }
         if let sinceId { queryItems.append(URLQueryItem(name: "since_id", value: sinceId)) }
 
         let url = try buildURL(instance: instance, path: Constants.API.conversations, queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        return try await execute(request)
+        let conversations = try await execute(request) as [MastodonConversation]
+        Self.logger.info("Fetched \(conversations.count) conversations")
+        return conversations
     }
     
     // MARK: - Statuses
@@ -531,6 +616,7 @@ final class MastodonClient {
         language: String? = nil,
         quoteId: String? = nil
     ) async throws -> Status {
+        Self.logger.info("Posting status, visibility: \(visibility.rawValue, privacy: .public), replyTo: \(inReplyToId?.prefix(8) ?? "nil", privacy: .public), mediaCount: \(mediaIds?.count ?? 0)")
         let url = try buildURL(instance: instance, path: Constants.API.statuses)
         
         var params: [String: Any] = [
@@ -548,7 +634,9 @@ final class MastodonClient {
         let body = try JSONSerialization.data(withJSONObject: params)
         let request = buildRequest(url: url, method: "POST", accessToken: accessToken, body: body)
         
-        return try await execute(request)
+        let result = try await execute(request) as Status
+        Self.logger.info("Status posted successfully: \(result.id, privacy: .public)")
+        return result
     }
     
     func deleteStatus(instance: String, accessToken: String, id: String) async throws -> Status {
@@ -560,18 +648,21 @@ final class MastodonClient {
     // MARK: - Status Actions
     
     func favorite(instance: String, accessToken: String, statusId: String) async throws -> Status {
+        Self.logger.info("Favoriting status: \(statusId.prefix(8), privacy: .public)")
         let url = try buildURL(instance: instance, path: "\(Constants.API.statuses)/\(statusId)/favourite")
         let request = buildRequest(url: url, method: "POST", accessToken: accessToken)
         return try await execute(request)
     }
     
     func unfavorite(instance: String, accessToken: String, statusId: String) async throws -> Status {
+        Self.logger.info("Unfavoriting status: \(statusId.prefix(8), privacy: .public)")
         let url = try buildURL(instance: instance, path: "\(Constants.API.statuses)/\(statusId)/unfavourite")
         let request = buildRequest(url: url, method: "POST", accessToken: accessToken)
         return try await execute(request)
     }
     
     func reblog(instance: String, accessToken: String, statusId: String, visibility: Visibility? = nil) async throws -> Status {
+        Self.logger.info("Reblogging status: \(statusId.prefix(8), privacy: .public), visibility: \(visibility?.rawValue ?? "default", privacy: .public)")
         let url = try buildURL(instance: instance, path: "\(Constants.API.statuses)/\(statusId)/reblog")
         
         var body: Data? = nil
@@ -585,18 +676,21 @@ final class MastodonClient {
     }
     
     func unreblog(instance: String, accessToken: String, statusId: String) async throws -> Status {
+        Self.logger.info("Unreblogging status: \(statusId.prefix(8), privacy: .public)")
         let url = try buildURL(instance: instance, path: "\(Constants.API.statuses)/\(statusId)/unreblog")
         let request = buildRequest(url: url, method: "POST", accessToken: accessToken)
         return try await execute(request)
     }
     
     func bookmark(instance: String, accessToken: String, statusId: String) async throws -> Status {
+        Self.logger.info("Bookmarking status: \(statusId.prefix(8), privacy: .public)")
         let url = try buildURL(instance: instance, path: "\(Constants.API.statuses)/\(statusId)/bookmark")
         let request = buildRequest(url: url, method: "POST", accessToken: accessToken)
         return try await execute(request)
     }
     
     func unbookmark(instance: String, accessToken: String, statusId: String) async throws -> Status {
+        Self.logger.info("Unbookmarking status: \(statusId.prefix(8), privacy: .public)")
         let url = try buildURL(instance: instance, path: "\(Constants.API.statuses)/\(statusId)/unbookmark")
         let request = buildRequest(url: url, method: "POST", accessToken: accessToken)
         return try await execute(request)
@@ -635,9 +729,12 @@ final class MastodonClient {
     // MARK: - Lists
     
     func getLists(instance: String, accessToken: String) async throws -> [MastodonList] {
+        Self.logger.debug("Fetching lists")
         let url = try buildURL(instance: instance, path: Constants.API.lists)
         let request = buildRequest(url: url, accessToken: accessToken)
-        return try await execute(request)
+        let lists = try await execute(request) as [MastodonList]
+        Self.logger.debug("Fetched \(lists.count) lists")
+        return lists
     }
     
     func getLists() async throws -> [MastodonList] {
@@ -656,6 +753,7 @@ final class MastodonClient {
         minId: String? = nil,
         limit: Int = Constants.Pagination.defaultLimit
     ) async throws -> [Status] {
+        Self.logger.info("Fetching list timeline \(listId.prefix(8), privacy: .public), limit: \(limit), maxId: \(maxId?.prefix(8) ?? "nil", privacy: .public)")
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let maxId { queryItems.append(URLQueryItem(name: "max_id", value: maxId)) }
         if let sinceId { queryItems.append(URLQueryItem(name: "since_id", value: sinceId)) }
@@ -663,7 +761,9 @@ final class MastodonClient {
         
         let url = try buildURL(instance: instance, path: "\(Constants.API.listTimeline)/\(listId)", queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
-        return try await execute(request)
+        let statuses = try await execute(request) as [Status]
+        Self.logger.info("List timeline loaded: \(statuses.count) statuses")
+        return statuses
     }
     
     func getListTimeline(
