@@ -53,7 +53,7 @@ struct StatusRowView: View {
             }
             
             // Actions bar
-            StatusActionsBar(status: status, compact: false)
+            StatusActionsBar(status: status, size: .standard)
 
             Divider()
         }
@@ -90,16 +90,9 @@ struct StatusRowView: View {
                             .foregroundStyle(.secondary)
                     }
                     
-                    HStack(spacing: 6) {
-                        Text(status.account.displayName)
-                            .font(.roundedCaption.bold())
-                            .lineLimit(1)
-                        
-                        Text("@\(status.account.acct)")
-                            .font(.roundedCaption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                    Text(status.account.displayName)
+                        .font(.roundedCaption.bold())
+                        .lineLimit(1)
                 }
                 
                 Spacer()
@@ -127,18 +120,13 @@ struct StatusRowView: View {
                         .fill(.tertiary)
                 }
                 .frame(width: Constants.UI.avatarSize, height: Constants.UI.avatarSize)
-                .clipShape(RoundedRectangle(cornerRadius: Constants.UI.avatarCornerRadius))
+                .clipShape(Circle())
             }
             .buttonStyle(.plain)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayStatus.account.displayName)
                     .font(.roundedSubheadline.bold())
-                    .lineLimit(1)
-                
-                Text("@\(displayStatus.account.acct)")
-                    .font(.roundedCaption)
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             
@@ -489,11 +477,6 @@ struct CompactStatusRow: View {
                 HStack {
                     Text(displayStatus.account.displayName)
                         .font(.roundedSubheadline.bold())
-                        .lineLimit(1)
-                    
-                    Text("@\(displayStatus.account.acct)")
-                        .font(.roundedCaption)
-                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                     
                     Spacer()

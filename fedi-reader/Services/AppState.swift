@@ -20,6 +20,11 @@ final class AppState {
     var error: Error?
     var selectedTab: AppTab = .links
     
+    // List and filter state
+    var selectedListId: String? = nil  // nil = Home timeline
+    var isUserFilterOpen = false
+    var selectedUserFilter: String? = nil  // Account ID to filter by
+    
     // Navigation state
     var navigationPath: [NavigationDestination] = []
     var presentedSheet: SheetDestination?

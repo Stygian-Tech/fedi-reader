@@ -9,9 +9,15 @@ import SwiftUI
 
 // MARK: - Status Actions Bar
 
+enum StatusActionsBarSize {
+    case compact   // Link feed — medium
+    case standard  // Main feed (Explore, etc.) — full
+    case detail    // Post detail view — small
+}
+
 struct StatusActionsBar: View {
     let status: Status
-    let compact: Bool
+    let size: StatusActionsBarSize
     
     @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
@@ -65,14 +71,14 @@ struct StatusActionsBar: View {
                 await action()
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(compact ? .roundedTitle3 : .roundedTitle2)
+                    .font(iconFont)
                     .foregroundStyle(isActive ? activeColor : .secondary)
                 
                 // Always show count, even if 0, for consistency
                 Text(formatCount(count ?? 0))
-                    .font(compact ? .roundedSubheadline : .roundedBody)
+                    .font(countFont)
                     .foregroundStyle(isActive ? activeColor : .secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -81,12 +87,36 @@ struct StatusActionsBar: View {
         }
         .buttonStyle(.plain)
     }
+    
+    private var iconFont: Font {
+        switch size {
+        case .compact: return .roundedTitle3
+        case .standard: return .roundedTitle3
+        case .detail: return .roundedSubheadline
+        }
+    }
+    
+    private var countFont: Font {
+        switch size {
+        case .compact: return .roundedSubheadline
+        case .standard: return .roundedSubheadline
+        case .detail: return .roundedCaption
+        }
+    }
 
     private var actionsRow: some View {
-        HStack(spacing: compact ? 16 : 22) {
+        HStack(spacing: rowSpacing) {
             actionButtons
             Spacer()
             shareButton
+        }
+    }
+    
+    private var rowSpacing: CGFloat {
+        switch size {
+        case .compact: return 14
+        case .standard: return 18
+        case .detail: return 12
         }
     }
 
@@ -122,16 +152,14 @@ struct StatusActionsBar: View {
                 await toggleFavorite()
             }
 
-            // Quote (if not compact)
-            if !compact {
-                actionButton(
-                    icon: "quote.bubble",
-                    count: nil,
-                    isActive: false,
-                    activeColor: .accentColor
-                ) {
-                    appState.present(sheet: .compose(quote: status))
-                }
+            // Quote (always shown)
+            actionButton(
+                icon: "quote.bubble",
+                count: nil,
+                isActive: false,
+                activeColor: .accentColor
+            ) {
+                appState.present(sheet: .compose(quote: status))
             }
         }
         .layoutPriority(1)
@@ -140,7 +168,7 @@ struct StatusActionsBar: View {
     private var shareButton: some View {
         ShareLink(item: URL(string: displayStatus.url ?? "") ?? URL(string: "https://example.com")!) {
             Image(systemName: "square.and.arrow.up")
-                .font(compact ? .roundedTitle3 : .roundedTitle2)
+                .font(iconFont)
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
@@ -242,7 +270,7 @@ struct StatusActionsToolbar: View {
     }
     
     var body: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 12) {
             // Reply
             toolbarButton(
                 icon: "arrowshape.turn.up.left",
@@ -312,19 +340,19 @@ struct StatusActionsToolbar: View {
                         }
                     }
                 } label: {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 2) {
                         Image(systemName: "tray.and.arrow.down")
-                            .font(.title2)
+                            .font(.roundedSubheadline)
                         
                         Text("Save")
-                            .font(.caption)
+                            .font(.roundedCaption2)
                     }
                     .foregroundStyle(.secondary)
                 }
             }
         }
         .padding(.horizontal)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .disabled(isProcessing)
         .onReceive(NotificationCenter.default.publisher(for: .statusDidUpdate)) { notification in
             guard let updated = notification.object as? Status else { return }
@@ -346,13 +374,13 @@ struct StatusActionsToolbar: View {
                 await action()
             }
                 } label: {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 2) {
                         Image(systemName: icon)
-                            .font(.roundedTitle)
+                            .font(.roundedSubheadline)
                             .foregroundStyle(isActive ? activeColor : .secondary)
                         
                         Text(label)
-                            .font(.roundedSubheadline)
+                            .font(.roundedCaption2)
                             .foregroundStyle(isActive ? activeColor : .secondary)
                     }
                 }
@@ -423,13 +451,18 @@ struct StatusActionsToolbar: View {
 
 #Preview("Status Actions View") {
     VStack(spacing: 20) {
-        Text("Compact")
-        StatusActionsBar(status: Status.samplePreview, compact: true)
+        Text("Compact (link feed)")
+        StatusActionsBar(status: Status.samplePreview, size: .compact)
         
         Divider()
         
-        Text("Full")
-        StatusActionsBar(status: Status.samplePreview, compact: false)
+        Text("Standard (main feed)")
+        StatusActionsBar(status: Status.samplePreview, size: .standard)
+        
+        Divider()
+        
+        Text("Detail")
+        StatusActionsBar(status: Status.samplePreview, size: .detail)
         
         Divider()
         

@@ -21,12 +21,20 @@ final class TimelineService {
     var mentions: [MastodonNotification] = []
     var conversations: [MastodonConversation] = []
     
+    // List state
+    var lists: [MastodonList] = []
+    var listTimeline: [Status] = []
+    var listAccounts: [MastodonAccount] = []
+    
     // Loading state
     var isLoadingHome = false
     var isLoadingExplore = false
     var isLoadingMentions = false
     var isLoadingConversations = false
     var isLoadingMore = false
+    var isLoadingLists = false
+    var isLoadingListTimeline = false
+    var isLoadingListAccounts = false
     
     // Pagination cursors
     private var homeMaxId: String?
@@ -34,6 +42,8 @@ final class TimelineService {
     private var exploreMaxId: String?
     private var mentionsMaxId: String?
     private var conversationsMaxId: String?
+    private var listTimelineMaxId: String?
+    private var listAccountsMaxId: String?
     
     // Error state
     var error: Error?
@@ -571,12 +581,178 @@ final class TimelineService {
         trendingLinks = []
         mentions = []
         conversations = []
+        listTimeline = []
+        listAccounts = []
         
         homeMaxId = nil
         homeMinId = nil
         exploreMaxId = nil
         mentionsMaxId = nil
         conversationsMaxId = nil
+        listTimelineMaxId = nil
+        listAccountsMaxId = nil
+    }
+    
+    // MARK: - Lists
+    
+    func loadLists() async {
+        guard !isLoadingLists else { return }
+        
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            error = FediReaderError.noActiveAccount
+            return
+        }
+        
+        isLoadingLists = true
+        error = nil
+        
+        do {
+            lists = try await client.getLists(instance: account.instance, accessToken: token)
+        } catch let err as FediReaderError where err == .unauthorized {
+            self.error = err
+            NotificationCenter.default.post(name: .accountDidChange, object: nil)
+        } catch {
+            self.error = error
+        }
+        
+        isLoadingLists = false
+    }
+    
+    func loadListTimeline(listId: String, refresh: Bool = false) async {
+        guard !isLoadingListTimeline else { return }
+        
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            error = FediReaderError.noActiveAccount
+            return
+        }
+        
+        isLoadingListTimeline = true
+        error = nil
+        
+        do {
+            let statuses = try await client.getListTimeline(
+                instance: account.instance,
+                accessToken: token,
+                listId: listId,
+                maxId: refresh ? nil : listTimelineMaxId,
+                limit: Constants.Pagination.defaultLimit
+            )
+            
+            if refresh {
+                listTimeline = statuses
+            } else {
+                listTimeline.append(contentsOf: statuses)
+            }
+            
+            if let lastStatus = statuses.last {
+                listTimelineMaxId = lastStatus.id
+            }
+            
+            Task {
+                await prefetchFediverseCreators(for: listTimeline)
+            }
+        } catch let err as FediReaderError where err == .unauthorized {
+            self.error = err
+            NotificationCenter.default.post(name: .accountDidChange, object: nil)
+        } catch {
+            self.error = error
+        }
+        
+        isLoadingListTimeline = false
+    }
+    
+    func loadMoreListTimeline(listId: String) async {
+        guard !isLoadingMore, listTimelineMaxId != nil else { return }
+        
+        isLoadingMore = true
+        await loadListTimeline(listId: listId, refresh: false)
+        isLoadingMore = false
+    }
+    
+    func refreshListTimeline(listId: String) async {
+        listTimelineMaxId = nil
+        await loadListTimeline(listId: listId, refresh: true)
+    }
+    
+    func loadListAccounts(listId: String, refresh: Bool = false) async {
+        guard !isLoadingListAccounts else { return }
+        
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            error = FediReaderError.noActiveAccount
+            return
+        }
+        
+        isLoadingListAccounts = true
+        error = nil
+        
+        do {
+            let accounts = try await client.getListAccounts(
+                instance: account.instance,
+                accessToken: token,
+                listId: listId,
+                maxId: refresh ? nil : listAccountsMaxId,
+                limit: Constants.Pagination.defaultLimit
+            )
+            
+            if refresh {
+                listAccounts = accounts
+            } else {
+                listAccounts.append(contentsOf: accounts)
+            }
+            
+            if let lastAccount = accounts.last {
+                listAccountsMaxId = lastAccount.id
+            }
+        } catch let err as FediReaderError where err == .unauthorized {
+            self.error = err
+            NotificationCenter.default.post(name: .accountDidChange, object: nil)
+        } catch {
+            self.error = error
+        }
+        
+        isLoadingListAccounts = false
+    }
+    
+    func loadMoreListAccounts(listId: String) async {
+        guard !isLoadingMore, listAccountsMaxId != nil else { return }
+        
+        isLoadingMore = true
+        await loadListAccounts(listId: listId, refresh: false)
+        isLoadingMore = false
+    }
+    
+    func refreshListAccounts(listId: String) async {
+        listAccountsMaxId = nil
+        await loadListAccounts(listId: listId, refresh: true)
+    }
+    
+    func clearListTimeline() {
+        listTimeline = []
+        listAccounts = []
+        listTimelineMaxId = nil
+        listAccountsMaxId = nil
+    }
+    
+    /// Fetch list timeline statuses without affecting service state (for prefetching)
+    func fetchListTimelineStatuses(listId: String) async -> [Status] {
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            return []
+        }
+        
+        do {
+            return try await client.getListTimeline(
+                instance: account.instance,
+                accessToken: token,
+                listId: listId,
+                limit: Constants.Pagination.defaultLimit
+            )
+        } catch {
+            return []
+        }
     }
 }
 

@@ -631,4 +631,81 @@ final class MastodonClient {
         let request = buildRequest(url: url)
         return try await execute(request)
     }
+    
+    // MARK: - Lists
+    
+    func getLists(instance: String, accessToken: String) async throws -> [MastodonList] {
+        let url = try buildURL(instance: instance, path: Constants.API.lists)
+        let request = buildRequest(url: url, accessToken: accessToken)
+        return try await execute(request)
+    }
+    
+    func getLists() async throws -> [MastodonList] {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await getLists(instance: instance, accessToken: token)
+    }
+    
+    func getListTimeline(
+        instance: String,
+        accessToken: String,
+        listId: String,
+        maxId: String? = nil,
+        sinceId: String? = nil,
+        minId: String? = nil,
+        limit: Int = Constants.Pagination.defaultLimit
+    ) async throws -> [Status] {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let maxId { queryItems.append(URLQueryItem(name: "max_id", value: maxId)) }
+        if let sinceId { queryItems.append(URLQueryItem(name: "since_id", value: sinceId)) }
+        if let minId { queryItems.append(URLQueryItem(name: "min_id", value: minId)) }
+        
+        let url = try buildURL(instance: instance, path: "\(Constants.API.listTimeline)/\(listId)", queryItems: queryItems)
+        let request = buildRequest(url: url, accessToken: accessToken)
+        return try await execute(request)
+    }
+    
+    func getListTimeline(
+        listId: String,
+        maxId: String? = nil,
+        sinceId: String? = nil,
+        limit: Int = Constants.Pagination.defaultLimit
+    ) async throws -> [Status] {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await getListTimeline(
+            instance: instance,
+            accessToken: token,
+            listId: listId,
+            maxId: maxId,
+            sinceId: sinceId,
+            limit: limit
+        )
+    }
+    
+    func getListAccounts(
+        instance: String,
+        accessToken: String,
+        listId: String,
+        maxId: String? = nil,
+        sinceId: String? = nil,
+        limit: Int = Constants.Pagination.defaultLimit
+    ) async throws -> [MastodonAccount] {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let maxId { queryItems.append(URLQueryItem(name: "max_id", value: maxId)) }
+        if let sinceId { queryItems.append(URLQueryItem(name: "since_id", value: sinceId)) }
+        
+        let url = try buildURL(instance: instance, path: "\(Constants.API.lists)/\(listId)/accounts", queryItems: queryItems)
+        let request = buildRequest(url: url, accessToken: accessToken)
+        return try await execute(request)
+    }
+    
+    func getListAccounts(listId: String, limit: Int = Constants.Pagination.defaultLimit) async throws -> [MastodonAccount] {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await getListAccounts(instance: instance, accessToken: token, listId: listId, limit: limit)
+    }
 }

@@ -7,30 +7,129 @@
 
 import SwiftUI
 
+// MARK: - Feed Tab Item
+
+struct FeedTabItem: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let isHome: Bool
+    
+    init(id: String, title: String, isHome: Bool = false) {
+        self.id = id
+        self.title = title
+        self.isHome = isHome
+    }
+    
+    static let home = FeedTabItem(id: "home", title: "Home", isHome: true)
+}
+
+// MARK: - Link Feed View
+
 struct LinkFeedView: View {
     @Environment(AppState.self) private var appState
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     
-    @State private var isRefreshing = false
     @State private var selectedDomain: String?
+    @State private var selectedTabIndex: Int = 0
+    @GestureState private var dragOffset: CGFloat = 0
     
     private var timelineService: TimelineService? {
         timelineWrapper.service
     }
     
-    var body: some View {
-        Group {
-            if linkFilterService.linkStatuses.isEmpty && !linkFilterService.isLoading {
-                emptyStateView
-            } else {
-                linkList
+    private var lists: [MastodonList] {
+        timelineService?.lists ?? []
+    }
+    
+    private var feedTabs: [FeedTabItem] {
+        var tabs = [FeedTabItem.home]
+        tabs.append(contentsOf: lists.map { FeedTabItem(id: $0.id, title: $0.title) })
+        return tabs
+    }
+    
+    private var currentTab: FeedTabItem {
+        guard selectedTabIndex >= 0 && selectedTabIndex < feedTabs.count else {
+            return .home
+        }
+        return feedTabs[selectedTabIndex]
+    }
+    
+    private var currentAccounts: [MastodonAccount] {
+        guard let service = timelineService else { return [] }
+        return service.listAccounts
+    }
+    
+    private var filteredStatuses: [LinkStatus] {
+        var statuses = linkFilterService.linkStatuses
+        
+        if let domain = selectedDomain {
+            statuses = linkFilterService.filterByDomain(domain)
+        }
+        
+        if let userFilter = appState.selectedUserFilter {
+            statuses = statuses.filter { linkStatus in
+                linkStatus.status.displayStatus.account.id == userFilter
             }
         }
-        .navigationTitle("Links")
+        
+        return statuses
+    }
+    
+    var body: some View {
+        @Bindable var state = appState
+        
+        VStack(spacing: 0) {
+            // Horizontal scrollable list picker
+            listPickerHeader
+            
+            // Single content view (no TabView to avoid crashes)
+            ZStack {
+                if filteredStatuses.isEmpty && !linkFilterService.isLoading {
+                    emptyStateView
+                } else {
+                    linkList
+                }
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .updating($dragOffset) { value, state, _ in
+                        state = value.translation.width
+                    }
+                    .onEnded { value in
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        // Only switch tabs on predominantly horizontal swipes
+                        guard abs(dx) > abs(dy) else { return }
+                        let threshold: CGFloat = 50
+                        if dx > threshold && selectedTabIndex > 0 {
+                            // Swipe right - go to previous tab
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                selectedTabIndex -= 1
+                            }
+                        } else if dx < -threshold && selectedTabIndex < feedTabs.count - 1 {
+                            // Swipe left - go to next tab
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                selectedTabIndex += 1
+                            }
+                        }
+                    }
+            )
+        }
+        .navigationTitle(currentTab.isHome ? "Home" : currentTab.title)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    appState.isUserFilterOpen = true
+                } label: {
+                    Image(systemName: appState.selectedUserFilter != nil ? "person.fill" : "person.2")
+                }
+            }
+            
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    // Domain filter
                     if !linkFilterService.uniqueDomains().isEmpty {
                         Section("Filter by Domain") {
                             Button("All Domains") {
@@ -59,18 +158,65 @@ struct LinkFeedView: View {
                 }
             }
         }
-        .refreshable {
-            await refreshFeed()
+        .sheet(isPresented: $state.isUserFilterOpen) {
+            UserFilterPane(
+                accounts: currentAccounts,
+                onSelectAccount: { account in
+                    appState.selectedUserFilter = account?.id
+                    appState.isUserFilterOpen = false
+                }
+            )
+            .presentationDetents([.medium, .large])
         }
         .task {
             await loadInitialContent()
-            // Start background fetching of older posts
-            if let service = timelineService {
-                Task(priority: .background) {
-                    await service.backgroundFetchOlderPosts()
+        }
+        .onChange(of: selectedTabIndex) { oldIndex, newIndex in
+            handleTabChange(from: oldIndex, to: newIndex)
+        }
+        .onChange(of: appState.selectedListId) { _, newListId in
+            // Sync tab selection if changed from outside
+            let targetId = newListId ?? "home"
+            if let index = feedTabs.firstIndex(where: { $0.id == targetId }) {
+                if selectedTabIndex != index {
+                    selectedTabIndex = index
                 }
             }
         }
+        .refreshable {
+            await refreshCurrentFeed()
+        }
+    }
+    
+    private var listPickerHeader: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(Array(feedTabs.enumerated()), id: \.element.id) { index, tab in
+                        FeedTabButton(
+                            title: tab.title,
+                            isSelected: selectedTabIndex == index,
+                            isLoading: linkFilterService.isLoadingFeed(tab.id)
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedTabIndex = index
+                            }
+                        }
+                        .id(tab.id)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+            .onChange(of: selectedTabIndex) { _, newIndex in
+                if newIndex < feedTabs.count {
+                    withAnimation {
+                        proxy.scrollTo(feedTabs[newIndex].id, anchor: .center)
+                    }
+                }
+            }
+        }
+        .background(Color(.systemBackground).opacity(0.95))
     }
     
     private var linkList: some View {
@@ -97,22 +243,15 @@ struct LinkFeedView: View {
         }
     }
     
-    private var filteredStatuses: [LinkStatus] {
-        if let domain = selectedDomain {
-            return linkFilterService.filterByDomain(domain)
-        }
-        return linkFilterService.linkStatuses
-    }
-    
     private var emptyStateView: some View {
         ContentUnavailableView {
             Label("No Links Yet", systemImage: "link.badge.plus")
         } description: {
-            Text("Posts with links from your home timeline will appear here.")
+            Text("Posts with links from your \(currentTab.isHome ? "home timeline" : "list") will appear here.")
         } actions: {
             Button("Refresh") {
                 Task {
-                    await refreshFeed()
+                    await refreshCurrentFeed()
                 }
             }
             .buttonStyle(.bordered)
@@ -129,38 +268,191 @@ struct LinkFeedView: View {
         .listRowSeparator(.hidden)
     }
     
+    // MARK: - Data Loading
+    
     private func loadInitialContent() async {
         guard let service = timelineService else { return }
         
-        if service.homeTimeline.isEmpty {
-            await service.refreshHomeTimeline()
+        // Load lists first
+        if service.lists.isEmpty {
+            await service.loadLists()
         }
         
-        _ = await linkFilterService.processStatuses(service.homeTimeline)
+        // Apply initial list selection from AppState
+        if let listId = appState.selectedListId,
+           let index = feedTabs.firstIndex(where: { $0.id == listId }) {
+            selectedTabIndex = index
+        }
+        
+        // Load content for current tab
+        await loadContentForTab(currentTab)
+        
+        // Pre-fetch adjacent feeds in background
+        Task.detached(priority: .background) { [feedTabs, selectedTabIndex] in
+            await self.prefetchAdjacentFeeds(currentIndex: selectedTabIndex, tabs: feedTabs)
+        }
     }
     
-    private func refreshFeed() async {
+    private func handleTabChange(from oldIndex: Int, to newIndex: Int) {
+        guard newIndex >= 0 && newIndex < feedTabs.count else { return }
+        
+        let tab = feedTabs[newIndex]
+        let listId = tab.isHome ? nil : tab.id
+        
+        // Update app state
+        if appState.selectedListId != listId {
+            appState.selectedListId = listId
+        }
+        appState.selectedUserFilter = nil
+        selectedDomain = nil
+        
+        // Switch the active feed in LinkFilterService
+        linkFilterService.switchToFeed(tab.id)
+        
+        // Load content if not cached
+        Task {
+            await loadContentForTabIfNeeded(tab)
+            
+            // Pre-fetch adjacent feeds
+            Task.detached(priority: .background) { [feedTabs] in
+                await self.prefetchAdjacentFeeds(currentIndex: newIndex, tabs: feedTabs)
+            }
+        }
+    }
+    
+    private func loadContentForTab(_ tab: FeedTabItem) async {
         guard let service = timelineService else { return }
         
-        isRefreshing = true
-        await service.refreshHomeTimeline()
-        _ = await linkFilterService.processStatuses(service.homeTimeline)
-        isRefreshing = false
+        linkFilterService.switchToFeed(tab.id)
+        
+        if tab.isHome {
+            if service.homeTimeline.isEmpty {
+                await service.refreshHomeTimeline()
+            }
+            _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
+        } else {
+            // Load list timeline
+            await service.refreshListTimeline(listId: tab.id)
+            await service.refreshListAccounts(listId: tab.id)
+            _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
+        }
+        Task {
+            await linkFilterService.enrichWithAttributions()
+        }
+    }
+    
+    private func loadContentForTabIfNeeded(_ tab: FeedTabItem) async {
+        // Check if content is already cached
+        if linkFilterService.hasCachedContent(for: tab.id) {
+            return
+        }
+        
+        await loadContentForTab(tab)
+    }
+    
+    private func refreshCurrentFeed() async {
+        guard let service = timelineService else { return }
+        
+        let tab = currentTab
+        
+        if tab.isHome {
+            await service.refreshHomeTimeline()
+            _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
+        } else {
+            await service.refreshListTimeline(listId: tab.id)
+            _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
+        }
+        Task {
+            await linkFilterService.enrichWithAttributions()
+        }
+    }
+    
+    private func prefetchAdjacentFeeds(currentIndex: Int, tabs: [FeedTabItem]) async {
+        guard let service = timelineWrapper.service else { return }
+        
+        // Get adjacent indices
+        var indicesToPrefetch: [Int] = []
+        if currentIndex > 0 {
+            indicesToPrefetch.append(currentIndex - 1)
+        }
+        if currentIndex < tabs.count - 1 {
+            indicesToPrefetch.append(currentIndex + 1)
+        }
+        
+        for index in indicesToPrefetch {
+            let tab = tabs[index]
+            
+            // Skip if already cached or loading
+            guard !linkFilterService.hasCachedContent(for: tab.id),
+                  !linkFilterService.isLoadingFeed(tab.id) else {
+                continue
+            }
+            
+            // Load content for this tab
+            if tab.isHome {
+                if service.homeTimeline.isEmpty {
+                    await service.refreshHomeTimeline()
+                }
+                _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
+            } else {
+                // For lists, fetch without affecting main state
+                let statuses = await service.fetchListTimelineStatuses(listId: tab.id)
+                if !statuses.isEmpty {
+                    _ = await linkFilterService.processStatuses(statuses, for: tab.id)
+                }
+            }
+        }
     }
     
     private func checkLoadMore(_ linkStatus: LinkStatus) {
         guard let service = timelineService else { return }
         
-        let statuses = linkFilterService.linkStatuses
+        let statuses = filteredStatuses
         guard let index = statuses.firstIndex(of: linkStatus) else { return }
         
-        // Load more when approaching the end - trigger earlier for smoother scrolling
         if index >= statuses.count - (Constants.Pagination.prefetchThreshold * 2) {
             Task {
-                await service.loadMoreHomeTimeline()
-                _ = await linkFilterService.processStatuses(service.homeTimeline)
+                let tab = currentTab
+                if tab.isHome {
+                    await service.loadMoreHomeTimeline()
+                    _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
+                } else {
+                    await service.loadMoreListTimeline(listId: tab.id)
+                    _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
+                }
             }
         }
+    }
+}
+
+// MARK: - Feed Tab Button
+
+struct FeedTabButton: View {
+    let title: String
+    let isSelected: Bool
+    var isLoading: Bool = false
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.roundedSubheadline.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+                
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                isSelected ? Color.accentColor.opacity(0.15) : Color.clear,
+                in: Capsule()
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -176,45 +468,37 @@ struct LinkStatusRow: View {
     @State private var hasLoadedBlueskyDescription = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if linkStatus.status.isReblog {
-                reblogHeader
-            }
-            
-            // Author info
-            authorHeader
-            
-            // Link card
-            linkCard
-            
-            // Post content preview
-            if let description = linkStatus.displayDescription, !description.isEmpty {
-                Button {
-                    appState.navigate(to: .status(linkStatus.status))
-                } label: {
-                    Text(description)
-                        .font(.roundedSubheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+        Button {
+            appState.navigate(to: .status(linkStatus.status))
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                if linkStatus.status.isReblog {
+                    reblogHeader
                 }
-                .buttonStyle(.plain)
-            }
-            
-            // Tags
-            let tags = TagExtractor.extractTags(from: linkStatus.status)
-            if !tags.isEmpty {
-                TagView(tags: tags) { tag in
-                    appState.navigate(to: .hashtag(tag))
+                
+                // Author info
+                authorHeader
+                
+                // Link card
+                linkCard
+                
+                // Tags
+                let tags = TagExtractor.extractTags(from: linkStatus.status)
+                if !tags.isEmpty {
+                    TagView(tags: tags) { tag in
+                        appState.navigate(to: .hashtag(tag))
+                    }
                 }
-            }
-            
-            // Actions bar
-            StatusActionsBar(status: linkStatus.status, compact: true)
+                
+                // Actions bar
+                StatusActionsBar(status: linkStatus.status, size: .compact)
 
-            Divider()
+                Divider()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(.plain)
         .contextMenu {
             contextMenuContent
         }
@@ -223,7 +507,7 @@ struct LinkStatusRow: View {
     private var reblogHeader: some View {
         let reblogger = linkStatus.status.account
         return Button {
-            appState.navigate(to: .profile(reblogger))
+            appState.navigate(to: .status(linkStatus.status))
         } label: {
             HStack(spacing: 8) {
                 AsyncImage(url: reblogger.avatarURL) { image in
@@ -248,16 +532,9 @@ struct LinkStatusRow: View {
                             .foregroundStyle(.secondary)
                     }
                     
-                    HStack(spacing: 6) {
-                        Text(reblogger.displayName)
-                            .font(.roundedCaption.bold())
-                            .lineLimit(1)
-                        
-                        Text("@\(reblogger.acct)")
-                            .font(.roundedCaption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                    Text(reblogger.displayName)
+                        .font(.roundedCaption.bold())
+                        .lineLimit(1)
                 }
                 
                 Spacer()
@@ -285,16 +562,11 @@ struct LinkStatusRow: View {
                     .fill(.tertiary)
             }
             .frame(width: Constants.UI.avatarSize, height: Constants.UI.avatarSize)
-            .clipShape(RoundedRectangle(cornerRadius: Constants.UI.avatarCornerRadius))
+            .clipShape(Circle())
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(linkStatus.status.displayStatus.account.displayName)
                     .font(.roundedSubheadline.bold())
-                    .lineLimit(1)
-                
-                Text("@\(linkStatus.status.displayStatus.account.acct)")
-                    .font(.roundedCaption)
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             
@@ -372,30 +644,7 @@ struct LinkStatusRow: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                         
-                        if let authorName = linkStatus.authorAttribution,
-                           let authorUrlString = linkStatus.authorURL,
-                           let authorURL = URL(string: authorUrlString) {
-                            Link(destination: authorURL) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "person.crop.circle")
-                                        .font(.roundedCaption)
-                                    
-                                    Text(authorName)
-                                        .font(.roundedCaption)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.8)
-                                }
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color(.tertiarySystemBackground), in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        } else if let author = linkStatus.displayAuthor {
-                            Text(author)
-                                .font(.roundedCaption)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
+                        authorAttributionChip(linkStatus.status.displayStatus.account.displayName)
                     }
                     .foregroundStyle(.secondary)
                 }
@@ -417,6 +666,20 @@ struct LinkStatusRow: View {
                     .font(.largeTitle)
                     .foregroundStyle(.tertiary)
             }
+    }
+    
+    private func authorAttributionChip(_ authorName: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "person.crop.circle")
+                .font(.roundedCaption)
+            Text(authorName)
+                .font(.roundedCaption)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color(.tertiarySystemBackground), in: Capsule())
     }
     
     @ViewBuilder

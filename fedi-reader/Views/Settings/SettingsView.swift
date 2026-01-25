@@ -9,12 +9,18 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("refreshInterval") private var refreshInterval = 5
     @AppStorage("showImages") private var showImages = true
     @AppStorage("autoPlayGifs") private var autoPlayGifs = false
     @AppStorage("defaultVisibility") private var defaultVisibility = "public"
     @AppStorage("hapticFeedback") private var hapticFeedback = true
     @AppStorage("themeColor") private var themeColorName = "blue"
+    @AppStorage("defaultListId") private var defaultListId = ""
+    
+    private var lists: [MastodonList] {
+        timelineWrapper.service?.lists ?? []
+    }
     
     var body: some View {
         List {
@@ -38,6 +44,13 @@ struct SettingsView: View {
             
             // Timeline
             Section("Timeline") {
+                Picker("Default Feed", selection: $defaultListId) {
+                    Text("Home").tag("")
+                    ForEach(lists) { list in
+                        Text(list.title).tag(list.id)
+                    }
+                }
+                
                 Picker("Refresh Interval", selection: $refreshInterval) {
                     Text("Manual").tag(0)
                     Text("1 minute").tag(1)
@@ -267,4 +280,5 @@ enum ThemeColor: String, CaseIterable {
         SettingsView()
     }
     .environment(AppState())
+    .environment(TimelineServiceWrapper())
 }

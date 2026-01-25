@@ -62,12 +62,11 @@ struct TagExtractor {
     static func extractTags(from status: Status) -> [String] {
         var tags: [String] = []
         
-        // Extract from content
-        tags.append(contentsOf: extractTags(from: status.displayStatus.content))
+        // Prefer API hashtags when available
+        tags.append(contentsOf: status.displayStatus.tags.map(\.name))
         
-        // Extract from tags array if available
-        // Note: This would require Status model to have a tags property
-        // For now, we'll rely on content extraction
+        // Fall back to content extraction
+        tags.append(contentsOf: extractTags(from: status.displayStatus.content))
         
         return Array(Set(tags)).sorted() // Remove duplicates and sort
     }

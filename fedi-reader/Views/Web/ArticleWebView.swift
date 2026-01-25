@@ -312,18 +312,13 @@ struct StatusDetailRowView: View {
                             .fill(.tertiary)
                     }
                     .frame(width: Constants.UI.avatarSize, height: Constants.UI.avatarSize)
-                    .clipShape(RoundedRectangle(cornerRadius: Constants.UI.avatarCornerRadius))
+                    .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(displayStatus.account.displayName)
                         .font(.roundedSubheadline.bold())
-                        .lineLimit(1)
-                    
-                    Text("@\(displayStatus.account.acct)")
-                        .font(.roundedCaption)
-                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 
@@ -482,7 +477,7 @@ struct StatusDetailRowView: View {
             }
             
             // Actions bar
-            StatusActionsBar(status: status, compact: false)
+            StatusActionsBar(status: status, size: .detail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)

@@ -12,15 +12,51 @@ import Foundation
 final class LinkFilterService {
     private let attributionChecker: AttributionChecker
     
-    // Filtered statuses with link content
-    var linkStatuses: [LinkStatus] = []
+    // Per-feed cached link statuses (feedId -> linkStatuses)
+    // "home" key for home timeline, list ID for lists
+    private var feedCache: [String: [LinkStatus]] = [:]
     
-    // Loading state
-    var isLoading = false
+    // Currently active feed ID
+    var activeFeedId: String = "home"
+    
+    // Filtered statuses with link content for the active feed
+    var linkStatuses: [LinkStatus] {
+        get { feedCache[activeFeedId] ?? [] }
+        set { feedCache[activeFeedId] = newValue }
+    }
+    
+    // Loading state per feed
+    private var loadingFeeds: Set<String> = []
+    var isLoading: Bool {
+        loadingFeeds.contains(activeFeedId)
+    }
     var isLoadingAttributions = false
     
     init(attributionChecker: AttributionChecker? = nil) {
         self.attributionChecker = attributionChecker ?? AttributionChecker()
+    }
+    
+    // MARK: - Feed Management
+    
+    /// Switch to a different feed
+    func switchToFeed(_ feedId: String) {
+        activeFeedId = feedId
+    }
+    
+    /// Check if feed has cached content
+    func hasCachedContent(for feedId: String) -> Bool {
+        guard let cached = feedCache[feedId] else { return false }
+        return !cached.isEmpty
+    }
+    
+    /// Get cached content for a specific feed
+    func getCachedContent(for feedId: String) -> [LinkStatus] {
+        feedCache[feedId] ?? []
+    }
+    
+    /// Check if a feed is currently loading
+    func isLoadingFeed(_ feedId: String) -> Bool {
+        loadingFeeds.contains(feedId)
     }
     
     // MARK: - Filtering
@@ -46,10 +82,10 @@ final class LinkFilterService {
         }
     }
     
-    /// Processes statuses into LinkStatus objects with extracted link information
-    func processStatuses(_ statuses: [Status]) async -> [LinkStatus] {
-        isLoading = true
-        defer { isLoading = false }
+    /// Processes statuses into LinkStatus objects for a specific feed
+    func processStatuses(_ statuses: [Status], for feedId: String) async -> [LinkStatus] {
+        loadingFeeds.insert(feedId)
+        defer { loadingFeeds.remove(feedId) }
         
         let filtered = filterToLinks(statuses)
         
@@ -97,8 +133,13 @@ final class LinkFilterService {
             linkStatuses.append(linkStatus)
         }
         
-        self.linkStatuses = linkStatuses
+        feedCache[feedId] = linkStatuses
         return linkStatuses
+    }
+    
+    /// Processes statuses into LinkStatus objects (uses active feed)
+    func processStatuses(_ statuses: [Status]) async -> [LinkStatus] {
+        await processStatuses(statuses, for: activeFeedId)
     }
     
     /// Enriches link statuses with author attribution from HEAD requests
@@ -110,6 +151,7 @@ final class LinkFilterService {
         
         // Process attributions in batches to avoid overwhelming the network
         let batchSize = 5
+        let currentFeedId = activeFeedId
         
         for batchStart in stride(from: 0, to: linkStatuses.count, by: batchSize) {
             let batchEnd = min(batchStart + batchSize, linkStatuses.count)
@@ -129,11 +171,40 @@ final class LinkFilterService {
                 }
                 
                 for await (index, attribution) in group {
-                    if let attribution, index < linkStatuses.count {
-                        linkStatuses[index].authorAttribution = attribution.name
-                        linkStatuses[index].authorURL = attribution.url
+                    if let attribution,
+                       var cached = feedCache[currentFeedId],
+                       index < cached.count {
+                        cached[index].authorAttribution = attribution.name
+                        cached[index].authorURL = attribution.url
+                        feedCache[currentFeedId] = cached
                     }
                 }
+            }
+        }
+    }
+    
+    /// Pre-fetch content for adjacent feeds (call in background)
+    func prefetchAdjacentFeeds(
+        currentFeedId: String,
+        allFeedIds: [String],
+        loadContent: @escaping (String) async -> [Status]
+    ) async {
+        guard let currentIndex = allFeedIds.firstIndex(of: currentFeedId) else { return }
+        
+        // Get adjacent feed IDs (previous and next)
+        var adjacentIds: [String] = []
+        if currentIndex > 0 {
+            adjacentIds.append(allFeedIds[currentIndex - 1])
+        }
+        if currentIndex < allFeedIds.count - 1 {
+            adjacentIds.append(allFeedIds[currentIndex + 1])
+        }
+        
+        // Prefetch feeds that don't have cached content
+        for feedId in adjacentIds {
+            if !hasCachedContent(for: feedId) && !isLoadingFeed(feedId) {
+                let statuses = await loadContent(feedId)
+                _ = await processStatuses(statuses, for: feedId)
             }
         }
     }

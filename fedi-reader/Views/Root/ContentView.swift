@@ -13,10 +13,12 @@ import UIKit
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("defaultListId") private var defaultListId = ""
     @State private var appState = AppState()
     @State private var timelineWrapper = TimelineServiceWrapper()
     @State private var linkFilterService = LinkFilterService()
     @State private var readLaterManager = ReadLaterManager()
+    @State private var hasAppliedDefaultList = false
     
     var body: some View {
         Group {
@@ -32,6 +34,9 @@ struct ContentView: View {
         .environment(timelineWrapper)
         .onAppear {
             setupServices()
+        }
+        .task {
+            await loadListsAndApplyDefault()
         }
         .onOpenURL { url in
             handleOpenURL(url)
@@ -60,6 +65,25 @@ struct ContentView: View {
         
         // Load read-later configurations
         readLaterManager.loadConfigurations(from: modelContext)
+    }
+    
+    private func loadListsAndApplyDefault() async {
+        guard appState.hasAccount, !hasAppliedDefaultList else { return }
+        
+        // Load lists
+        if let service = timelineWrapper.service {
+            await service.loadLists()
+            
+            // Apply default list if set and valid
+            if !defaultListId.isEmpty {
+                let listExists = service.lists.contains { $0.id == defaultListId }
+                if listExists {
+                    appState.selectedListId = defaultListId
+                }
+            }
+        }
+        
+        hasAppliedDefaultList = true
     }
     
     private func handleOpenURL(_ url: URL) {

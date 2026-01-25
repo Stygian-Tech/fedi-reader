@@ -56,6 +56,10 @@ enum Constants {
         static let trendingTags = "/api/v1/trends/tags"
         static let trendingLinks = "/api/v1/trends/links"
         
+        // Lists
+        static let lists = "/api/v1/lists"
+        static let listTimeline = "/api/v1/timelines/list"
+        
         // Rate limiting
         static let defaultRateLimit = 300 // requests per 5 minutes
         static let rateLimitWindow: TimeInterval = 300 // 5 minutes
@@ -84,8 +88,8 @@ enum Constants {
         static let defaultAnimationDuration: Double = 0.3
         static let hapticFeedbackEnabled = true
         static let maxContentPreviewLines = 6
-        static let avatarSize: CGFloat = 44
-        static let avatarCornerRadius: CGFloat = 8
+        static let avatarSize: CGFloat = 40
+        static let smallAvatarSize: CGFloat = 28
         static let cardImageHeight: CGFloat = 180
         static let cardCornerRadius: CGFloat = 12
     }
