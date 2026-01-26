@@ -200,7 +200,7 @@ struct StatusDetailRowView: View {
             StatusActionsBar(status: displayStatus, size: .detail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(8)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
     }
     
@@ -244,13 +244,17 @@ struct StatusDetailView: View {
     @State private var context: StatusContext?
     @State private var isLoading = true
     @State private var isLoadingRemoteReplies = false
+    
+    private let threadingService = ThreadingService()
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Parent post as its own card at the top
                 StatusDetailRowView(status: status)
                     .padding(.horizontal)
-
+                    .padding(.vertical, 5)
+                
                 if isLoading {
                     ProgressView()
                         .frame(maxWidth: .infinity)
@@ -258,23 +262,13 @@ struct StatusDetailView: View {
                 }
 
                 if let context = context {
-                    if !context.ancestors.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Thread")
-                                .font(.roundedHeadline)
-                                .padding(.horizontal)
-                                .padding(.bottom, 8)
-
-                            ForEach(context.ancestors) { ancestor in
-                                StatusDetailRowView(status: ancestor)
-                                    .padding(.horizontal)
-                                Divider()
-                            }
-                        }
-                    }
-
+                    // Build thread tree from descendants only (exclude parent/current post)
+                    let replyTrees = threadingService.buildThreadTree(from: context.descendants)
+                    
                     if !context.descendants.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
+                        // Single card containing reply thread (without parent)
+                        VStack(alignment: .leading, spacing: 0) {
+                            // Header with controls
                             HStack {
                                 Text("Replies")
                                     .font(.roundedHeadline)
@@ -308,15 +302,18 @@ struct StatusDetailView: View {
                                     .controlSize(.small)
                                 }
                             }
-                            .padding(.horizontal)
+                            .padding(.horizontal, 11)
                             .padding(.vertical, 8)
-
-                            ForEach(Array(context.descendants.enumerated()), id: \.element.id) { index, descendant in
-                                StatusDetailRowView(status: descendant)
-                                    .padding(.horizontal)
-                                    .padding(.vertical, 4)
-                            }
+                            
+                            Divider()
+                            
+                            // Display reply thread tree (only descendants, no parent)
+                            CompactThreadView(threads: replyTrees)
+                                .padding(.vertical, 5)
                         }
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
+                        .padding(.horizontal)
+                        .padding(.vertical, 5)
                     } else if status.repliesCount > 0 {
                         // Show message if we expect replies but don't have any yet
                         VStack(alignment: .leading, spacing: 0) {
@@ -363,7 +360,7 @@ struct StatusDetailView: View {
                     }
                 }
             }
-            .padding(.vertical)
+            .padding(.vertical, 5)
         }
         .navigationTitle("Post")
         .navigationBarTitleDisplayMode(.inline)

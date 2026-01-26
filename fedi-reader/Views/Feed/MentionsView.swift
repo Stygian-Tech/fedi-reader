@@ -97,6 +97,24 @@ struct ChatMessage: Identifiable {
     }
 }
 
+// MARK: - Threaded Status
+
+struct ThreadedStatus: Identifiable {
+    let id: String
+    let status: Status
+    let depth: Int
+    let parentId: String?
+    let hasReplies: Bool
+    
+    init(status: Status, depth: Int, parentId: String?, hasReplies: Bool) {
+        self.id = status.id
+        self.status = status
+        self.depth = depth
+        self.parentId = parentId
+        self.hasReplies = hasReplies
+    }
+}
+
 // MARK: - Grouped Conversation (handles both 1:1 and group chats)
 
 struct GroupedConversation: Identifiable {
@@ -375,6 +393,8 @@ struct GroupedConversationDetailView: View {
     @State private var statusContexts: [String: StatusContext] = [:]
     @State private var isLoadingThreads = false
     
+    private let threadingService = ThreadingService()
+    
     private var participants: [MastodonAccount] {
         groupedConversation.participants
     }
@@ -410,15 +430,55 @@ struct GroupedConversationDetailView: View {
             .compactMap { $0.value.first }
             .filter { $0.visibility == .private || $0.visibility == .direct }
         
-        return uniqueStatuses.sorted { $0.createdAt < $1.createdAt }
+        return uniqueStatuses
     }
     
-    // Group messages for display (consecutive messages from same user)
-    private var groupedMessages: [GroupedMessage] {
-        let messages = allConversationStatuses.map { status in
-            ChatMessage(status: status, isSent: isSentMessage(status))
+    // Build thread trees from all conversation statuses
+    private var threadTrees: [ThreadNode] {
+        let statuses = allConversationStatuses
+        guard !statuses.isEmpty else { return [] }
+        
+        // Handle orphaned replies and build thread trees
+        return threadingService.handleOrphanedReplies(statuses)
+    }
+    
+    // Flatten thread trees to chronological list with threading info
+    private var threadedStatuses: [ThreadedStatus] {
+        let trees = threadTrees
+        var result: [ThreadedStatus] = []
+        
+        // Flatten all trees and collect with depth info
+        for tree in trees {
+            flattenTree(tree, depth: 0, parentId: nil, into: &result)
         }
-        return groupMessages(messages)
+        
+        // Sort chronologically
+        return result.sorted { $0.status.createdAt < $1.status.createdAt }
+    }
+    
+    // Helper to flatten a tree node with threading information
+    private func flattenTree(_ node: ThreadNode, depth: Int, parentId: String?, into result: inout [ThreadedStatus]) {
+        result.append(ThreadedStatus(
+            status: node.status,
+            depth: depth,
+            parentId: parentId,
+            hasReplies: !node.children.isEmpty
+        ))
+        
+        for child in node.children.sorted(by: { $0.status.createdAt < $1.status.createdAt }) {
+            flattenTree(child, depth: depth + 1, parentId: node.id, into: &result)
+        }
+    }
+    
+    // Group threaded messages for display (consecutive messages from same user, preserving thread structure)
+    private var groupedMessages: [GroupedMessage] {
+        let threaded = threadedStatuses
+        let messages = threaded.map { threadedStatus in
+            ChatMessage(status: threadedStatus.status, isSent: isSentMessage(threadedStatus.status))
+        }
+        
+        // Group consecutive messages from same user, but preserve threading context
+        return groupMessagesWithThreading(messages, threadedStatuses: threaded)
     }
     
     private var canSend: Bool {
@@ -644,6 +704,61 @@ struct GroupedConversationDetailView: View {
         return groups
     }
     
+    // Group messages with threading information preserved
+    private func groupMessagesWithThreading(_ messages: [ChatMessage], threadedStatuses: [ThreadedStatus]) -> [GroupedMessage] {
+        var groups: [GroupedMessage] = []
+        var currentGroup: [ChatMessage] = []
+        var currentSenderId: String?
+        var currentDepth: Int = 0
+        
+        // Create a map for quick lookup
+        let statusMap = Dictionary(uniqueKeysWithValues: threadedStatuses.map { ($0.status.id, $0) })
+        
+        for message in messages {
+            guard let status = message.status else { continue }
+            let threadedStatus = statusMap[status.id]
+            let senderId = status.account.id
+            let depth = threadedStatus?.depth ?? 0
+            
+            // If same sender, same depth, and within 5 minutes, add to current group
+            if let lastMessage = currentGroup.last,
+               let lastStatus = lastMessage.status,
+               statusMap[lastStatus.id] != nil,
+               senderId == currentSenderId,
+               depth == currentDepth,
+               abs(message.createdAt.timeIntervalSince(lastMessage.createdAt)) < 300 {
+                currentGroup.append(message)
+            } else {
+                // Start new group
+                if !currentGroup.isEmpty, let firstMessage = currentGroup.first {
+                    let account = firstMessage.status?.account ?? unknownAccount
+                    groups.append(GroupedMessage(
+                        account: account,
+                        messages: currentGroup,
+                        isSent: firstMessage.isSent,
+                        threadDepth: currentDepth
+                    ))
+                }
+                currentGroup = [message]
+                currentSenderId = senderId
+                currentDepth = depth
+            }
+        }
+        
+        // Add final group
+        if !currentGroup.isEmpty, let firstMessage = currentGroup.first {
+            let account = firstMessage.status?.account ?? unknownAccount
+            groups.append(GroupedMessage(
+                account: account,
+                messages: currentGroup,
+                isSent: firstMessage.isSent,
+                threadDepth: currentDepth
+            ))
+        }
+        
+        return groups
+    }
+    
     private var unknownAccount: MastodonAccount {
         MastodonAccount(
             id: "unknown",
@@ -676,12 +791,14 @@ struct GroupedMessage: Identifiable {
     let account: MastodonAccount
     let messages: [ChatMessage]
     let isSent: Bool
+    let threadDepth: Int
     
-    init(account: MastodonAccount, messages: [ChatMessage], isSent: Bool = false) {
+    init(account: MastodonAccount, messages: [ChatMessage], isSent: Bool = false, threadDepth: Int = 0) {
         self.id = "\(account.id)-\(messages.first?.id ?? UUID().uuidString)"
         self.account = account
         self.messages = messages
         self.isSent = isSent
+        self.threadDepth = threadDepth
     }
 }
 
@@ -691,14 +808,35 @@ struct ChatMessageGroup: View {
     let group: GroupedMessage
     @Environment(AppState.self) private var appState
     
+    private let indentPerLevel: CGFloat = 16
+    
     var body: some View {
         if group.isSent {
             // Sent messages (right-aligned)
             HStack(alignment: .bottom, spacing: 8) {
                 Spacer(minLength: 60)
                 
+                // Thread indentation
+                if group.threadDepth > 0 {
+                    Spacer()
+                        .frame(width: CGFloat(group.threadDepth) * indentPerLevel)
+                }
+                
                 // Messages
                 VStack(alignment: .trailing, spacing: 4) {
+                    // Thread indicator for replies
+                    if group.threadDepth > 0, let firstMessage = group.messages.first,
+                       let status = firstMessage.status, status.inReplyToId != nil {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrowshape.turn.up.left")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                            Text("Reply")
+                                .font(.roundedCaption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
                     // Chat bubbles
                     ForEach(group.messages) { message in
                         ChatBubble(message: message, account: group.account, isSent: true)
@@ -723,9 +861,15 @@ struct ChatMessageGroup: View {
                 }
             }
             .padding(.vertical, 4)
+            .padding(.leading, group.threadDepth > 0 ? CGFloat(group.threadDepth) * indentPerLevel : 0)
         } else {
             // Received messages (left-aligned)
             HStack(alignment: .bottom, spacing: 8) {
+                // Thread connectors for nested replies
+                if group.threadDepth > 0 {
+                    threadConnectors
+                }
+                
                 // Avatar (only shown for first message in group)
                 if group.messages.first != nil {
                     Button {
@@ -745,18 +889,28 @@ struct ChatMessageGroup: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // Account name (only for first message)
                     if !group.messages.isEmpty {
-                        Button {
-                            appState.navigate(to: .profile(group.account))
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(group.account.displayName)
-                                    .font(.roundedCaption.bold())
+                        HStack(spacing: 4) {
+                            // Thread indicator for replies
+                            if group.threadDepth > 0, let firstMessage = group.messages.first,
+                               let status = firstMessage.status, status.inReplyToId != nil {
+                                Image(systemName: "arrowshape.turn.up.left")
+                                    .font(.system(size: 10))
                                     .foregroundStyle(.secondary)
-                                
-                                AccountBadgesView(account: group.account, size: .small)
                             }
+                            
+                            Button {
+                                appState.navigate(to: .profile(group.account))
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(group.account.displayName)
+                                        .font(.roundedCaption.bold())
+                                        .foregroundStyle(.secondary)
+                                    
+                                    AccountBadgesView(account: group.account, size: .small)
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                     
                     // Chat bubbles
@@ -769,6 +923,28 @@ struct ChatMessageGroup: View {
             }
             .padding(.vertical, 4)
         }
+    }
+    
+    @ViewBuilder
+    private var threadConnectors: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<group.threadDepth, id: \.self) { level in
+                if level == group.threadDepth - 1 {
+                    // Current level: show connector line
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(width: 2)
+                } else {
+                    // Previous levels: show vertical line
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.2))
+                        .frame(width: 2)
+                }
+                Spacer()
+                    .frame(width: indentPerLevel - 2)
+            }
+        }
+        .frame(width: CGFloat(group.threadDepth) * indentPerLevel)
     }
 }
 

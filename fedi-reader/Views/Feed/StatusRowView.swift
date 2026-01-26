@@ -32,6 +32,11 @@ struct StatusRowView: View {
                 reblogGradientStrip
             }
             
+            // Reply indicator (if this is a reply)
+            if displayStatus.inReplyToId != nil {
+                replyIndicator
+            }
+            
             // Author info
             authorHeader
         
@@ -64,6 +69,36 @@ struct StatusRowView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
+    }
+    
+    // MARK: - Reply Indicator
+    
+    private var replyIndicator: some View {
+        Button {
+            if let replyToId = displayStatus.inReplyToId {
+                appState.navigate(to: .thread(statusId: replyToId))
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrowshape.turn.up.left")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                
+                if displayStatus.inReplyToAccountId != nil {
+                    Text("Replying to")
+                        .font(.roundedCaption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Reply")
+                        .font(.roundedCaption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.secondary.opacity(0.1), in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
     
     // MARK: - Reblog Gradient Strip
