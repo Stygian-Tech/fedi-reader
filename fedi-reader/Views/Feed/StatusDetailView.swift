@@ -26,15 +26,7 @@ struct StatusDetailRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if status.isReblog {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.2.squarepath")
-                        .font(.roundedCaption)
-
-                    Text("\(status.account.displayName) boosted")
-                        .font(.roundedCaption)
-                }
-                .foregroundStyle(.secondary)
-                .padding(.leading, Constants.UI.avatarSize + 10)
+                reblogIndicator
             }
 
             HStack(spacing: 10) {
@@ -210,6 +202,37 @@ struct StatusDetailRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
+    }
+    
+    // MARK: - Reblog Indicator
+    
+    private var reblogIndicator: some View {
+        Button {
+            appState.navigate(to: .profile(status.account))
+        } label: {
+            HStack(spacing: 8) {
+                ProfileAvatarView(url: status.account.avatarURL, size: 24)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.2.squarepath")
+                        .font(.roundedCaption2)
+                    
+                    Text("Boosted by")
+                        .font(.roundedCaption)
+                    
+                    Text(status.account.displayName)
+                        .font(.roundedCaption.bold())
+                        .lineLimit(1)
+                    
+                    AccountBadgesView(account: status.account, size: .small)
+                }
+                .foregroundStyle(.secondary)
+                
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
     }
 }
 
