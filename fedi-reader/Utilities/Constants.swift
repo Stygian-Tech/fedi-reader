@@ -47,6 +47,7 @@ enum Constants {
         static let conversationRead = "/api/v1/conversations" // Use with /:id/read
         
         static let statuses = "/api/v1/statuses"
+        static let asyncRefreshes = "/api/v1_alpha/async_refreshes"
         static let accounts = "/api/v1/accounts"
         static let search = "/api/v2/search"
         
@@ -163,6 +164,8 @@ enum Constants {
         static let fetchTimeout: TimeInterval = 10
         static let maxConcurrentFetches = 5
         static let maxRetries = 2
+        /// Max polling attempts for async refresh before giving up (~2 min at typical retry=5–10s).
+        static let asyncRefreshMaxPollAttempts = 15
     }
 }
 

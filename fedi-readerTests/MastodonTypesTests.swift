@@ -148,4 +148,47 @@ struct MastodonTypesTests {
         #expect(decoded.id == account.id)
         #expect(decoded.username == account.username)
     }
+    
+    // MARK: - AsyncRefreshHeader Parse Tests
+    
+    @Test("AsyncRefreshHeader parses valid header")
+    func asyncRefreshHeaderParsesValid() {
+        let raw = #"id="ImNvbnRleHQ6MTEzNjQwNTczMzAzNzg1MTc4OnJlZnJlc2gi--c526259eb4a1f3ef0d4b91cf8c99bf501330a815", retry=5, result_count=2"#
+        let parsed = AsyncRefreshHeader.parse(headerValue: raw)
+        #expect(parsed != nil)
+        #expect(parsed?.id == "ImNvbnRleHQ6MTEzNjQwNTczMzAzNzg1MTc4OnJlZnJlc2gi--c526259eb4a1f3ef0d4b91cf8c99bf501330a815")
+        #expect(parsed?.retrySeconds == 5)
+        #expect(parsed?.resultCount == 2)
+    }
+    
+    @Test("AsyncRefreshHeader parses header without result_count")
+    func asyncRefreshHeaderParsesWithoutResultCount() {
+        let raw = #"id="abc123", retry=10"#
+        let parsed = AsyncRefreshHeader.parse(headerValue: raw)
+        #expect(parsed != nil)
+        #expect(parsed?.id == "abc123")
+        #expect(parsed?.retrySeconds == 10)
+        #expect(parsed?.resultCount == nil)
+    }
+    
+    @Test("AsyncRefreshHeader returns nil for missing id")
+    func asyncRefreshHeaderMissingId() {
+        let raw = #"retry=5, result_count=2"#
+        #expect(AsyncRefreshHeader.parse(headerValue: raw) == nil)
+    }
+    
+    @Test("AsyncRefreshHeader returns nil for missing retry")
+    func asyncRefreshHeaderMissingRetry() {
+        let raw = #"id="abc", result_count=2"#
+        #expect(AsyncRefreshHeader.parse(headerValue: raw) == nil)
+    }
+    
+    @Test("AsyncRefreshHeader returns nil for malformed or empty")
+    func asyncRefreshHeaderMalformed() {
+        #expect(AsyncRefreshHeader.parse(headerValue: nil) == nil)
+        #expect(AsyncRefreshHeader.parse(headerValue: "") == nil)
+        #expect(AsyncRefreshHeader.parse(headerValue: "  ") == nil)
+        #expect(AsyncRefreshHeader.parse(headerValue: "junk") == nil)
+        #expect(AsyncRefreshHeader.parse(headerValue: #"id="x", retry=0"#) == nil)
+    }
 }

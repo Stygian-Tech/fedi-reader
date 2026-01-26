@@ -371,8 +371,10 @@ struct StatusDetailView: View {
             await loadContext()
         }
         .refreshable {
-            // Allow manual refresh of replies
             await refreshReplies()
+        }
+        .onDisappear {
+            timelineWrapper.service?.cancelAsyncRefreshPolling(forStatusId: status.id)
         }
         .onReceive(NotificationCenter.default.publisher(for: .statusContextDidUpdate)) { notification in
             // Update context when remote replies are fetched
@@ -428,9 +430,8 @@ struct StatusDetailView: View {
         isLoadingRemoteReplies = true
         
         do {
-            // Force refresh by fetching remote replies
-            _ = try await service.fetchRemoteReplies(for: status)
-            // Context will be updated via notification
+            try await service.refreshContextForStatus(status)
+            // Context updated via notification (immediate if no async refresh, else when polling finishes)
         } catch {
             isLoadingRemoteReplies = false
         }

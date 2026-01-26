@@ -49,6 +49,9 @@ final class TimelineService {
     private var listTimelineMaxId: String?
     private var listAccountsMaxId: String?
     
+    /// Polling tasks for async refresh, keyed by status ID. Cancelled when starting a new refresh for same status or via cancelAsyncRefreshPolling.
+    private var asyncRefreshPollingTasks: [String: Task<Void, Never>] = [:]
+    
     // Error state
     var error: Error?
     
@@ -399,7 +402,6 @@ final class TimelineService {
             throw FediReaderError.noActiveAccount
         }
         
-        // Use enhanced context fetching with async refresh support
         let contextWithRefresh = try await client.getStatusContextWithRefresh(
             instance: account.instance,
             accessToken: token,
@@ -408,43 +410,117 @@ final class TimelineService {
         
         let context = contextWithRefresh.context
         
-        // If async refresh is indicated or we suspect missing replies, fetch remote replies
-        if contextWithRefresh.asyncRefreshId != nil || shouldFetchRemoteReplies(context: context, status: status) {
+        if let header = contextWithRefresh.asyncRefreshHeader {
+            Self.logger.info("Async refresh header present for status \(status.id.prefix(8), privacy: .public), starting polling")
+            startAsyncRefreshPolling(status: status, header: header, instance: account.instance, token: token)
+        } else if shouldFetchRemoteReplies(context: context, status: status) {
             Self.logger.info("Fetching remote replies for status: \(status.id.prefix(8), privacy: .public)")
-            
-            // Fetch remote replies in background (don't block initial return)
             Task { [context] in
-                // Use a copy of context to avoid capturing mutable state
                 let allReplies = await remoteReplyService.fetchRemoteReplies(for: status)
-                
-                // Merge remote replies into context descendants
                 let existingIds = Set(context.descendants.map { $0.id })
                 var mergedDescendants = context.descendants
-                
                 for reply in allReplies {
                     if !existingIds.contains(reply.id) {
                         mergedDescendants.append(reply)
                     }
                 }
-                
-                // Sort by creation date
                 mergedDescendants.sort { $0.createdAt < $1.createdAt }
-                
-                // Update context with merged descendants
                 let updatedContext = StatusContext(
                     ancestors: context.ancestors,
                     descendants: mergedDescendants,
                     hasMoreReplies: context.hasMoreReplies,
                     asyncRefreshId: context.asyncRefreshId
                 )
-                
-                // Post notification for UI update
                 let payload = StatusContextUpdatePayload(statusId: status.id, context: updatedContext)
                 NotificationCenter.default.post(name: .statusContextDidUpdate, object: payload)
             }
         }
         
         return context
+    }
+    
+    /// Re-GETs context for a status, runs async-refresh polling if header present, then updates UI via notification.
+    /// Use for "Fetch Remote" and any explicit refresh.
+    func refreshContextForStatus(_ status: Status) async throws {
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            throw FediReaderError.noActiveAccount
+        }
+        
+        let contextWithRefresh = try await client.getStatusContextWithRefresh(
+            instance: account.instance,
+            accessToken: token,
+            id: status.id
+        )
+        
+        let context = contextWithRefresh.context
+        
+        if let header = contextWithRefresh.asyncRefreshHeader {
+            Self.logger.info("Async refresh header present on refresh for status \(status.id.prefix(8), privacy: .public), starting polling")
+            startAsyncRefreshPolling(status: status, header: header, instance: account.instance, token: token)
+        } else {
+            let payload = StatusContextUpdatePayload(statusId: status.id, context: context)
+            NotificationCenter.default.post(name: .statusContextDidUpdate, object: payload)
+        }
+    }
+    
+    /// Cancels any active async-refresh polling for the given status. Call when leaving thread or starting a new refresh.
+    func cancelAsyncRefreshPolling(forStatusId statusId: String) {
+        asyncRefreshPollingTasks[statusId]?.cancel()
+        asyncRefreshPollingTasks.removeValue(forKey: statusId)
+    }
+    
+    private func startAsyncRefreshPolling(status: Status, header: AsyncRefreshHeader, instance: String, token: String) {
+        asyncRefreshPollingTasks[status.id]?.cancel()
+        asyncRefreshPollingTasks.removeValue(forKey: status.id)
+        
+        let task = Task { [weak self] in
+            guard let self else { return }
+            var attempts = 0
+            let maxAttempts = Constants.RemoteReplies.asyncRefreshMaxPollAttempts
+            
+            while !Task.isCancelled, attempts < maxAttempts {
+                do {
+                    let refresh = try await self.client.getAsyncRefresh(instance: instance, accessToken: token, id: header.id)
+                    if refresh.status == "finished" {
+                        Self.logger.info("Async refresh finished for status \(status.id.prefix(8), privacy: .public)")
+                        break
+                    }
+                } catch let err as FediReaderError {
+                    if case .serverError(404, _) = err {
+                        Self.logger.debug("Async refresh 404 for id \(header.id.prefix(12), privacy: .public), stopping poll")
+                        break
+                    }
+                    Self.logger.debug("Async refresh poll error: \(err.localizedDescription)")
+                } catch {
+                    Self.logger.debug("Async refresh poll error: \(error.localizedDescription)")
+                }
+                
+                attempts += 1
+                if Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: UInt64(header.retrySeconds) * 1_000_000_000)
+            }
+            
+            if Task.isCancelled { return }
+            
+            do {
+                guard let account = self.authService.currentAccount,
+                      let tok = await self.authService.getAccessToken(for: account) else { return }
+                let ctxWithRefresh = try await self.client.getStatusContextWithRefresh(
+                    instance: account.instance,
+                    accessToken: tok,
+                    id: status.id
+                )
+                let payload = StatusContextUpdatePayload(statusId: status.id, context: ctxWithRefresh.context)
+                NotificationCenter.default.post(name: .statusContextDidUpdate, object: payload)
+            } catch {
+                Self.logger.error("Failed to re-fetch context after async refresh: \(error.localizedDescription)")
+            }
+            
+            self.asyncRefreshPollingTasks.removeValue(forKey: status.id)
+        }
+        
+        asyncRefreshPollingTasks[status.id] = task
     }
     
     /// Fetches remote replies for a status and returns updated context

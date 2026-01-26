@@ -232,9 +232,9 @@ struct EmojiServiceTests {
     @Test("Handles HTML with no emoji lookup")
     func handlesHTMLWithNoLookup() {
         let html = "Hello :test: world"
-        let result = HTMLParser.replaceEmojiShortcodes(html, emojiLookup: nil)
+        let result = HTMLParser.replaceEmojiShortcodes(html, emojiLookup: [:])
         
-        // Should handle nil lookup gracefully
+        // With empty lookup, shortcodes are left as-is
         #expect(result == html)
     }
     

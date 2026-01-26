@@ -78,7 +78,12 @@ final class RemoteReplyService {
         }
     }
     
-    /// Fetches missing replies by comparing expected count with known descendants
+    /// Fetches missing replies by comparing expected count with known descendants.
+    ///
+    /// We intentionally return `[]` because the API does not expose specific missing reply URIs.
+    /// **Missing replies are handled via async refresh**: when the server returns
+    /// `Mastodon-Async-Refresh`, we poll `GET /api/v1_alpha/async_refreshes/:id`, then re-GET
+    /// context. That flow (in TimelineService) is what fills in newly fetched replies—not this helper.
     func fetchMissingReplies(
         context: StatusContext,
         status: Status,
@@ -88,7 +93,6 @@ final class RemoteReplyService {
         let expectedCount = status.repliesCount
         let knownCount = context.descendants.count
         
-        // If we have all replies or no expected count, return empty
         guard expectedCount > knownCount else {
             Self.logger.debug("No missing replies detected (expected: \(expectedCount), known: \(knownCount))")
             return []
@@ -97,23 +101,10 @@ final class RemoteReplyService {
         let missingCount = expectedCount - knownCount
         Self.logger.info("Detected \(missingCount) missing replies, attempting to fetch")
         
-        // The Mastodon /context endpoint may not return all replies, especially for remote instances.
-        // We can try to resolve missing replies, but the API doesn't provide a direct way to fetch
-        // specific missing reply URIs. The best we can do is:
-        // 1. Check if any descendants have inReplyToId pointing to our status
-        // 2. Try to resolve remote status URIs if we can identify them
-        
-        // For now, we'll return empty since we can't reliably identify which specific replies are missing.
-        // The Mastodon API's /context endpoint should return all available replies.
-        // If some are missing, it's likely because:
-        // - They're from instances that haven't federated yet
-        // - They're filtered by the instance's policies
-        // - The instance is using async refresh (handled by the header)
-        
-        Self.logger.debug("Missing replies detection: expected \(expectedCount), have \(knownCount). Context endpoint should provide all available replies.")
-        
-        // If async refresh is happening, the server will fetch missing replies in the background.
-        // We can't do much more here without additional API support.
+        // The /context endpoint may not return all replies (e.g. remote instances, policy filters).
+        // We cannot identify which specific replies are missing. Async refresh + re-GET context
+        // (see TimelineService) handles those cases; this helper remains a no-op.
+        Self.logger.debug("Missing replies: expected \(expectedCount), have \(knownCount). Rely on async refresh + re-GET context.")
         
         return []
     }
