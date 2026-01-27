@@ -63,6 +63,10 @@ struct LinkFeedView: View {
         return service.listAccounts
     }
     
+    private var currentUserFilter: String? {
+        appState.userFilterPerFeedId[currentTab.id]
+    }
+    
     private var filteredStatuses: [LinkStatus] {
         var statuses = linkFilterService.linkStatuses
         
@@ -70,11 +74,7 @@ struct LinkFeedView: View {
             statuses = linkFilterService.filterByDomain(domain)
         }
         
-        if let userFilter = appState.selectedUserFilter {
-            statuses = statuses.filter { linkStatus in
-                linkStatus.status.displayStatus.account.id == userFilter
-            }
-        }
+        statuses = linkFilterService.filter(linkStatuses: statuses, byAccountId: currentUserFilter)
         
         return statuses
     }
@@ -154,9 +154,9 @@ struct LinkFeedView: View {
                 Button {
                     appState.isUserFilterOpen = true
                 } label: {
-                    Image(systemName: appState.selectedUserFilter != nil ? "person.fill" : "person.2")
+                    Image(systemName: currentUserFilter != nil ? "person.fill" : "person.2")
                 }
-                .accessibilityLabel(appState.selectedUserFilter != nil ? "User filter active" : "Filter by user")
+                .accessibilityLabel(currentUserFilter != nil ? "User filter active" : "Filter by user")
                 .accessibilityHint("Opens user filter pane")
             }
 
@@ -195,9 +195,14 @@ struct LinkFeedView: View {
         }
         .sheet(isPresented: $state.isUserFilterOpen) {
             UserFilterPane(
+                feedId: currentTab.id,
                 accounts: currentAccounts,
                 onSelectAccount: { account in
-                    appState.selectedUserFilter = account?.id
+                    if let id = account?.id {
+                        appState.userFilterPerFeedId[currentTab.id] = id
+                    } else {
+                        appState.userFilterPerFeedId.removeValue(forKey: currentTab.id)
+                    }
                     appState.isUserFilterOpen = false
                 }
             )
@@ -344,7 +349,6 @@ struct LinkFeedView: View {
         if appState.selectedListId != listId {
             appState.selectedListId = listId
         }
-        appState.selectedUserFilter = nil
         selectedDomain = nil
         
         // Switch the active feed in LinkFilterService

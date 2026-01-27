@@ -135,6 +135,101 @@ struct LinkFilterServiceTests {
         #expect(linkStatuses.first?.primaryURL.absoluteString == "https://example.com/article")
     }
     
+    // MARK: - Threads/Instagram Exclusion
+    
+    @Test("Excludes Threads and Instagram links from processed results")
+    func excludesThreadsAndInstagramLinks() async {
+        let statuses = [
+            MockStatusFactory.makeStatus(
+                id: "threads-net",
+                hasCard: true,
+                cardURL: "https://www.threads.net/@user/post/123"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "threads-com",
+                hasCard: true,
+                cardURL: "https://www.threads.com/some/post"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "instagram",
+                hasCard: true,
+                cardURL: "https://www.instagram.com/p/xyz"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "content-threads",
+                content: "<p>Check this <a href=\"https://threads.net/@x/post/1\">link</a></p>"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "article",
+                hasCard: true,
+                cardURL: "https://example.com/article"
+            )
+        ]
+        
+        let linkStatuses = await service.processStatuses(statuses)
+        
+        #expect(linkStatuses.count == 1)
+        #expect(linkStatuses.first?.id == "article")
+        #expect(linkStatuses.first?.primaryURL.absoluteString == "https://example.com/article")
+    }
+    
+    @Test("Excludes Threads and Instagram subdomains and bare domains")
+    func excludesThreadsAndInstagramSubdomainsAndBareDomains() async {
+        let statuses = [
+            MockStatusFactory.makeStatus(
+                id: "lm-threads",
+                hasCard: true,
+                cardURL: "https://lm.threads.com/post/abc"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "bare-threads",
+                hasCard: true,
+                cardURL: "https://threads.com/post/xyz"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "lm-insta",
+                hasCard: true,
+                cardURL: "https://lm.instagram.com/reel/123"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "bare-insta",
+                hasCard: true,
+                cardURL: "https://instagram.com/p/abc"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "article",
+                hasCard: true,
+                cardURL: "https://example.com/article"
+            )
+        ]
+        
+        let linkStatuses = await service.processStatuses(statuses)
+        
+        #expect(linkStatuses.count == 1)
+        #expect(linkStatuses.first?.id == "article")
+        #expect(linkStatuses.first?.primaryURL.absoluteString == "https://example.com/article")
+    }
+    
+    // MARK: - Quote Post Detection (pattern-based)
+    
+    @Test("Detects quote post via RE: prefix in content")
+    func detectsQuotePostViaREPrefix() async {
+        let status = MockStatusFactory.makeStatus(
+            content: "<p>RE: my take on this</p>",
+            isQuote: false
+        )
+        #expect(service.isQuotePost(status) == true)
+    }
+    
+    @Test("Detects quote post via QT: prefix in content")
+    func detectsQuotePostViaQTPrefix() async {
+        let status = MockStatusFactory.makeStatus(
+            content: "<p>QT: something quoted</p>",
+            isQuote: false
+        )
+        #expect(service.isQuotePost(status) == true)
+    }
+    
     // MARK: - Filtering by Domain
     
     @Test("Filters link statuses by domain")
@@ -173,5 +268,35 @@ struct LinkFilterServiceTests {
         #expect(domains.count == 2)
         #expect(domains.contains("example.com"))
         #expect(domains.contains("other.com"))
+    }
+    
+    // MARK: - Filter by Account
+    
+    @Test("Filter by account ID returns only matching link statuses")
+    func filterByAccountIdReturnsOnlyMatching() async {
+        let statuses = [
+            MockStatusFactory.makeStatus(id: "1", hasCard: true, cardURL: "https://example.com/a"),
+            MockStatusFactory.makeStatus(id: "2", hasCard: true, cardURL: "https://example.com/b")
+        ]
+        let linkStatuses = await service.processStatuses(statuses)
+        #expect(linkStatuses.count == 2)
+        
+        let accountId = linkStatuses[0].status.displayStatus.account.id
+        let filtered = service.filter(linkStatuses: linkStatuses, byAccountId: accountId)
+        
+        #expect(filtered.count == 1)
+        #expect(filtered[0].status.displayStatus.account.id == accountId)
+    }
+    
+    @Test("Filter by nil account ID returns all link statuses")
+    func filterByNilAccountIdReturnsAll() async {
+        let statuses = [
+            MockStatusFactory.makeStatus(id: "1", hasCard: true, cardURL: "https://example.com/a"),
+            MockStatusFactory.makeStatus(id: "2", hasCard: true, cardURL: "https://example.com/b")
+        ]
+        let linkStatuses = await service.processStatuses(statuses)
+        let filtered = service.filter(linkStatuses: linkStatuses, byAccountId: nil)
+        
+        #expect(filtered.count == 2)
     }
 }

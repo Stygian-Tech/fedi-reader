@@ -131,6 +131,7 @@ final class LinkFilterService {
             }
             
             guard let url = primaryURL else { continue }
+            guard !isThreadsOrInstagramURL(url) else { continue }
             
             let linkStatus = LinkStatus(
                 status: status,
@@ -271,6 +272,15 @@ final class LinkFilterService {
     
     // MARK: - Link Extraction
     
+    /// Returns true if the URL points to Threads or Instagram (social posts, not articles).
+    private func isThreadsOrInstagramURL(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        if host == "threads.net" || host == "www.threads.net" || host.hasSuffix(".threads.net") { return true }
+        if host == "threads.com" || host == "www.threads.com" || host.hasSuffix(".threads.com") { return true }
+        if host == "instagram.com" || host == "www.instagram.com" || host.hasSuffix(".instagram.com") { return true }
+        return false
+    }
+    
     /// Extracts external links from a status
     func extractExternalLinks(from status: Status) -> [URL] {
         // Get the instance domain to exclude internal links
@@ -324,6 +334,12 @@ final class LinkFilterService {
             guard let host = linkStatus.primaryURL.host?.lowercased() else { return false }
             return host.contains(domain.lowercased())
         }
+    }
+    
+    /// Filters link statuses by author account ID. Returns all when `accountId` is nil.
+    func filter(linkStatuses: [LinkStatus], byAccountId accountId: String?) -> [LinkStatus] {
+        guard let accountId = accountId else { return linkStatuses }
+        return linkStatuses.filter { $0.status.displayStatus.account.id == accountId }
     }
     
     /// Filters link statuses that have images

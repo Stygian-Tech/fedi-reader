@@ -27,7 +27,7 @@ final class AppState {
     // List and filter state
     var selectedListId: String? = nil  // nil = Home timeline
     var isUserFilterOpen = false
-    var selectedUserFilter: String? = nil  // Account ID to filter by
+    var userFilterPerFeedId: [String: String] = [:]  // feedId -> accountId
     
     // Navigation state
     var navigationPath: [NavigationDestination] = []

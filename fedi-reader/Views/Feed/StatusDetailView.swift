@@ -10,6 +10,7 @@ import SwiftUI
 struct StatusDetailRowView: View {
     let status: Status
     @Environment(AppState.self) private var appState
+    @AppStorage("showHandleInFeed") private var showHandleInFeed = false
 
     @State private var fediverseCreatorName: String?
     @State private var fediverseCreatorURL: URL?
@@ -44,6 +45,12 @@ struct StatusDetailRowView: View {
                             .lineLimit(1)
 
                         AccountBadgesView(account: displayStatus.account, size: .small)
+                    }
+                    if showHandleInFeed {
+                        Text("@\(displayStatus.account.acct)")
+                            .font(.roundedCaption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
 

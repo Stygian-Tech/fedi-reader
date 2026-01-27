@@ -18,6 +18,7 @@ struct StatusRowView: View {
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
+    @AppStorage("showHandleInFeed") private var showHandleInFeed = false
     
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
@@ -190,14 +191,20 @@ struct StatusRowView: View {
             }
             .buttonStyle(.plain)
             
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(displayStatus.account.displayName)
-                        .font(.roundedSubheadline.bold())
-                        .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(displayStatus.account.displayName)
+                            .font(.roundedSubheadline.bold())
+                            .lineLimit(1)
                     
                     AccountBadgesView(account: displayStatus.account, size: .small)
                 }
+                    if showHandleInFeed {
+                        Text("@\(displayStatus.account.acct)")
+                            .font(.roundedCaption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
             }
             
             Spacer()

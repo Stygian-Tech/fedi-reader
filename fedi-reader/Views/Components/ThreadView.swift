@@ -170,6 +170,7 @@ struct CompactStatusRowView: View {
     let status: Status
     let depth: Int
     @Environment(AppState.self) private var appState
+    @AppStorage("showHandleInFeed") private var showHandleInFeed = false
     
     var displayStatus: Status {
         status.displayStatus
@@ -193,6 +194,13 @@ struct CompactStatusRowView: View {
                             .lineLimit(1)
                         
                         AccountBadgesView(account: displayStatus.account, size: .small)
+                    }
+                    
+                    if showHandleInFeed {
+                        Text("@\(displayStatus.account.acct)")
+                            .font(.roundedCaption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                     
                     Text(TimeFormatter.relativeTimeString(from: displayStatus.createdAt))

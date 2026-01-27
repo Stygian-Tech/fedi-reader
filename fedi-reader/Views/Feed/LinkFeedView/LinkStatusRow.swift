@@ -18,6 +18,7 @@ struct LinkStatusRow: View {
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
+    @AppStorage("showHandleInFeed") private var showHandleInFeed = false
 
     @State private var isShowingActions = false
     @State private var blueskyDescription: String?
@@ -141,6 +142,12 @@ struct LinkStatusRow: View {
                         .lineLimit(1)
 
                     AccountBadgesView(account: linkStatus.status.displayStatus.account, size: .small)
+                }
+                if showHandleInFeed {
+                    Text("@\(linkStatus.status.displayStatus.account.acct)")
+                        .font(.roundedCaption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
 

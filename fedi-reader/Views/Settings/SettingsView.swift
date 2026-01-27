@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("defaultListId") private var defaultListId = ""
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
+    @AppStorage("showHandleInFeed") private var showHandleInFeed = false
     
     private var lists: [MastodonList] {
         timelineWrapper.service?.lists ?? []
@@ -31,6 +32,7 @@ struct SettingsView: View {
                 Toggle("Show Images", isOn: $showImages)
                 Toggle("Auto-play GIFs", isOn: $autoPlayGifs)
                 Toggle("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
+                Toggle("Show Handle in Feed", isOn: $showHandleInFeed)
                 
                 Picker("Theme Color", selection: $themeColorName) {
                     ForEach(ThemeColor.allCases, id: \.rawValue) { color in

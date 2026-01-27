@@ -11,6 +11,7 @@ struct UserFilterPane: View {
     @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     
+    let feedId: String
     let accounts: [MastodonAccount]
     let onSelectAccount: (MastodonAccount?) -> Void
     
@@ -64,7 +65,7 @@ struct UserFilterPane: View {
                         
                         Spacer()
                         
-                        if appState.selectedUserFilter == nil {
+                        if appState.userFilterPerFeedId[feedId] == nil {
                             Image(systemName: "checkmark")
                                 .foregroundStyle(.tint)
                         }
@@ -90,7 +91,7 @@ struct UserFilterPane: View {
                         ForEach(filteredAccounts) { account in
                             UserFilterRow(
                                 account: account,
-                                isSelected: appState.selectedUserFilter == account.id,
+                                isSelected: appState.userFilterPerFeedId[feedId] == account.id,
                                 onSelect: {
                                     onSelectAccount(account)
                                 }
@@ -158,6 +159,7 @@ struct UserFilterRow: View {
 
 #Preview {
     UserFilterPane(
+        feedId: "home",
         accounts: [],
         onSelectAccount: { _ in }
     )
