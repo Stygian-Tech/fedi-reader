@@ -325,8 +325,8 @@ struct LinkFeedView: View {
             selectedTabIndex = index
         }
         
-        // Load content for current tab
-        await loadContentForTab(currentTab)
+        // Load content for current tab (force refresh on initial load)
+        await loadContentForTab(currentTab, forceRefresh: true)
         
         // Pre-fetch adjacent feeds in background
         Task.detached(priority: .background) { [feedTabs, selectedTabIndex] in
@@ -361,13 +361,13 @@ struct LinkFeedView: View {
         }
     }
     
-    private func loadContentForTab(_ tab: FeedTabItem) async {
+    private func loadContentForTab(_ tab: FeedTabItem, forceRefresh: Bool = false) async {
         guard let service = timelineService else { return }
         
         linkFilterService.switchToFeed(tab.id)
         
         if tab.isHome {
-            if service.homeTimeline.isEmpty {
+            if forceRefresh || service.homeTimeline.isEmpty {
                 await service.refreshHomeTimeline()
             }
             _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
