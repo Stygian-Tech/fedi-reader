@@ -6,16 +6,25 @@
 //
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct StatusRowView: View {
     let status: Status
     @Environment(AppState.self) private var appState
+    @Environment(ReadLaterManager.self) private var readLaterManager
+    @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
     
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
     @State private var fediverseCreatorName: String?
     @State private var fediverseCreatorURL: URL?
+    @State private var isProcessing = false
+    @State private var localBookmarked: Bool?
     
     var displayStatus: Status {
         status.displayStatus
@@ -23,6 +32,14 @@ struct StatusRowView: View {
     
     private var themeColor: Color {
         ThemeColor(rawValue: themeColorName)?.color ?? .blue
+    }
+    
+    private var isBookmarked: Bool {
+        localBookmarked ?? displayStatus.bookmarked ?? false
+    }
+    
+    private var statusURL: URL? {
+        displayStatus.card?.linkURL ?? URL(string: displayStatus.url ?? "")
     }
     
     var body: some View {
@@ -69,6 +86,15 @@ struct StatusRowView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
+        .contextMenu {
+            contextMenuContent
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .statusDidUpdate)) { notification in
+            guard let updated = notification.object as? Status else { return }
+            if updated.id == displayStatus.id {
+                localBookmarked = updated.bookmarked
+            }
+        }
     }
     
     // MARK: - Reply Indicator
@@ -491,6 +517,116 @@ struct StatusRowView: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(isVoted ? Color.accentColor : Color.clear, lineWidth: 2)
         )
+    }
+    
+    // MARK: - Context Menu
+    
+    @ViewBuilder
+    private var contextMenuContent: some View {
+        // Bookmark
+        Button {
+            Task {
+                await toggleBookmark()
+            }
+        } label: {
+            Label(
+                isBookmarked ? "Remove Bookmark" : "Bookmark",
+                systemImage: isBookmarked ? "bookmark.fill" : "bookmark"
+            )
+        }
+        
+        // Read Later (if configured and URL available)
+        if readLaterManager.hasConfiguredServices, let url = statusURL {
+            Divider()
+            
+            if let primary = readLaterManager.primaryService, let serviceType = primary.service {
+                Button {
+                    Task {
+                        try? await readLaterManager.save(
+                            url: url,
+                            title: displayStatus.card?.title,
+                            to: serviceType
+                        )
+                    }
+                } label: {
+                    Label("Save to \(serviceType.displayName)", systemImage: serviceType.iconName)
+                }
+            }
+            
+            Menu {
+                ForEach(readLaterManager.configuredServices, id: \.id) { config in
+                    if let serviceType = config.service {
+                        Button {
+                            Task {
+                                try? await readLaterManager.save(
+                                    url: url,
+                                    title: displayStatus.card?.title,
+                                    to: serviceType
+                                )
+                            }
+                        } label: {
+                            Label(serviceType.displayName, systemImage: serviceType.iconName)
+                        }
+                    }
+                }
+            } label: {
+                Label("Save to...", systemImage: "bookmark.circle")
+            }
+        }
+        
+        Divider()
+        
+        // Reply
+        Button {
+            appState.present(sheet: .compose(replyTo: displayStatus))
+        } label: {
+            Label("Reply", systemImage: "arrowshape.turn.up.left")
+        }
+        
+        // Quote
+        Button {
+            appState.present(sheet: .compose(quote: status))
+        } label: {
+            Label("Quote", systemImage: "quote.bubble")
+        }
+        
+        // Share and Copy Link (if URL available)
+        if let url = statusURL {
+            Divider()
+            
+            ShareLink(item: url) {
+                Label("Share Link", systemImage: "square.and.arrow.up")
+            }
+            
+            Button {
+                #if os(iOS)
+                UIPasteboard.general.url = url
+                #elseif os(macOS)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(url.absoluteString, forType: .URL)
+                #endif
+            } label: {
+                Label("Copy Link", systemImage: "doc.on.doc")
+            }
+        }
+    }
+    
+    private func toggleBookmark() async {
+        guard let service = timelineWrapper.service else { return }
+        
+        isProcessing = true
+        defer { isProcessing = false }
+        
+        let wasBookmarked = isBookmarked
+        localBookmarked = !wasBookmarked
+        
+        do {
+            let updated = try await service.bookmark(status: status)
+            localBookmarked = updated.bookmarked
+        } catch {
+            localBookmarked = wasBookmarked
+            appState.handleError(error)
+        }
     }
 }
 

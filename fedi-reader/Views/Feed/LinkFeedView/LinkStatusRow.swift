@@ -16,15 +16,22 @@ struct LinkStatusRow: View {
     let linkStatus: LinkStatus
     @Environment(AppState.self) private var appState
     @Environment(ReadLaterManager.self) private var readLaterManager
+    @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
 
     @State private var isShowingActions = false
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
     @State private var resolvedMastodonAccount: MastodonAccount?
+    @State private var isProcessing = false
+    @State private var localBookmarked: Bool?
 
     private var themeColor: Color {
         ThemeColor(rawValue: themeColorName)?.color ?? .blue
+    }
+    
+    private var isBookmarked: Bool {
+        localBookmarked ?? linkStatus.status.displayStatus.bookmarked ?? false
     }
 
     var body: some View {
@@ -58,6 +65,12 @@ struct LinkStatusRow: View {
         .buttonStyle(.plain)
         .contextMenu {
             contextMenuContent
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .statusDidUpdate)) { notification in
+            guard let updated = notification.object as? Status else { return }
+            if updated.id == linkStatus.status.displayStatus.id {
+                localBookmarked = updated.bookmarked
+            }
         }
         .task(id: blueskyCardURL?.absoluteString) {
             guard let url = blueskyCardURL, !hasLoadedBlueskyDescription else { return }
@@ -431,6 +444,18 @@ struct LinkStatusRow: View {
         }
 
         Divider()
+        
+        // Bookmark
+        Button {
+            Task {
+                await toggleBookmark()
+            }
+        } label: {
+            Label(
+                isBookmarked ? "Remove Bookmark" : "Bookmark",
+                systemImage: isBookmarked ? "bookmark.fill" : "bookmark"
+            )
+        }
 
         if readLaterManager.hasConfiguredServices {
             if let primary = readLaterManager.primaryService, let serviceType = primary.service {
@@ -478,6 +503,24 @@ struct LinkStatusRow: View {
             appState.present(sheet: .compose(quote: linkStatus.status))
         } label: {
             Label("Quote", systemImage: "quote.bubble")
+        }
+    }
+    
+    private func toggleBookmark() async {
+        guard let service = timelineWrapper.service else { return }
+        
+        isProcessing = true
+        defer { isProcessing = false }
+        
+        let wasBookmarked = isBookmarked
+        localBookmarked = !wasBookmarked
+        
+        do {
+            let updated = try await service.bookmark(status: linkStatus.status)
+            localBookmarked = updated.bookmarked
+        } catch {
+            localBookmarked = wasBookmarked
+            appState.handleError(error)
         }
     }
 }

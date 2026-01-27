@@ -18,6 +18,7 @@ struct SettingsView: View {
     @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("defaultListId") private var defaultListId = ""
+    @AppStorage("showQuoteBoost") private var showQuoteBoost = true
     
     private var lists: [MastodonList] {
         timelineWrapper.service?.lists ?? []
@@ -69,6 +70,8 @@ struct SettingsView: View {
                     Label("Unlisted", systemImage: "lock.open").tag("unlisted")
                     Label("Followers Only", systemImage: "lock").tag("private")
                 }
+                
+                Toggle("Show Quote Boost Option", isOn: $showQuoteBoost)
             }
             
             // Accessibility
