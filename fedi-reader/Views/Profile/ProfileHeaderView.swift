@@ -15,23 +15,23 @@ struct ProfileHeaderView: View {
         VStack(spacing: 0) {
             if let headerURL = account.headerURL, let url = URL(string: headerURL) {
                 GeometryReader { geo in
-                    let top = geo.safeAreaInsets.top
-                    let horizontal = geo.safeAreaInsets.leading + geo.safeAreaInsets.trailing
-                    let scaleX = geo.size.width > 0 ? 1 + horizontal / geo.size.width : 1
-                    let scaleY = 1 + top / 200
+                    let topInset = geo.safeAreaInsets.top
+                    let leadingInset = geo.safeAreaInsets.leading
+                    let trailingInset = geo.safeAreaInsets.trailing
+                    let fullWidth = geo.size.width + leadingInset + trailingInset
+                    let fullHeight = 200 + topInset
 
                     AsyncImage(url: url) { image in
                         image
                             .resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .scaledToFill()
                     } placeholder: {
                         Rectangle()
                             .fill(.tertiary)
                     }
-                    .frame(height: 200)
-                    .frame(maxWidth: .infinity)
+                    .frame(width: fullWidth, height: fullHeight)
                     .clipped()
-                    .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
+                    .offset(x: -leadingInset, y: -topInset)
                     .ignoresSafeArea(edges: [.top, .horizontal])
                 }
                 .frame(height: 200)

@@ -30,7 +30,7 @@ struct ProfileView: View {
                 ProfileHeaderView(account: account)
             }
             .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 0, leading: -20, bottom: 0, trailing: -20))
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             
             // Stats
             Section {
@@ -111,6 +111,8 @@ struct ProfileView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .contentMargins(.top, 0, for: .scrollContent)
+        .ignoresSafeArea(edges: .top)
     }
     
     private func statItem(count: Int, label: String) -> some View {

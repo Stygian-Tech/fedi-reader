@@ -16,23 +16,23 @@ struct ProfileDetailView: View {
             VStack(spacing: 0) {
                 if let headerURL = account.headerURL {
                     GeometryReader { geo in
-                        let top = geo.safeAreaInsets.top
-                        let horizontal = geo.safeAreaInsets.leading + geo.safeAreaInsets.trailing
-                        let scaleX = geo.size.width > 0 ? 1 + horizontal / geo.size.width : 1
-                        let scaleY = 1 + top / 200
+                        let topInset = geo.safeAreaInsets.top
+                        let leadingInset = geo.safeAreaInsets.leading
+                        let trailingInset = geo.safeAreaInsets.trailing
+                        let fullWidth = geo.size.width + leadingInset + trailingInset
+                        let fullHeight = 200 + topInset
 
                         AsyncImage(url: headerURL) { image in
                             image
                                 .resizable()
-                                .aspectRatio(contentMode: .fill)
+                                .scaledToFill()
                         } placeholder: {
                             Rectangle()
                                 .fill(.tertiary)
                         }
-                        .frame(height: 200)
-                        .frame(maxWidth: .infinity)
+                        .frame(width: fullWidth, height: fullHeight)
                         .clipped()
-                        .scaleEffect(x: scaleX, y: scaleY, anchor: .center)
+                        .offset(x: -leadingInset, y: -topInset)
                         .ignoresSafeArea(edges: [.top, .horizontal])
                     }
                     .frame(height: 200)
@@ -88,6 +88,8 @@ struct ProfileDetailView: View {
                 .padding(.bottom, 16)
             }
         }
+        .contentMargins(.top, 0, for: .scrollContent)
+        .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
