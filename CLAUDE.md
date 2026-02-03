@@ -7,25 +7,25 @@ Link-focused Mastodon news reader for iOS/macOS. Pure Swift, SwiftUI + SwiftData
 ```bash
 # Build (iOS Simulator)
 xcodebuild -scheme "fedi-reader" \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' build
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' build
 
 # Run all tests
 xcodebuild -scheme "fedi-reader" \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' test
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' test
 
 # Unit tests only
 xcodebuild -scheme "fedi-reader" \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
   -only-testing:fedi-readerTests test
 
 # Single test suite
 xcodebuild -scheme "fedi-reader" \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
   -only-testing:fedi-readerTests/HTMLParserTests test
 
 # Single test method
 xcodebuild -scheme "fedi-reader" \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
   -only-testing:fedi-readerTests/HTMLParserTests/extractsLinks test
 
 # Clean
@@ -110,6 +110,6 @@ fedi-reader/
 
 - **URL scheme**: `fedi-reader://` (OAuth callbacks, registered in Info.plist)
 - **Credentials**: Stored in Keychain via `KeychainHelper`
-- **Targets**: iOS 26.0+ / macOS 26.0+, Xcode 16.0+
+- **Targets**: iOS 26.0+ / macOS 26.0+, Xcode 26.0+
 - **No CI/CD** pipeline configured
 - **BSP**: `buildServer.json` for IDE build-server integration

@@ -16,7 +16,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   ```bash
   xcodebuild \
     -scheme "fedi-reader" \
-    -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
     build
   ```
 - Clean build artifacts:
@@ -27,14 +27,14 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   ```bash
   xcodebuild \
     -scheme "fedi-reader" \
-    -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
     test
   ```
 - Run only the unit-test target:
   ```bash
   xcodebuild \
     -scheme "fedi-reader" \
-    -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
     -only-testing:fedi-readerTests \
     test
   ```
@@ -42,13 +42,13 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   ```bash
   # Suite
   xcodebuild -scheme "fedi-reader" \
-    -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
     -only-testing:fedi-readerTests/HTMLParserTests \
     test
 
   # Single test method
   xcodebuild -scheme "fedi-reader" \
-    -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
     -only-testing:fedi-readerTests/HTMLParserTests/extractsLinks \
     test
   ```
@@ -56,7 +56,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   ```bash
   xcodebuild \
     -scheme "fedi-reader" \
-    -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+    -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
     -only-testing:fedi-readerUITests \
     test
   ```

@@ -4,7 +4,7 @@ Link-focused Mastodon news reader for iOS and macOS. SwiftUI + SwiftData, `@Obse
 
 ## Dev environment
 
-- **Xcode** 16.0+
+- **Xcode** 26.0+
 - Open [fedi-reader.xcodeproj](fedi-reader.xcodeproj), scheme **fedi-reader**
 - [buildServer.json](buildServer.json) configures BSP for IDE/build-server integration
 
@@ -12,11 +12,11 @@ Link-focused Mastodon news reader for iOS and macOS. SwiftUI + SwiftData, `@Obse
 
 - **Build** (iOS Simulator):
   ```bash
-  xcodebuild -scheme "fedi-reader" -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' build
+  xcodebuild -scheme "fedi-reader" -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' build
   ```
 - **Run all tests**:
   ```bash
-  xcodebuild -scheme "fedi-reader" -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' test
+  xcodebuild -scheme "fedi-reader" -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' test
   ```
 - **Unit tests only**: `-only-testing:fedi-readerTests`
 - **UI tests only**: `-only-testing:fedi-readerUITests`

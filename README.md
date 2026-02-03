@@ -2,7 +2,7 @@
 
 A link-focused Mastodon news reader for iOS and macOS. Fedi Reader filters your home timeline to show only posts containing external links, making it easy to discover articles and content shared by people you follow.
 
-![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)
+![Swift](https://img.shields.io/badge/Swift-5.0%20%7C%20Toolchain%206.2+-orange.svg)
 ![Platform](https://img.shields.io/badge/Platform-iOS%2026%20%7C%20macOS%2026-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
@@ -62,14 +62,13 @@ Save articles to your favorite read-later service:
 ## Requirements
 
 - iOS 26.0+ / macOS 26.0+
-- Xcode 16.0+
-- Swift 5.9+
+- Xcode 26.0+
+- Swift 6.2+ toolchain (Swift 5 language mode)
 
 ### Swift Version
 
-The app targets **Swift 5.9+** (required for `@Observable`). The project uses **targeted** strict concurrency and `MainActor` as the default actor isolation.
+The app uses the **current Swift toolchain** (Swift 6.2+, Xcode 26+) in **Swift 5 language mode** (`SWIFT_VERSION = 5.0`), with `MainActor` as the default actor isolation and targeted strict concurrency. This keeps the project building with the latest Xcode without requiring a full Swift 6 concurrency migration.
 
-We have not migrated to Swift 6. **Targeted concurrency is sufficient for now**: `SWIFT_STRICT_CONCURRENCY = targeted` plus `MainActor` default gives incremental concurrency safety without Swift 6’s **complete** strict concurrency mode. Moving to Swift 6 would require full strict concurrency (broader `Sendable` and isolation work across services and models); we’ve deferred that until we can prioritize it. We may revisit once tooling and migration paths are clearer.
 
 ## Installation
 
@@ -144,7 +143,7 @@ The project includes comprehensive tests using Swift Testing:
 
 ```bash
 # Run all tests
-xcodebuild test -scheme fedi-reader -destination 'platform=iOS Simulator,name=iPhone 16'
+xcodebuild test -scheme fedi-reader -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
 See [WARP.md](WARP.md) for more build/test commands (single-suite, UI-only, clean, etc.).
