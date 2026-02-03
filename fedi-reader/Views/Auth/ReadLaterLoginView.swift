@@ -70,13 +70,13 @@ struct ReadLaterLoginView: View {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                     } else {
                         Text("Connect")
                             .font(.roundedHeadline)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                     }
                 }
                 .buttonStyle(.liquidGlass)

@@ -120,13 +120,13 @@ struct LoginView: View {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                     } else {
                         Text("Continue")
                             .font(.roundedHeadline)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                     }
                 }
                 .buttonStyle(.liquidGlass)

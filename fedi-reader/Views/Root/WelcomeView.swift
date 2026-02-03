@@ -63,7 +63,7 @@ struct WelcomeView: View {
                     .font(.roundedHeadline)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
             }
             .buttonStyle(.liquidGlass)
             .accessibilityLabel("Connect Mastodon Account")
