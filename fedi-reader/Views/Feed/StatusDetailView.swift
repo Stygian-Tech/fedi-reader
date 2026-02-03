@@ -106,7 +106,8 @@ struct StatusDetailRowView: View {
                         appState.navigate(to: .article(url: url, status: status))
                     }
                 } label: {
-                    HStack(spacing: 12) {
+                    let hasImage = card.imageURL != nil
+                    HStack(alignment: .top, spacing: 12) {
                         if let imageURL = card.imageURL {
                             AsyncImage(url: imageURL) { image in
                                 image
@@ -118,7 +119,6 @@ struct StatusDetailRowView: View {
                             }
                             .frame(width: 80, height: 80)
                             .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -188,12 +188,15 @@ struct StatusDetailRowView: View {
                             }
                             .foregroundStyle(.tertiary)
                         }
+                        .padding(.vertical, 10)
+                        .padding(.trailing, 10)
+                        .padding(.leading, hasImage ? 0 : 10)
 
                         Spacer()
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
                 .task(id: cardURL?.absoluteString) {

@@ -173,7 +173,7 @@ struct LinkStatusRow: View {
         Button {
             appState.navigate(to: .article(url: linkStatus.primaryURL, status: linkStatus.status))
         } label: {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
                 if let imageURL = linkStatus.imageURL {
                     GeometryReader { geo in
                         AsyncImage(url: imageURL) { phase in
@@ -197,7 +197,7 @@ struct LinkStatusRow: View {
                         }
                     }
                     .frame(height: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipped()
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -230,10 +230,11 @@ struct LinkStatusRow: View {
                     }
                     .foregroundStyle(.secondary)
                 }
+                .padding(12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
             .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
     }

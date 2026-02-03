@@ -27,7 +27,7 @@ struct TrendingLinkRow: View {
                 #endif
             }
         } label: {
-            HStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 if let imageURL = link.imageURL {
                     AsyncImage(url: imageURL) { image in
                         image
@@ -38,9 +38,9 @@ struct TrendingLinkRow: View {
                             .fill(.tertiary)
                     }
                     .frame(width: 100, height: 100)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipped()
                 } else {
-                    RoundedRectangle(cornerRadius: 10)
+                    Rectangle()
                         .fill(.tertiary)
                         .frame(width: 100, height: 100)
                         .overlay {
@@ -79,11 +79,13 @@ struct TrendingLinkRow: View {
                         }
                     }
                 }
+                .padding(.vertical, 12)
+                .padding(.trailing, 12)
 
                 Spacer()
             }
-            .padding()
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
         }
         .buttonStyle(.plain)
         .contextMenu {

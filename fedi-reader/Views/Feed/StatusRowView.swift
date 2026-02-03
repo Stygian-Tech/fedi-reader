@@ -348,7 +348,7 @@ struct StatusRowView: View {
                 appState.navigate(to: .article(url: url, status: status))
             }
         } label: {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
                 // Large image
                 if let imageURL = card.imageURL {
                     AsyncImage(url: imageURL) { image in
@@ -362,7 +362,6 @@ struct StatusRowView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 200)
                     .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
                 // Content
@@ -440,10 +439,11 @@ struct StatusRowView: View {
                     .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
             .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
