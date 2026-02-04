@@ -19,41 +19,34 @@
     {
       "layers" : [
         {
-          "fill" : "none",
-          "image-name" : "Component2Layer.svg",
-          "name" : "Component2Layer"
+          "fill-specializations" : [
+            {
+              "appearance" : "dark",
+              "value" : "none"
+            }
+          ],
+          "image-name" : "Component3Layer 2.svg",
+          "name" : "Component3Layer 2"
         },
         {
-          "fill" : "none",
-          "hidden" : false,
-          "image-name" : "Component3Layer.svg",
-          "name" : "Component3Layer"
+          "fill-specializations" : [
+            {
+              "appearance" : "dark",
+              "value" : "none"
+            }
+          ],
+          "image-name" : "Component2Layer 2.svg",
+          "name" : "Component2Layer 2"
         },
         {
-          "blend-mode" : "normal",
-          "fill" : "none",
-          "glass" : true,
-          "hidden" : false,
-          "image-name" : "Component1Layer.svg",
-          "name" : "Component1Layer"
-        }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.5
-      }
-    },
-    {
-      "layers" : [
-        {
-          "fill" : "none",
-          "hidden" : true,
-          "image-name" : "Component4Layer.svg",
-          "name" : "Component4Layer"
+          "fill-specializations" : [
+            {
+              "appearance" : "dark",
+              "value" : "none"
+            }
+          ],
+          "image-name" : "Component1Layer 2.svg",
+          "name" : "Component1Layer 2"
         }
       ],
       "shadow" : {
