@@ -1,0 +1,16 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g opacity="0.3">
+<path d="M220 180H380" stroke="white" stroke-width="20" stroke-linecap="round"/>
+<path d="M220 230H360" stroke="white" stroke-width="20" stroke-linecap="round"/>
+<path d="M220 280H340" stroke="white" stroke-width="20" stroke-linecap="round"/>
+<path d="M680 780H840" stroke="white" stroke-width="20" stroke-linecap="round"/>
+<path d="M700 830H840" stroke="white" stroke-width="20" stroke-linecap="round"/>
+<path d="M720 880H840" stroke="white" stroke-width="20" stroke-linecap="round"/>
+<path d="M300 462C306.627 462 312 456.627 312 450C312 443.373 306.627 438 300 438C293.373 438 288 443.373 288 450C288 456.627 293.373 462 300 462Z" fill="white"/>
+<path d="M750 362C756.627 362 762 356.627 762 350C762 343.373 756.627 338 750 338C743.373 338 738 343.373 738 350C738 356.627 743.373 362 750 362Z" fill="white"/>
+<path d="M350 632C356.627 632 362 626.627 362 620C362 613.373 356.627 608 350 608C343.373 608 338 613.373 338 620C338 626.627 343.373 632 350 632Z" fill="white"/>
+<path d="M700 632C706.627 632 712 626.627 712 620C712 613.373 706.627 608 700 608C693.373 608 688 613.373 688 620C688 626.627 693.373 632 700 632Z" fill="white"/>
+<path opacity="0.5" d="M300 450L516 426" stroke="white" stroke-width="8"/>
+<path opacity="0.5" d="M750 350L516 426" stroke="white" stroke-width="8"/>
+</g>
+</svg>
