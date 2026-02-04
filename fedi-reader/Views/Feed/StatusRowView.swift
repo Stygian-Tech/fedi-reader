@@ -354,13 +354,18 @@ struct StatusRowView: View {
                     AsyncImage(url: imageURL) { image in
                         image
                             .resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .frame(maxHeight: 200, alignment: .top)
+                            .clipped()
                     } placeholder: {
                         Rectangle()
                             .fill(.tertiary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 200)
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 200)
+                    .frame(maxHeight: 200)
                     .clipped()
                 }
                 
@@ -439,7 +444,9 @@ struct StatusRowView: View {
                     .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 16))

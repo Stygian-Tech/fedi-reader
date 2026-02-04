@@ -175,28 +175,31 @@ struct LinkStatusRow: View {
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 if let imageURL = linkStatus.imageURL {
-                    GeometryReader { geo in
-                        AsyncImage(url: imageURL) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: geo.size.width, height: 220)
-                                    .clipped()
-                            case .failure:
-                                placeholderImage
-                                    .frame(width: geo.size.width, height: 220)
-                            case .empty:
-                                ProgressView()
-                                    .frame(width: geo.size.width, height: 220)
-                            @unknown default:
-                                placeholderImage
-                                    .frame(width: geo.size.width, height: 220)
-                            }
+                    AsyncImage(url: imageURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity)
+                                .frame(maxHeight: 220, alignment: .top)
+                                .clipped()
+                        case .failure:
+                            placeholderImage
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 220)
+                        case .empty:
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 220)
+                        @unknown default:
+                            placeholderImage
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 220)
                         }
                     }
-                    .frame(height: 220)
+                    .frame(maxWidth: .infinity)
+                    .frame(maxHeight: 220)
                     .clipped()
                 }
 
@@ -230,7 +233,9 @@ struct LinkStatusRow: View {
                     }
                     .foregroundStyle(.secondary)
                 }
-                .padding(12)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 16))
