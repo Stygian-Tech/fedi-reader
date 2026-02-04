@@ -29,8 +29,9 @@ final class AppState {
     var isUserFilterOpen = false
     var userFilterPerFeedId: [String: String] = [:]  // feedId -> accountId
     
-    // Navigation state
-    var navigationPath: [NavigationDestination] = []
+    // Navigation state (per-tab so switching tabs shows correct root)
+    var linksNavigationPath: [NavigationDestination] = []
+    var profileNavigationPath: [NavigationDestination] = []
     var presentedSheet: SheetDestination?
     var presentedAlert: AlertItem?
     
@@ -98,23 +99,52 @@ final class AppState {
     
     func navigate(to destination: NavigationDestination) {
         Self.logger.info("Navigating to: \(String(describing: destination), privacy: .public)")
-        navigationPath.append(destination)
+        switch selectedTab {
+        case .links:
+            linksNavigationPath.append(destination)
+        case .profile:
+            profileNavigationPath.append(destination)
+        case .explore, .mentions:
+            break
+        }
     }
     
     func navigateBack() {
-        if !navigationPath.isEmpty {
-            let previous = navigationPath.last
-            navigationPath.removeLast()
-            Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
-        } else {
-            Self.logger.debug("Navigate back called but navigation path is empty")
+        switch selectedTab {
+        case .links:
+            if !linksNavigationPath.isEmpty {
+                let previous = linksNavigationPath.last
+                linksNavigationPath.removeLast()
+                Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
+            } else {
+                Self.logger.debug("Navigate back called but navigation path is empty")
+            }
+        case .profile:
+            if !profileNavigationPath.isEmpty {
+                let previous = profileNavigationPath.last
+                profileNavigationPath.removeLast()
+                Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
+            } else {
+                Self.logger.debug("Navigate back called but navigation path is empty")
+            }
+        case .explore, .mentions:
+            break
         }
     }
     
     func navigateToRoot() {
-        let count = navigationPath.count
-        navigationPath.removeAll()
-        Self.logger.info("Navigating to root, cleared \(count) destinations")
+        switch selectedTab {
+        case .links:
+            let count = linksNavigationPath.count
+            linksNavigationPath.removeAll()
+            Self.logger.info("Navigating to root, cleared \(count) destinations")
+        case .profile:
+            let count = profileNavigationPath.count
+            profileNavigationPath.removeAll()
+            Self.logger.info("Navigating to root, cleared \(count) destinations")
+        case .explore, .mentions:
+            break
+        }
     }
     
     func present(sheet: SheetDestination) {

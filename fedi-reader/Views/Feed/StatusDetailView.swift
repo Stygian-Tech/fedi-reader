@@ -106,94 +106,11 @@ struct StatusDetailRowView: View {
                         appState.navigate(to: .article(url: url, status: status))
                     }
                 } label: {
-                    let hasImage = card.imageURL != nil
-                    HStack(alignment: .top, spacing: 12) {
-                        if let imageURL = card.imageURL {
-                            AsyncImage(url: imageURL) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            } placeholder: {
-                                Rectangle()
-                                    .fill(.tertiary)
-                            }
-                            .frame(width: 80, height: 80)
-                            .clipped()
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(card.title)
-                                .font(.roundedSubheadline.bold())
-                                .lineLimit(2)
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            if !card.description.isEmpty {
-                                Text(card.description)
-                                    .font(.roundedCaption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-
-                            HStack(spacing: 4) {
-                                Image(systemName: "link")
-                                    .font(.roundedCaption2)
-
-                                Text(card.providerName ?? HTMLParser.extractDomain(from: URL(string: card.url)!) ?? card.url)
-                                    .font(.roundedCaption)
-                                    .lineLimit(1)
-
-                                if let authorName = fediverseCreatorName,
-                                   let authorURL = fediverseCreatorURL {
-                                    Link(destination: authorURL) {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "person.crop.circle")
-                                                .font(.roundedCaption2)
-
-                                            Text(authorName)
-                                                .font(.roundedCaption)
-                                                .lineLimit(1)
-                                        }
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color(.tertiarySystemBackground), in: Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                } else if let authorName = fediverseCreatorName {
-                                    Text(authorName)
-                                        .font(.roundedCaption)
-                                        .lineLimit(1)
-                                } else if let authorName = card.authorName,
-                                          let authorUrlString = card.authorUrl,
-                                          let authorURL = URL(string: authorUrlString) {
-                                    Link(destination: authorURL) {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "person.crop.circle")
-                                                .font(.roundedCaption2)
-
-                                            Text(authorName)
-                                                .font(.roundedCaption)
-                                                .lineLimit(1)
-                                        }
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color(.tertiarySystemBackground), in: Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                } else if let author = card.authorName {
-                                    Text(author)
-                                        .font(.roundedCaption)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .foregroundStyle(.tertiary)
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.trailing, 10)
-                        .padding(.leading, hasImage ? 0 : 10)
-
-                        Spacer()
-                    }
+                    LinkCardContent(
+                        card: card,
+                        fediverseCreatorName: fediverseCreatorName,
+                        fediverseCreatorURL: fediverseCreatorURL
+                    )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 10))
                     .clipShape(RoundedRectangle(cornerRadius: 10))

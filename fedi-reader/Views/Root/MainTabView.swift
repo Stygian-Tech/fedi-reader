@@ -27,7 +27,7 @@ struct MainTabView: View {
 
         TabView(selection: $state.selectedTab) {
             Tab(hideTabBarLabels ? "" : "Home", systemImage: "house", value: .links) {
-                NavigationStack(path: $state.navigationPath) {
+                NavigationStack(path: $state.linksNavigationPath) {
                     LinkFeedView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
                             destinationView(for: destination)
@@ -64,7 +64,7 @@ struct MainTabView: View {
             .badge(unreadMentionsCount)
 
             Tab(hideTabBarLabels ? "" : "Profile", systemImage: "person", value: .profile) {
-                NavigationStack(path: $state.navigationPath) {
+                NavigationStack(path: $state.profileNavigationPath) {
                     ProfileView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
                             destinationView(for: destination)
@@ -75,6 +75,9 @@ struct MainTabView: View {
         .tabViewStyle(.sidebarAdaptable)
         .onChange(of: state.selectedTab) { oldValue, newValue in
             HapticFeedback.play(.selection, enabled: hapticFeedback)
+            if oldValue == .profile {
+                state.profileNavigationPath.removeAll()
+            }
             if newValue == .links {
                 let isDoubleTap = tabTracker.recordSelection(.links)
                 if isDoubleTap {

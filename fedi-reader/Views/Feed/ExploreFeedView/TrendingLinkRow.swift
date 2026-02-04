@@ -27,65 +27,9 @@ struct TrendingLinkRow: View {
                 #endif
             }
         } label: {
-            HStack(alignment: .top, spacing: 12) {
-                if let imageURL = link.imageURL {
-                    AsyncImage(url: imageURL) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Rectangle()
-                            .fill(.tertiary)
-                    }
-                    .frame(width: 100, height: 100)
-                    .clipped()
-                } else {
-                    Rectangle()
-                        .fill(.tertiary)
-                        .frame(width: 100, height: 100)
-                        .overlay {
-                            Image(systemName: "link")
-                                .font(.title)
-                                .foregroundStyle(.secondary)
-                        }
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(link.title)
-                        .font(.roundedHeadline)
-                        .lineLimit(2)
-
-                    if !link.description.isEmpty {
-                        Text(link.description)
-                            .font(.roundedSubheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-
-                    HStack(spacing: 8) {
-                        if let provider = link.providerName {
-                            Text(provider)
-                                .font(.roundedCaption)
-                                .foregroundStyle(.tertiary)
-                        }
-
-                        if let author = link.authorName {
-                            Text("•")
-                                .foregroundStyle(.tertiary)
-
-                            Text(author)
-                                .font(.roundedCaption)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
-                .padding(.vertical, 12)
-                .padding(.trailing, 12)
-
-                Spacer()
-            }
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
-            .clipShape(RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
+            LinkCardContent(link: link)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
         }
         .buttonStyle(.plain)
         .contextMenu {
