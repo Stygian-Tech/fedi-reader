@@ -36,6 +36,7 @@ struct LinkFeedView: View {
     @State private var scrollProxy: ScrollViewProxy?
     @AppStorage("hapticFeedback") private var hapticFeedback = true
     @State private var titleBarTapTracker = TabSelectionTracker()
+    @State private var isTransitioningFeeds = false
     
     private var timelineService: TimelineService? {
         timelineWrapper.service
@@ -88,12 +89,18 @@ struct LinkFeedView: View {
             
             // Single content view (no TabView to avoid crashes)
             ZStack {
-                if filteredStatuses.isEmpty && !linkFilterService.isLoading {
-                    emptyStateView
-                } else {
-                    linkList
+                Group {
+                    if filteredStatuses.isEmpty && !linkFilterService.isLoading {
+                        emptyStateView
+                    } else {
+                        linkList
+                    }
                 }
+                .id(currentTab.id)
+                .transition(.opacity)
+                .opacity(isTransitioningFeeds ? 0.75 : 1.0)
             }
+            .animation(.easeInOut(duration: 0.2), value: selectedTabIndex)
             .offset(x: dragOffset)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 50)
@@ -112,16 +119,12 @@ struct LinkFeedView: View {
                         // Only switch tabs on predominantly horizontal swipes
                         guard abs(dx) > abs(dy) * 2 else { return }
                         let threshold: CGFloat = 150 // Increased threshold to make it harder
-                        if dx > threshold && selectedTabIndex > 0 {
+                        if dx > threshold {
                             // Swipe right - go to previous tab
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                selectedTabIndex -= 1
-                            }
-                        } else if dx < -threshold && selectedTabIndex < feedTabs.count - 1 {
+                            selectTab(at: selectedTabIndex - 1)
+                        } else if dx < -threshold {
                             // Swipe left - go to next tab
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                selectedTabIndex += 1
-                            }
+                            selectTab(at: selectedTabIndex + 1)
                         }
                         // Note: dragOffset will automatically reset to 0 via @GestureState
                     }
@@ -238,9 +241,7 @@ struct LinkFeedView: View {
                             isSelected: selectedTabIndex == index,
                             isLoading: linkFilterService.isLoadingFeed(tab.id)
                         ) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedTabIndex = index
-                            }
+                            selectTab(at: index)
                         }
                         .id(tab.id)
                     }
@@ -278,6 +279,9 @@ struct LinkFeedView: View {
                     }
                 }
                 .listStyle(.plain)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
                 .scrollContentBackground(.hidden)
                 .listRowSpacing(8)
                 .padding(.horizontal, 12)
@@ -357,11 +361,23 @@ struct LinkFeedView: View {
         // Load content if not cached
         Task {
             await loadContentForTabIfNeeded(tab)
+            await MainActor.run {
+                isTransitioningFeeds = false
+            }
             
             // Pre-fetch adjacent feeds
             Task.detached(priority: .background) { [feedTabs] in
                 await self.prefetchAdjacentFeeds(currentIndex: newIndex, tabs: feedTabs)
             }
+        }
+    }
+
+    private func selectTab(at index: Int) {
+        guard index >= 0 && index < feedTabs.count else { return }
+        guard index != selectedTabIndex else { return }
+        isTransitioningFeeds = true
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedTabIndex = index
         }
     }
     
