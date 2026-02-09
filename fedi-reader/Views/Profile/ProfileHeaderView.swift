@@ -57,7 +57,7 @@ struct ProfileHeaderView: View {
                 }
 
                 if let note = account.note, !note.isEmpty {
-                    Text(note)
+                    Text(note.htmlToPlainText)
                         .font(.roundedSubheadline)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
