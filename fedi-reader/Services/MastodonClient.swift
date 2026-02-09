@@ -32,28 +32,28 @@ final class MastodonClient {
             "User-Agent": Constants.userAgent
         ]
         self.session = URLSession(configuration: config)
-        
+
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             let dateString = try container.decode(String.self)
-            
+
             // Try ISO8601 with fractional seconds
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             if let date = formatter.date(from: dateString) {
                 return date
             }
-            
+
             // Try without fractional seconds
             formatter.formatOptions = [.withInternetDateTime]
             if let date = formatter.date(from: dateString) {
                 return date
             }
-            
+
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format: \(dateString)")
         }
-        
+
         self.encoder = JSONEncoder()
         self.encoder.dateEncodingStrategy = .iso8601
     }

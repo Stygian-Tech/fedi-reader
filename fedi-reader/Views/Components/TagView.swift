@@ -191,7 +191,7 @@ private struct TagSizePreferenceKey: PreferenceKey {
 
 struct TagExtractor {
     /// Extract tags from status content (hashtags)
-    static func extractTags(from content: String) -> [String] {
+    nonisolated static func extractTags(from content: String) -> [String] {
         // Strip HTML first to avoid matching HTML entities like &#39; as #39
         let plainText = HTMLParser.stripHTML(content)
         

@@ -13,6 +13,12 @@ import os
 final class LinkFilterService {
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "LinkFilterService")
     
+    private struct ProcessedLinkStatuses: Sendable {
+        let linkStatuses: [LinkStatus]
+        let cardCount: Int
+        let contentLinkCount: Int
+    }
+    
     private let attributionChecker: AttributionChecker
     
     // Per-feed cached link statuses (feedId -> linkStatuses)
@@ -73,7 +79,7 @@ final class LinkFilterService {
             let targetStatus = status.displayStatus
             
             // Exclude quote posts
-            if targetStatus.isQuotePost {
+            if Self.isQuotePost(targetStatus) {
                 return false
             }
             
@@ -83,7 +89,7 @@ final class LinkFilterService {
             }
             
             // Check for links in content
-            let links = extractExternalLinks(from: targetStatus)
+            let links = Self.extractExternalLinks(from: targetStatus)
             return !links.isEmpty
         }
         Self.logger.debug("Filtered to \(filtered.count) link statuses (\(filtered.count * 100 / max(statuses.count, 1))%)")
@@ -95,66 +101,51 @@ final class LinkFilterService {
         Self.logger.info("Processing \(statuses.count) statuses for feed '\(feedId, privacy: .public)'")
         loadingFeeds.insert(feedId)
         defer { loadingFeeds.remove(feedId) }
-        
-        let filtered = filterToLinks(statuses)
-        
-        var linkStatuses: [LinkStatus] = []
-        var cardCount = 0
-        var contentLinkCount = 0
-        
-        for status in filtered {
-            let targetStatus = status.displayStatus
-            
-            // Get primary link (prefer card URL)
-            let primaryURL: URL?
-            let title: String?
-            let description: String?
-            let imageURL: URL?
-            let providerName: String?
-            
-            if let card = targetStatus.card, card.type == .link {
-                primaryURL = card.linkURL
-                title = card.title.isEmpty ? nil : card.title
-                description = card.description.isEmpty ? nil : card.description
-                imageURL = card.imageURL
-                providerName = card.providerName
-                cardCount += 1
-            } else {
-                // Extract from content
-                let links = extractExternalLinks(from: targetStatus)
-                primaryURL = links.first
-                title = nil
-                description = nil
-                imageURL = nil
-                providerName = primaryURL.flatMap { HTMLParser.extractDomain(from: $0) }
-                contentLinkCount += 1
-            }
-            
-            guard let url = primaryURL else { continue }
-            guard !isThreadsOrInstagramURL(url) else { continue }
-            
-            let linkStatus = LinkStatus(
-                status: status,
-                primaryURL: url,
-                title: title,
-                description: description,
-                imageURL: imageURL,
-                providerName: providerName,
-                authorAttribution: targetStatus.card?.authorName,
-                authorURL: targetStatus.card?.authorUrl
-            )
-            
-            linkStatuses.append(linkStatus)
-        }
-        
-        feedCache[feedId] = linkStatuses
-        Self.logger.info("Processed feed '\(feedId, privacy: .public)': \(linkStatuses.count) link statuses (\(cardCount) from cards, \(contentLinkCount) from content)")
-        return linkStatuses
+
+        let processed = await Task.detached(priority: .userInitiated) {
+            Self.buildLinkStatuses(from: statuses)
+        }.value
+
+        feedCache[feedId] = processed.linkStatuses
+        Self.logger.info("Processed feed '\(feedId, privacy: .public)': \(processed.linkStatuses.count) link statuses (\(processed.cardCount) from cards, \(processed.contentLinkCount) from content)")
+        return processed.linkStatuses
     }
     
     /// Processes statuses into LinkStatus objects (uses active feed)
     func processStatuses(_ statuses: [Status]) async -> [LinkStatus] {
         await processStatuses(statuses, for: activeFeedId)
+    }
+
+    /// Incrementally appends newly fetched statuses to an existing feed cache.
+    /// This avoids rebuilding the entire feed during pagination and keeps scrolling smooth.
+    func appendStatuses(_ statuses: [Status], for feedId: String) async -> [LinkStatus] {
+        guard !statuses.isEmpty else { return feedCache[feedId] ?? [] }
+
+        loadingFeeds.insert(feedId)
+        defer { loadingFeeds.remove(feedId) }
+
+        let processed = await Task.detached(priority: .userInitiated) {
+            Self.buildLinkStatuses(from: statuses)
+        }.value
+
+        guard !processed.linkStatuses.isEmpty else {
+            return feedCache[feedId] ?? []
+        }
+
+        var merged = feedCache[feedId] ?? []
+        if merged.isEmpty {
+            feedCache[feedId] = processed.linkStatuses
+            return processed.linkStatuses
+        }
+
+        var seenIds = Set(merged.map(\.id))
+        merged.reserveCapacity(merged.count + processed.linkStatuses.count)
+        for linkStatus in processed.linkStatuses where seenIds.insert(linkStatus.id).inserted {
+            merged.append(linkStatus)
+        }
+
+        feedCache[feedId] = merged
+        return merged
     }
     
     /// Enriches link statuses with author attribution from HEAD requests
@@ -212,6 +203,7 @@ final class LinkFilterService {
                         let updated = LinkStatus(
                             status: existing.status,
                             primaryURL: existing.primaryURL,
+                            tags: existing.tags,
                             title: existing.title,
                             description: existing.description,
                             imageURL: existing.imageURL,
@@ -274,6 +266,11 @@ final class LinkFilterService {
     
     /// Returns true if the URL points to Threads or Instagram (social posts, not articles).
     private func isThreadsOrInstagramURL(_ url: URL) -> Bool {
+        Self.isThreadsOrInstagramURL(url)
+    }
+    
+    /// Returns true if the URL points to Threads or Instagram (social posts, not articles).
+    private nonisolated static func isThreadsOrInstagramURL(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         if host == "threads.net" || host == "www.threads.net" || host.hasSuffix(".threads.net") { return true }
         if host == "threads.com" || host == "www.threads.com" || host.hasSuffix(".threads.com") { return true }
@@ -283,6 +280,11 @@ final class LinkFilterService {
     
     /// Extracts external links from a status
     func extractExternalLinks(from status: Status) -> [URL] {
+        Self.extractExternalLinks(from: status)
+    }
+    
+    /// Extracts external links from a status
+    private nonisolated static func extractExternalLinks(from status: Status) -> [URL] {
         // Get the instance domain to exclude internal links
         var excludeDomains: [String] = []
         if let host = URL(string: status.uri)?.host {
@@ -297,6 +299,11 @@ final class LinkFilterService {
     
     /// Checks if a status is a quote post
     func isQuotePost(_ status: Status) -> Bool {
+        Self.isQuotePost(status)
+    }
+    
+    /// Checks if a status is a quote post
+    private nonisolated static func isQuotePost(_ status: Status) -> Bool {
         let targetStatus = status.displayStatus
         
         // Direct quote indicator
@@ -324,6 +331,66 @@ final class LinkFilterService {
         }
         
         return false
+    }
+    
+    /// Builds link statuses in one pass; intended for background execution.
+    private nonisolated static func buildLinkStatuses(from statuses: [Status]) -> ProcessedLinkStatuses {
+        var linkStatuses: [LinkStatus] = []
+        linkStatuses.reserveCapacity(statuses.count)
+        var cardCount = 0
+        var contentLinkCount = 0
+        
+        for status in statuses {
+            let targetStatus = status.displayStatus
+            
+            guard !isQuotePost(targetStatus) else { continue }
+            var tags = Array(Set(targetStatus.tags.map(\.name))).sorted()
+            if tags.isEmpty {
+                tags = TagExtractor.extractTags(from: targetStatus.content)
+            }
+            
+            if let card = targetStatus.card,
+               card.type == .link,
+               let cardURL = card.linkURL {
+                guard !isThreadsOrInstagramURL(cardURL) else { continue }
+                
+                linkStatuses.append(
+                    LinkStatus(
+                        status: status,
+                        primaryURL: cardURL,
+                        tags: tags,
+                        title: card.title.isEmpty ? nil : card.title,
+                        description: card.description.isEmpty ? nil : card.description,
+                        imageURL: card.imageURL,
+                        providerName: card.providerName,
+                        authorAttribution: card.authorName,
+                        authorURL: card.authorUrl
+                    )
+                )
+                cardCount += 1
+                continue
+            }
+            
+            let links = extractExternalLinks(from: targetStatus)
+            guard let primaryURL = links.first else { continue }
+            guard !isThreadsOrInstagramURL(primaryURL) else { continue }
+            
+            linkStatuses.append(
+                LinkStatus(
+                    status: status,
+                    primaryURL: primaryURL,
+                    tags: tags,
+                    providerName: HTMLParser.extractDomain(from: primaryURL)
+                )
+            )
+            contentLinkCount += 1
+        }
+        
+        return ProcessedLinkStatuses(
+            linkStatuses: linkStatuses,
+            cardCount: cardCount,
+            contentLinkCount: contentLinkCount
+        )
     }
     
     // MARK: - Filtering Options
@@ -371,10 +438,11 @@ final class LinkFilterService {
 
 // MARK: - Link Status Model
 
-struct LinkStatus: Identifiable, Hashable {
+struct LinkStatus: Identifiable, Hashable, Sendable {
     let id: String
     let status: Status
     let primaryURL: URL
+    let tags: [String]
     var title: String?
     var description: String?
     var imageURL: URL?
@@ -385,9 +453,10 @@ struct LinkStatus: Identifiable, Hashable {
     var mastodonHandle: String?
     var mastodonProfileURL: String?
     
-    init(
+    nonisolated init(
         status: Status,
         primaryURL: URL,
+        tags: [String] = [],
         title: String? = nil,
         description: String? = nil,
         imageURL: URL? = nil,
@@ -401,6 +470,7 @@ struct LinkStatus: Identifiable, Hashable {
         self.id = status.id
         self.status = status
         self.primaryURL = primaryURL
+        self.tags = tags
         self.title = title
         self.description = description
         self.imageURL = imageURL

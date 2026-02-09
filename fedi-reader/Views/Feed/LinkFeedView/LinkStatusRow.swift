@@ -14,7 +14,11 @@ import AppKit
 
 struct LinkStatusRow: View {
     let linkStatus: LinkStatus
+    let deferPostNavigation: (@escaping () -> Void) -> Void
+    let shouldIgnoreTap: () -> Bool
+
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
@@ -35,35 +39,53 @@ struct LinkStatusRow: View {
         localBookmarked ?? linkStatus.status.displayStatus.bookmarked ?? false
     }
 
+    init(
+        linkStatus: LinkStatus,
+        deferPostNavigation: @escaping (@escaping () -> Void) -> Void = { action in action() },
+        shouldIgnoreTap: @escaping () -> Bool = { false }
+    ) {
+        self.linkStatus = linkStatus
+        self.deferPostNavigation = deferPostNavigation
+        self.shouldIgnoreTap = shouldIgnoreTap
+    }
+
     var body: some View {
-        Button {
-            appState.navigate(to: .status(linkStatus.status))
-        } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                if linkStatus.status.isReblog {
-                    reblogGradientStrip
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            if linkStatus.status.isReblog {
+                reblogGradientStrip
+            }
 
-                authorHeader
+            authorHeader
 
-                linkCard
+            linkCard
 
-                let tags = TagExtractor.extractTags(from: linkStatus.status)
-                if !tags.isEmpty {
-                    TagView(tags: tags) { tag in
+            let tags = linkStatus.tags
+            if !tags.isEmpty {
+                TagView(tags: tags) { tag in
+                    deferPostNavigation {
                         appState.navigate(to: .hashtag(tag))
                     }
                 }
-
-                StatusActionsBar(status: linkStatus.status, size: .compact)
-
-                Divider()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .contentShape(Rectangle())
+
+            StatusActionsBar(
+                status: linkStatus.status,
+                size: .compact,
+                shouldIgnoreTap: shouldIgnoreTap
+            )
+
+            Divider()
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !shouldIgnoreTap() else { return }
+            deferPostNavigation {
+                appState.navigate(to: .status(linkStatus.status))
+            }
+        }
+        .accessibilityAddTraits(.isButton)
         .contextMenu {
             contextMenuContent
         }
@@ -82,53 +104,48 @@ struct LinkStatusRow: View {
 
     private var reblogGradientStrip: some View {
         let reblogger = linkStatus.status.account
-        return Button {
-            appState.navigate(to: .status(linkStatus.status))
-        } label: {
-            HStack(spacing: 8) {
-                ProfileAvatarView(url: reblogger.avatarURL, size: 24, placeholderStyle: .light)
+        return HStack(spacing: 8) {
+            ProfileAvatarView(url: reblogger.avatarURL, size: 24, placeholderStyle: .light)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.2.squarepath")
-                            .font(.roundedCaption2)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.2.squarepath")
+                        .font(.roundedCaption2)
 
-                        Text("Boosted by")
-                            .font(.roundedCaption)
-                    }
-
-                    HStack(spacing: 4) {
-                        Text(reblogger.displayName)
-                            .font(.roundedCaption.bold())
-                            .lineLimit(1)
-
-                        AccountBadgesView(account: reblogger, size: .small)
-                    }
+                    Text("Boosted by")
+                        .font(.roundedCaption)
                 }
-                .foregroundStyle(.white)
 
-                Spacer()
+                HStack(spacing: 4) {
+                    Text(reblogger.displayName)
+                        .font(.roundedCaption.bold())
+                        .lineLimit(1)
+
+                    AccountBadgesView(account: reblogger, size: .small)
+                }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                LinearGradient(
-                    colors: [
-                        themeColor.opacity(0.35),
-                        themeColor.opacity(0.20),
-                        themeColor.opacity(0.10),
-                        themeColor.opacity(0.05),
-                        Color.clear
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .contentShape(Rectangle())
+            .foregroundStyle(.white)
+
+            Spacer()
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            LinearGradient(
+                colors: [
+                    themeColor.opacity(0.35),
+                    themeColor.opacity(0.20),
+                    themeColor.opacity(0.10),
+                    themeColor.opacity(0.05),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .contentShape(Rectangle())
     }
 
     private var authorHeader: some View {
@@ -171,7 +188,9 @@ struct LinkStatusRow: View {
 
     private var linkCard: some View {
         Button {
-            appState.navigate(to: .article(url: linkStatus.primaryURL, status: linkStatus.status))
+            deferPostNavigation {
+                appState.navigate(to: .article(url: linkStatus.primaryURL, status: linkStatus.status))
+            }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 if let imageURL = linkStatus.imageURL {
@@ -274,7 +293,9 @@ struct LinkStatusRow: View {
                 if isMastodonProfile {
                     // Mastodon profile - navigate in-app
                     Button {
-                        handleMastodonProfileNavigation(url: destinationURL)
+                        deferPostNavigation {
+                            handleMastodonProfileNavigation(url: destinationURL)
+                        }
                     } label: {
                         authorAttributionContent(
                             authorName: authorName,
@@ -288,8 +309,12 @@ struct LinkStatusRow: View {
                         await resolveMastodonAccount(url: destinationURL)
                     }
                 } else if let url = URL(string: destinationURL) {
-                    // Regular author URL - open in browser
-                    Link(destination: url) {
+                    // Regular author URL - open in browser after deferred swipe/tap validation.
+                    Button {
+                        deferPostNavigation {
+                            openURL(url)
+                        }
+                    } label: {
                         authorAttributionContent(
                             authorName: authorName,
                             profilePictureURL: profilePictureURL,

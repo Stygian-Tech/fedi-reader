@@ -25,7 +25,8 @@ struct AttributionCheckerTests {
         
         // The actual parsing happens internally, so we test the full flow
         // with mock responses in integration tests
-        #expect(checker.cacheCountForTesting() == 0)
+        let cacheCount = await checker.cacheCountForTesting()
+        #expect(cacheCount == 0)
     }
     
     // MARK: - Meta Tag Parsing Verification
@@ -72,11 +73,12 @@ struct AttributionCheckerTests {
     
     @Test("Cache can be cleared")
     @MainActor
-    func cacheClearable() {
+    func cacheClearable() async {
         let checker = AttributionChecker()
-        checker.clearCache()
+        await checker.clearCache()
         
         // No exception thrown means success
-        #expect(checker.cacheCountForTesting() == 0)
+        let cacheCount = await checker.cacheCountForTesting()
+        #expect(cacheCount == 0)
     }
 }
