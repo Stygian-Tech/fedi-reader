@@ -816,7 +816,8 @@ final class MastodonClient {
         spoilerText: String? = nil,
         visibility: Visibility = .public,
         language: String? = nil,
-        quoteId: String? = nil
+        quoteId: String? = nil,
+        quoteURL: String? = nil
     ) async throws -> Status {
         Self.logger.info("Posting status, visibility: \(visibility.rawValue, privacy: .public), replyTo: \(inReplyToId?.prefix(8) ?? "nil", privacy: .public), mediaCount: \(mediaIds?.count ?? 0)")
         let url = try buildURL(instance: instance, path: Constants.API.statuses)
@@ -832,6 +833,7 @@ final class MastodonClient {
         if let spoilerText, !spoilerText.isEmpty { params["spoiler_text"] = spoilerText }
         if let language { params["language"] = language }
         if let quoteId { params["quote_id"] = quoteId } // For instances supporting quote posts
+        if let quoteURL { params["quote_uri"] = quoteURL } // Some implementations use quote_uri
         
         let body = try JSONSerialization.data(withJSONObject: params)
         let request = buildRequest(url: url, method: "POST", accessToken: accessToken, body: body)

@@ -774,6 +774,10 @@ final class TimelineService {
         }
         
         let targetStatus = status.displayStatus
+        let statusURL = targetStatus.url ?? targetStatus.uri
+        let fallbackURL = "https://\(account.instance)/@\(targetStatus.account.username)/\(targetStatus.id)"
+        let quoteURL = statusURL.isEmpty ? fallbackURL : statusURL
+        let contentWithQuote = appendQuoteURLIfNeeded(content, quoteURL: quoteURL)
         
         // Quote boost support varies by instance
         // Try quote_id parameter first, fall back to including URL
@@ -781,15 +785,13 @@ final class TimelineService {
             return try await client.postStatus(
                 instance: account.instance,
                 accessToken: token,
-                status: content,
+                status: contentWithQuote,
                 visibility: targetStatus.visibility,
-                quoteId: targetStatus.id
+                quoteId: targetStatus.id,
+                quoteURL: quoteURL
             )
         } catch {
             // Fallback: Include the status URL in the content
-            let statusURL = targetStatus.url ?? "https://\(account.instance)/@\(targetStatus.account.username)/\(targetStatus.id)"
-            let contentWithQuote = "\(content)\n\n\(statusURL)"
-            
             return try await client.postStatus(
                 instance: account.instance,
                 accessToken: token,
@@ -797,6 +799,19 @@ final class TimelineService {
                 visibility: targetStatus.visibility
             )
         }
+    }
+
+    private func appendQuoteURLIfNeeded(_ content: String, quoteURL: String) -> String {
+        if content.contains(quoteURL) {
+            return content
+        }
+        
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedContent.isEmpty {
+            return quoteURL
+        }
+        
+        return "\(trimmedContent)\n\n\(quoteURL)"
     }
     
     // MARK: - Helpers
