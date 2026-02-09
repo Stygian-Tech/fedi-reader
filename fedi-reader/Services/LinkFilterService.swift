@@ -395,14 +395,6 @@ final class LinkFilterService {
     
     // MARK: - Filtering Options
     
-    /// Filters link statuses by domain
-    func filterByDomain(_ domain: String) -> [LinkStatus] {
-        linkStatuses.filter { linkStatus in
-            guard let host = linkStatus.primaryURL.host?.lowercased() else { return false }
-            return host.contains(domain.lowercased())
-        }
-    }
-    
     /// Filters link statuses by author account ID. Returns all when `accountId` is nil.
     func filter(linkStatuses: [LinkStatus], byAccountId accountId: String?) -> [LinkStatus] {
         guard let accountId = accountId else { return linkStatuses }
@@ -412,19 +404,6 @@ final class LinkFilterService {
     /// Filters link statuses that have images
     func filterWithImages() -> [LinkStatus] {
         linkStatuses.filter { $0.imageURL != nil }
-    }
-    
-    /// Groups link statuses by domain
-    func groupByDomain() -> [String: [LinkStatus]] {
-        Dictionary(grouping: linkStatuses) { linkStatus in
-            HTMLParser.extractDomain(from: linkStatus.primaryURL) ?? "unknown"
-        }
-    }
-    
-    /// Returns unique domains from current link statuses
-    func uniqueDomains() -> [String] {
-        let domains = linkStatuses.compactMap { HTMLParser.extractDomain(from: $0.primaryURL) }
-        return Array(Set(domains)).sorted()
     }
     
     // MARK: - Clear
