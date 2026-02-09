@@ -28,7 +28,7 @@ final class TimelineService {
     // List state
     var lists: [MastodonList] = []
     var listTimeline: [Status] = []
-    var listAccounts: [MastodonAccount] = []
+    var listAccountsById: [String: [MastodonAccount]] = [:]
     
     // Loading state
     var isLoadingHome = false
@@ -47,7 +47,7 @@ final class TimelineService {
     private var mentionsMaxId: String?
     private var conversationsMaxId: String?
     private var listTimelineMaxId: String?
-    private var listAccountsMaxId: String?
+    private var listAccountsMaxIdById: [String: String] = [:]
     private var listsLastRefreshedAt: Date?
     private var listsLastRefreshedForAccountId: String?
     
@@ -845,7 +845,7 @@ final class TimelineService {
         mentions = []
         conversations = []
         listTimeline = []
-        listAccounts = []
+        listAccountsById = [:]
         
         homeMaxId = nil
         homeMinId = nil
@@ -853,7 +853,7 @@ final class TimelineService {
         mentionsMaxId = nil
         conversationsMaxId = nil
         listTimelineMaxId = nil
-        listAccountsMaxId = nil
+        listAccountsMaxIdById = [:]
     }
     
     // MARK: - Lists
@@ -992,6 +992,10 @@ final class TimelineService {
         await loadListTimeline(listId: listId, refresh: true)
     }
     
+    func listAccounts(for listId: String) -> [MastodonAccount] {
+        listAccountsById[listId] ?? []
+    }
+
     func loadListAccounts(listId: String, refresh: Bool = false) async {
         guard !isLoadingListAccounts else {
             Self.logger.debug("List accounts load already in progress, skipping")
@@ -1005,7 +1009,9 @@ final class TimelineService {
             return
         }
         
-        Self.logger.info("Loading list accounts for list \(listId.prefix(8), privacy: .public), refresh: \(refresh), current count: \(self.listAccounts.count), maxId: \(self.listAccountsMaxId?.prefix(8) ?? "nil", privacy: .public)")
+        let currentAccounts = listAccountsById[listId] ?? []
+        let currentMaxId = listAccountsMaxIdById[listId]
+        Self.logger.info("Loading list accounts for list \(listId.prefix(8), privacy: .public), refresh: \(refresh), current count: \(currentAccounts.count), maxId: \(currentMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingListAccounts = true
         error = nil
         
@@ -1014,21 +1020,25 @@ final class TimelineService {
                 instance: account.instance,
                 accessToken: token,
                 listId: listId,
-                maxId: refresh ? nil : listAccountsMaxId,
+                maxId: refresh ? nil : currentMaxId,
                 limit: Constants.Pagination.defaultLimit
             )
             
             if refresh {
-                listAccounts = accounts
+                listAccountsById[listId] = accounts
                 Self.logger.info("List accounts refreshed: \(accounts.count) accounts")
             } else {
-                listAccounts.append(contentsOf: accounts)
-                Self.logger.info("List accounts loaded more: \(accounts.count) new accounts, total: \(self.listAccounts.count)")
+                var updatedAccounts = currentAccounts
+                updatedAccounts.append(contentsOf: accounts)
+                listAccountsById[listId] = updatedAccounts
+                Self.logger.info("List accounts loaded more: \(accounts.count) new accounts, total: \(updatedAccounts.count)")
             }
             
             if let lastAccount = accounts.last {
-                listAccountsMaxId = lastAccount.id
+                listAccountsMaxIdById[listId] = lastAccount.id
                 Self.logger.debug("Updated list accounts maxId: \(lastAccount.id.prefix(8), privacy: .public)")
+            } else if refresh {
+                listAccountsMaxIdById[listId] = nil
             }
         } catch let err as FediReaderError where err == .unauthorized {
             Self.logger.error("Unauthorized error loading list accounts")
@@ -1043,7 +1053,7 @@ final class TimelineService {
     }
     
     func loadMoreListAccounts(listId: String) async {
-        guard !isLoadingMore, listAccountsMaxId != nil else { return }
+        guard !isLoadingMore, listAccountsMaxIdById[listId] != nil else { return }
         
         isLoadingMore = true
         await loadListAccounts(listId: listId, refresh: false)
@@ -1051,15 +1061,15 @@ final class TimelineService {
     }
     
     func refreshListAccounts(listId: String) async {
-        listAccountsMaxId = nil
+        listAccountsMaxIdById[listId] = nil
         await loadListAccounts(listId: listId, refresh: true)
     }
     
     func clearListTimeline() {
         listTimeline = []
-        listAccounts = []
+        listAccountsById = [:]
         listTimelineMaxId = nil
-        listAccountsMaxId = nil
+        listAccountsMaxIdById = [:]
     }
     
     /// Fetch list timeline statuses without affecting service state (for prefetching)

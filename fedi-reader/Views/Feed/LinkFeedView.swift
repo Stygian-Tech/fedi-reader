@@ -62,7 +62,14 @@ struct LinkFeedView: View {
     
     private var currentAccounts: [MastodonAccount] {
         guard let service = timelineService else { return [] }
-        return service.listAccounts
+        if currentTab.isHome {
+            return accountsFromLinkStatuses(linkFilterService.linkStatuses)
+        }
+        let listAccounts = service.listAccounts(for: currentTab.id)
+        if listAccounts.isEmpty {
+            return accountsFromLinkStatuses(linkFilterService.linkStatuses)
+        }
+        return listAccounts
     }
     
     private var currentUserFilter: String? {
@@ -83,6 +90,20 @@ struct LinkFeedView: View {
     
     private func shouldShowPaginationLoadingRow(for statuses: [LinkStatus]) -> Bool {
         (isPaginating || timelineService?.isLoadingMore == true) && !statuses.isEmpty
+    }
+
+    private func accountsFromLinkStatuses(_ statuses: [LinkStatus]) -> [MastodonAccount] {
+        var seenIds = Set<String>()
+        var accounts: [MastodonAccount] = []
+
+        for linkStatus in statuses {
+            let account = linkStatus.status.displayStatus.account
+            if seenIds.insert(account.id).inserted {
+                accounts.append(account)
+            }
+        }
+
+        return accounts
     }
 
     private var shouldBlockPostTaps: Bool {
