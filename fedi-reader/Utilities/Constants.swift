@@ -10,10 +10,10 @@ import Foundation
 enum Constants {
     // MARK: - App Info
     
-    static let appName = "Fedi Reader"
+    nonisolated static let appName = "Fedi Reader"
     static let appBundleId = "app.fedi-reader"
-    static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-    static let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    nonisolated static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    nonisolated static let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
     
     // MARK: - OAuth
     
@@ -24,7 +24,7 @@ enum Constants {
         
         static let scopes = "read write follow push"
         
-        static let appWebsite = "https://github.com/fedi-reader/fedi-reader"
+        nonisolated static let appWebsite = "https://github.com/fedi-reader/fedi-reader"
     }
     
     // MARK: - API
@@ -83,6 +83,7 @@ enum Constants {
         static let maxCachedStatuses = 1000
         static let imageMemoryCacheLimit = 100 * 1024 * 1024 // 100 MB
         static let imageDiskCacheLimit = 500 * 1024 * 1024 // 500 MB
+        static let listsRefreshInterval: TimeInterval = 60 * 60 // 1 hour
     }
     
     // MARK: - UI
@@ -146,7 +147,7 @@ enum Constants {
     
     // MARK: - User Agent
     
-    static var userAgent: String {
+    static nonisolated var userAgent: String {
         "\(appName)/\(appVersion) (+\(OAuth.appWebsite))"
     }
     

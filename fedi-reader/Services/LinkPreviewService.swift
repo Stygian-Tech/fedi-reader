@@ -8,9 +8,7 @@
 import Foundation
 import os
 
-@Observable
-@MainActor
-final class LinkPreviewService {
+actor LinkPreviewService {
     static let shared = LinkPreviewService()
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "LinkPreviewService")
 
@@ -32,12 +30,18 @@ final class LinkPreviewService {
         let url: URL?
     }
 
+    private struct ParsedPreviewMetadata: Sendable {
+        let title: String?
+        let description: String?
+        let imageURL: URL?
+        let siteName: String?
+        let fediverseCreator: String?
+    }
+
     // MARK: - State
     private let session: URLSession
     private var cache: [URL: LinkPreview] = [:]
     private let cacheLimit = 500
-
-    var isLoading = false
 
     // MARK: - Init
     init(configuration: URLSessionConfiguration = .default) {
@@ -62,8 +66,6 @@ final class LinkPreviewService {
         }
         
         Self.logger.info("Fetching preview for: \(url.absoluteString, privacy: .public)")
-        isLoading = true
-        defer { isLoading = false }
 
         // Step 1: HEAD to follow redirects cheaply and detect content-type
         let headResult = await head(url)
@@ -94,8 +96,10 @@ final class LinkPreviewService {
 
         // Step 2: GET first bytes (head) of the document
         let html = await fetchHeadHTML(from: finalURL)
-        let parsed = parseHTML(html, baseURL: finalURL)
-        let creator = normalizeFediverseCreator(parsed.fediverseCreator)
+        let parsed = await Task.detached(priority: .utility) {
+            Self.parseHTML(html, baseURL: finalURL)
+        }.value
+        let creator = Self.normalizeFediverseCreator(parsed.fediverseCreator)
         let preview = LinkPreview(
             url: url,
             finalURL: finalURL,
@@ -117,11 +121,11 @@ final class LinkPreviewService {
         let uniqueURLs = Array(Set(urls))
         Self.logger.info("Fetching previews for \(uniqueURLs.count) URLs")
         var results: [URL: LinkPreview] = [:]
+        let service = self
         await withTaskGroup(of: (URL, LinkPreview?).self) { group in
             for url in uniqueURLs {
-                group.addTask { [weak self] in
-                    guard let self else { return (url, nil) }
-                    return (url, await self.preview(for: url))
+                group.addTask { [service] in
+                    (url, await service.preview(for: url))
                 }
             }
             for await (url, preview) in group {
@@ -196,8 +200,16 @@ final class LinkPreviewService {
     }
 
     // MARK: - Parsing
-    private func parseHTML(_ html: String, baseURL: URL) -> (title: String?, description: String?, imageURL: URL?, siteName: String?, fediverseCreator: String?) {
-        guard !html.isEmpty else { return (nil, nil, nil, nil, nil) }
+    private nonisolated static func parseHTML(_ html: String, baseURL: URL) -> ParsedPreviewMetadata {
+        guard !html.isEmpty else {
+            return ParsedPreviewMetadata(
+                title: nil,
+                description: nil,
+                imageURL: nil,
+                siteName: nil,
+                fediverseCreator: nil
+            )
+        }
 
         func metaContent(name: String) -> String? {
             let pattern = #"<meta[^>]+name\s*=\s*[\"']\#(NSRegularExpression.escapedPattern(for: name))[\"'][^>]+content\s*=\s*[\"']([^\"']+)[\"']"#
@@ -241,10 +253,16 @@ final class LinkPreviewService {
             return URL(string: decoded, relativeTo: baseURL)?.absoluteURL
         }()
 
-        return (title, description, imageURL, siteName, fediverseCreator)
+        return ParsedPreviewMetadata(
+            title: title,
+            description: description,
+            imageURL: imageURL,
+            siteName: siteName,
+            fediverseCreator: fediverseCreator
+        )
     }
 
-    private func normalizeFediverseCreator(_ creator: String?) -> (name: String?, url: URL?) {
+    private nonisolated static func normalizeFediverseCreator(_ creator: String?) -> (name: String?, url: URL?) {
         guard let creator, !creator.isEmpty else { return (nil, nil) }
         let trimmed = creator.trimmingCharacters(in: .whitespacesAndNewlines)
         let handle = trimmed.hasPrefix("@") ? String(trimmed.dropFirst()) : trimmed

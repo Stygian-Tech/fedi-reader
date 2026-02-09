@@ -32,11 +32,12 @@ struct LinkFeedView: View {
     
     @State private var selectedDomain: String?
     @State private var selectedTabIndex: Int = 0
-    @GestureState private var dragOffset: CGFloat = 0
     @State private var scrollProxy: ScrollViewProxy?
     @AppStorage("hapticFeedback") private var hapticFeedback = true
     @State private var titleBarTapTracker = TabSelectionTracker()
-    @State private var isTransitioningFeeds = false
+    @State private var isPaginating = false
+    @State private var isHorizontalSwipeIntentActive = false
+    @State private var postSwipeTapSuppressionDeadline: TimeInterval = 0
     
     private var timelineService: TimelineService? {
         timelineWrapper.service
@@ -80,8 +81,17 @@ struct LinkFeedView: View {
         return statuses
     }
     
+    private func shouldShowPaginationLoadingRow(for statuses: [LinkStatus]) -> Bool {
+        (isPaginating || timelineService?.isLoadingMore == true) && !statuses.isEmpty
+    }
+
+    private var shouldBlockPostTaps: Bool {
+        isHorizontalSwipeIntentActive || Date().timeIntervalSinceReferenceDate < postSwipeTapSuppressionDeadline
+    }
+    
     var body: some View {
         @Bindable var state = appState
+        let statuses = filteredStatuses
         
         VStack(spacing: 0) {
             // Horizontal scrollable list picker
@@ -90,43 +100,21 @@ struct LinkFeedView: View {
             // Single content view (no TabView to avoid crashes)
             ZStack {
                 Group {
-                    if filteredStatuses.isEmpty && !linkFilterService.isLoading {
+                    if statuses.isEmpty && !linkFilterService.isLoading {
                         emptyStateView
                     } else {
-                        linkList
+                        linkList(statuses: statuses)
                     }
                 }
                 .id(currentTab.id)
-                .transition(.opacity)
-                .opacity(isTransitioningFeeds ? 0.75 : 1.0)
             }
-            .animation(.easeInOut(duration: 0.2), value: selectedTabIndex)
-            .offset(x: dragOffset)
             .simultaneousGesture(
-                DragGesture(minimumDistance: 50)
-                    .updating($dragOffset) { value, state, _ in
-                        let dx = value.translation.width
-                        let dy = value.translation.height
-                        // Only allow horizontal swipes, and limit the offset
-                        guard abs(dx) > abs(dy) * 2 else { return }
-                        // Clamp the offset to prevent over-swiping
-                        let maxOffset: CGFloat = 300
-                        state = max(-maxOffset, min(maxOffset, dx))
+                DragGesture(minimumDistance: FeedSwipeGestureEvaluator.horizontalIntentDistance)
+                    .onChanged { value in
+                        handleSwipeChanged(value)
                     }
                     .onEnded { value in
-                        let dx = value.translation.width
-                        let dy = value.translation.height
-                        // Only switch tabs on predominantly horizontal swipes
-                        guard abs(dx) > abs(dy) * 2 else { return }
-                        let threshold: CGFloat = 150 // Increased threshold to make it harder
-                        if dx > threshold {
-                            // Swipe right - go to previous tab
-                            selectTab(at: selectedTabIndex - 1)
-                        } else if dx < -threshold {
-                            // Swipe left - go to next tab
-                            selectTab(at: selectedTabIndex + 1)
-                        }
-                        // Note: dragOffset will automatically reset to 0 via @GestureState
+                        handleSwipeEnded(value)
                     }
             )
         }
@@ -214,8 +202,8 @@ struct LinkFeedView: View {
         .task {
             await loadInitialContent()
         }
-        .onChange(of: selectedTabIndex) { oldIndex, newIndex in
-            handleTabChange(from: oldIndex, to: newIndex)
+        .onChange(of: selectedTabIndex) { _, newIndex in
+            handleTabChange(to: newIndex)
         }
         .onChange(of: appState.selectedListId) { _, newListId in
             // Sync tab selection if changed from outside
@@ -229,6 +217,10 @@ struct LinkFeedView: View {
         .refreshable {
             await refreshCurrentFeed()
         }
+        .onDisappear {
+            isHorizontalSwipeIntentActive = false
+            postSwipeTapSuppressionDeadline = 0
+        }
     }
     
     private var listPickerHeader: some View {
@@ -238,8 +230,7 @@ struct LinkFeedView: View {
                     ForEach(Array(feedTabs.enumerated()), id: \.element.id) { index, tab in
                         FeedTabButton(
                             title: tab.title,
-                            isSelected: selectedTabIndex == index,
-                            isLoading: linkFilterService.isLoadingFeed(tab.id)
+                            isSelected: selectedTabIndex == index
                         ) {
                             selectTab(at: index)
                         }
@@ -260,22 +251,30 @@ struct LinkFeedView: View {
         .background(Color(.systemBackground).opacity(0.95))
     }
     
-    private var linkList: some View {
-        GlassEffectContainer {
+    private func linkList(statuses: [LinkStatus]) -> some View {
+        return GlassEffectContainer {
             ScrollViewReader { proxy in
                 List {
-                    ForEach(filteredStatuses) { linkStatus in
-                        LinkStatusRow(linkStatus: linkStatus)
+                    ForEach(Array(statuses.enumerated()), id: \.element.id) { index, linkStatus in
+                        LinkStatusRow(
+                            linkStatus: linkStatus,
+                            deferPostNavigation: deferPostNavigation,
+                            shouldIgnoreTap: { shouldBlockPostTaps }
+                        )
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .onAppear {
-                                checkLoadMore(linkStatus)
+                                checkLoadMore(at: index, totalCount: statuses.count)
                             }
                     }
                     
                     if linkFilterService.isLoading {
                         loadingRow
+                    }
+                    
+                    if shouldShowPaginationLoadingRow(for: statuses) {
+                        paginationLoadingRow
                     }
                 }
                 .listStyle(.plain)
@@ -318,15 +317,68 @@ struct LinkFeedView: View {
         .listRowSeparator(.hidden)
     }
     
+    private var paginationLoadingRow: some View {
+        HStack(spacing: 10) {
+            Spacer()
+            ProgressView()
+            Text("Loading more posts...")
+                .font(.roundedSubheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+    }
+
+    // MARK: - Gesture Handling
+
+    private func handleSwipeChanged(_ value: DragGesture.Value) {
+        guard !isHorizontalSwipeIntentActive else { return }
+        if FeedSwipeGestureEvaluator.isHorizontalIntent(translation: value.translation) {
+            isHorizontalSwipeIntentActive = true
+        }
+    }
+
+    private func handleSwipeEnded(_ value: DragGesture.Value) {
+        defer { isHorizontalSwipeIntentActive = false }
+
+        let direction = FeedSwipeGestureEvaluator.shouldCommit(
+            translation: value.translation,
+            predictedEndTranslation: value.predictedEndTranslation
+        )
+
+        switch direction {
+        case .previous:
+            selectTab(at: selectedTabIndex - 1)
+        case .next:
+            selectTab(at: selectedTabIndex + 1)
+        case .none:
+            break
+        }
+
+        if isHorizontalSwipeIntentActive || direction != .none || FeedSwipeGestureEvaluator.shouldSuppressTapAfterGesture(translation: value.translation) {
+            suppressPostSwipeTaps()
+        }
+    }
+
+    private func deferPostNavigation(_ action: @escaping () -> Void) {
+        guard !shouldBlockPostTaps else { return }
+        action()
+    }
+
+    private func suppressPostSwipeTaps() {
+        let suppressionSeconds = Double(FeedSwipeGestureEvaluator.postSwipeSuppressionNanoseconds) / 1_000_000_000
+        postSwipeTapSuppressionDeadline = Date().timeIntervalSinceReferenceDate + suppressionSeconds
+    }
+    
     // MARK: - Data Loading
     
     private func loadInitialContent() async {
         guard let service = timelineService else { return }
         
-        // Load lists first
-        if service.lists.isEmpty {
-            await service.loadLists()
-        }
+        // Keep list tabs stable and only refresh occasionally.
+        await service.loadLists()
         
         // Apply initial list selection from AppState
         if let listId = appState.selectedListId,
@@ -343,7 +395,7 @@ struct LinkFeedView: View {
         }
     }
     
-    private func handleTabChange(from oldIndex: Int, to newIndex: Int) {
+    private func handleTabChange(to newIndex: Int) {
         guard newIndex >= 0 && newIndex < feedTabs.count else { return }
         
         let tab = feedTabs[newIndex]
@@ -361,10 +413,7 @@ struct LinkFeedView: View {
         // Load content if not cached
         Task {
             await loadContentForTabIfNeeded(tab)
-            await MainActor.run {
-                isTransitioningFeeds = false
-            }
-            
+
             // Pre-fetch adjacent feeds
             Task.detached(priority: .background) { [feedTabs] in
                 await self.prefetchAdjacentFeeds(currentIndex: newIndex, tabs: feedTabs)
@@ -375,10 +424,7 @@ struct LinkFeedView: View {
     private func selectTab(at index: Int) {
         guard index >= 0 && index < feedTabs.count else { return }
         guard index != selectedTabIndex else { return }
-        isTransitioningFeeds = true
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selectedTabIndex = index
-        }
+        selectedTabIndex = index
     }
     
     private func loadContentForTab(_ tab: FeedTabItem, forceRefresh: Bool = false) async {
@@ -478,23 +524,34 @@ struct LinkFeedView: View {
         }
     }
     
-    private func checkLoadMore(_ linkStatus: LinkStatus) {
+    private func checkLoadMore(at index: Int, totalCount: Int) {
         guard let service = timelineService else { return }
-        
-        let statuses = filteredStatuses
-        guard let index = statuses.firstIndex(of: linkStatus) else { return }
-        
-        if index >= statuses.count - (Constants.Pagination.prefetchThreshold * 2) {
+        guard !isPaginating, !service.isLoadingMore else { return }
+
+        if index >= totalCount - (Constants.Pagination.prefetchThreshold * 2) {
+            let tab = currentTab
+            let canLoadMore = tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
+            guard canLoadMore else { return }
+            
+            isPaginating = true
             Task {
-                let tab = currentTab
-                if tab.isHome {
-                    await service.loadMoreHomeTimeline()
-                    _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
-                } else {
-                    await service.loadMoreListTimeline(listId: tab.id)
-                    _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
-                }
+                await loadMoreForCurrentTab(tab, using: service)
             }
+        }
+    }
+    
+    @MainActor
+    private func loadMoreForCurrentTab(_ tab: FeedTabItem, using service: TimelineService) async {
+        defer { isPaginating = false }
+        
+        if tab.isHome {
+            let newStatuses = await service.loadMoreHomeTimeline()
+            guard !newStatuses.isEmpty else { return }
+            _ = await linkFilterService.appendStatuses(newStatuses, for: tab.id)
+        } else {
+            let newStatuses = await service.loadMoreListTimeline(listId: tab.id)
+            guard !newStatuses.isEmpty else { return }
+            _ = await linkFilterService.appendStatuses(newStatuses, for: tab.id)
         }
     }
 }

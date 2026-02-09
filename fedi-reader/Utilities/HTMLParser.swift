@@ -12,7 +12,7 @@ struct HTMLParser: Sendable {
     // MARK: - Link Extraction
     
     /// Extracts all URLs from HTML content
-    static func extractLinks(from html: String) -> [URL] {
+    nonisolated static func extractLinks(from html: String) -> [URL] {
         // Match href attributes in anchor tags
         let pattern = #"<a[^>]+href\s*=\s*["']([^"']+)["'][^>]*>"#
         
@@ -41,7 +41,7 @@ struct HTMLParser: Sendable {
     }
     
     /// Extracts external links (excludes Mastodon internal links like mentions and hashtags)
-    static func extractExternalLinks(from html: String, excludingDomains domains: [String] = []) -> [URL] {
+    nonisolated static func extractExternalLinks(from html: String, excludingDomains domains: [String] = []) -> [URL] {
         extractLinks(from: html).filter { url in
             guard let host = url.host?.lowercased() else { return false }
             
@@ -61,7 +61,7 @@ struct HTMLParser: Sendable {
     // MARK: - HTML to Plain Text
     
     /// Converts HTML to plain text, stripping all tags
-    static func stripHTML(_ html: String) -> String {
+    nonisolated static func stripHTML(_ html: String) -> String {
         var result = html
         
         // Replace common block elements with newlines
@@ -89,7 +89,7 @@ struct HTMLParser: Sendable {
     }
     
     /// Converts HTML to attributed text-friendly plain text with some formatting preserved
-    static func convertToPlainText(_ html: String) -> String {
+    nonisolated static func convertToPlainText(_ html: String) -> String {
         var result = html
         
         // Convert line breaks
@@ -121,7 +121,7 @@ struct HTMLParser: Sendable {
     
     // MARK: - HTML Entity Decoding
     
-    static func decodeHTMLEntities(_ string: String) -> String {
+    nonisolated static func decodeHTMLEntities(_ string: String) -> String {
         var result = string
         
         // Named entities
@@ -231,13 +231,13 @@ struct HTMLParser: Sendable {
     // MARK: - URL Helpers
     
     /// Checks if a URL is external (not a relative or javascript URL)
-    static func isExternalURL(_ url: URL) -> Bool {
+    nonisolated static func isExternalURL(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased() else { return false }
         return scheme == "http" || scheme == "https"
     }
     
     /// Extracts the domain from a URL
-    static func extractDomain(from url: URL) -> String? {
+    nonisolated static func extractDomain(from url: URL) -> String? {
         guard let host = url.host else { return nil }
         
         // Remove www. prefix
@@ -251,7 +251,7 @@ struct HTMLParser: Sendable {
     // MARK: - Mention and Hashtag Extraction
     
     /// Extracts mentions (@username@instance) from HTML
-    static func extractMentions(from html: String) -> [String] {
+    nonisolated static func extractMentions(from html: String) -> [String] {
         let pattern = #"@[\w]+(@[\w.-]+)?"#
         
         let plainText = stripHTML(html)
@@ -270,7 +270,7 @@ struct HTMLParser: Sendable {
     }
     
     /// Extracts hashtags from HTML
-    static func extractHashtags(from html: String) -> [String] {
+    nonisolated static func extractHashtags(from html: String) -> [String] {
         let pattern = #"#[\w]+"#
         
         let plainText = stripHTML(html)
@@ -291,7 +291,7 @@ struct HTMLParser: Sendable {
     // MARK: - HTML to AttributedString with Links
     
     /// Replaces emoji shortcodes in HTML with image tags
-    static func replaceEmojiShortcodes(_ html: String, emojiLookup: [String: CustomEmoji]) -> String {
+    nonisolated static func replaceEmojiShortcodes(_ html: String, emojiLookup: [String: CustomEmoji]) -> String {
         var result = html
         
         // Pattern to match :shortcode: in HTML
@@ -372,7 +372,7 @@ struct HTMLParser: Sendable {
     
     /// Converts HTML to AttributedString with clickable links and hashtags
     @available(iOS 15.0, macOS 12.0, *)
-    static func convertToAttributedString(_ html: String, hashtagHandler: ((String) -> URL?)? = nil, emojiLookup: [String: CustomEmoji]? = nil) -> AttributedString {
+    nonisolated static func convertToAttributedString(_ html: String, hashtagHandler: ((String) -> URL?)? = nil, emojiLookup: [String: CustomEmoji]? = nil) -> AttributedString {
         // Replace emoji shortcodes first if lookup is provided
         let processedHTML = if let lookup = emojiLookup {
             replaceEmojiShortcodes(html, emojiLookup: lookup)

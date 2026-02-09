@@ -48,6 +48,8 @@ final class TimelineService {
     private var conversationsMaxId: String?
     private var listTimelineMaxId: String?
     private var listAccountsMaxId: String?
+    private var listsLastRefreshedAt: Date?
+    private var listsLastRefreshedForAccountId: String?
     
     /// Polling tasks for async refresh, keyed by status ID. Cancelled when starting a new refresh for same status or via cancelAsyncRefreshPolling.
     private var asyncRefreshPollingTasks: [String: Task<Void, Never>] = [:]
@@ -102,17 +104,25 @@ final class TimelineService {
             }
             
             // Update pagination cursor
-            if let lastStatus = statuses.last {
-                homeMaxId = lastStatus.id
-                Self.logger.debug("Updated home timeline maxId: \(lastStatus.id.prefix(8), privacy: .public)")
-            }
-            if let firstStatus = statuses.first, refresh {
-                homeMinId = firstStatus.id
-                Self.logger.debug("Updated home timeline minId: \(firstStatus.id.prefix(8), privacy: .public)")
+            if statuses.isEmpty {
+                homeMaxId = nil
+                if refresh {
+                    homeMinId = nil
+                }
+                Self.logger.debug("Home timeline returned no statuses; reached pagination end")
+            } else {
+                if let lastStatus = statuses.last {
+                    homeMaxId = lastStatus.id
+                    Self.logger.debug("Updated home timeline maxId: \(lastStatus.id.prefix(8), privacy: .public)")
+                }
+                if let firstStatus = statuses.first, refresh {
+                    homeMinId = firstStatus.id
+                    Self.logger.debug("Updated home timeline minId: \(firstStatus.id.prefix(8), privacy: .public)")
+                }
             }
 
             Task {
-                await prefetchFediverseCreators(for: homeTimeline)
+                await prefetchFediverseCreators(for: statuses)
             }
             
             NotificationCenter.default.post(name: .timelineDidRefresh, object: TimelineType.home)
@@ -130,18 +140,28 @@ final class TimelineService {
         isLoadingHome = false
     }
     
-    func loadMoreHomeTimeline() async {
-        guard !isLoadingMore, homeMaxId != nil else { return }
+    func canLoadMoreHomeTimeline() -> Bool {
+        homeMaxId != nil
+    }
+    
+    @discardableResult
+    func loadMoreHomeTimeline() async -> [Status] {
+        guard !isLoadingMore, canLoadMoreHomeTimeline() else { return [] }
+        let previousCount = homeTimeline.count
         
         isLoadingMore = true
         await loadHomeTimeline(refresh: false)
         isLoadingMore = false
+        
+        guard homeTimeline.count > previousCount else { return [] }
+        return Array(homeTimeline.dropFirst(previousCount))
     }
     
     func backgroundFetchOlderPosts() async {
         // Continuously fetch older posts in the background
-        while homeMaxId != nil && !isLoadingMore {
-            await loadMoreHomeTimeline()
+        while canLoadMoreHomeTimeline() && !isLoadingMore {
+            let newStatuses = await loadMoreHomeTimeline()
+            guard !newStatuses.isEmpty else { break }
             // Small delay to avoid overwhelming the API
             try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
         }
@@ -195,7 +215,7 @@ final class TimelineService {
             }
 
             Task {
-                await prefetchFediverseCreators(for: exploreStatuses)
+                await prefetchFediverseCreators(for: statuses)
             }
         } catch let err as FediReaderError where err == .unauthorized {
             Self.logger.error("Unauthorized error loading explore content")
@@ -805,6 +825,7 @@ final class TimelineService {
     }
 
     private func prefetchFediverseCreators(for statuses: [Status]) async {
+        guard !statuses.isEmpty else { return }
         let urls: [URL] = statuses.compactMap { status -> URL? in
             guard let card = status.displayStatus.card,
                   (card.type == .link || card.type == .rich),
@@ -813,7 +834,7 @@ final class TimelineService {
             }
             return url
         }
-        
+        guard !urls.isEmpty else { return }
         await LinkPreviewService.shared.prefetchFediverseCreators(for: urls)
     }
     
@@ -837,15 +858,31 @@ final class TimelineService {
     
     // MARK: - Lists
     
-    func loadLists() async {
+    func loadLists(forceRefresh: Bool = false) async {
         guard !isLoadingLists else {
             Self.logger.debug("Lists load already in progress, skipping")
             return
         }
-        
-        guard let account = authService.currentAccount,
-              let token = await authService.getAccessToken(for: account) else {
+
+        guard let account = authService.currentAccount else {
             Self.logger.error("No active account for lists load")
+            error = FediReaderError.noActiveAccount
+            return
+        }
+
+        if !forceRefresh,
+           !lists.isEmpty,
+           listsLastRefreshedForAccountId == account.id,
+           let lastRefresh = listsLastRefreshedAt {
+            let age = Date().timeIntervalSince(lastRefresh)
+            if age < Constants.Cache.listsRefreshInterval {
+                Self.logger.debug("Skipping lists refresh (age: \(Int(age), privacy: .public)s)")
+                return
+            }
+        }
+
+        guard let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("Missing access token for lists load")
             error = FediReaderError.noActiveAccount
             return
         }
@@ -855,8 +892,15 @@ final class TimelineService {
         error = nil
         
         do {
-            lists = try await client.getLists(instance: account.instance, accessToken: token)
-            Self.logger.info("Lists loaded: \(self.lists.count) lists")
+            let fetchedLists = try await client.getLists(instance: account.instance, accessToken: token)
+            if fetchedLists != lists {
+                lists = fetchedLists
+                Self.logger.info("Lists updated: \(self.lists.count) lists")
+            } else {
+                Self.logger.debug("Lists unchanged (\(self.lists.count) lists)")
+            }
+            listsLastRefreshedAt = Date()
+            listsLastRefreshedForAccountId = account.id
         } catch let err as FediReaderError where err == .unauthorized {
             Self.logger.error("Unauthorized error loading lists")
             self.error = err
@@ -903,13 +947,16 @@ final class TimelineService {
                 Self.logger.info("List timeline loaded more: \(statuses.count) new statuses, total: \(self.listTimeline.count)")
             }
             
-            if let lastStatus = statuses.last {
+            if statuses.isEmpty {
+                listTimelineMaxId = nil
+                Self.logger.debug("List timeline returned no statuses; reached pagination end")
+            } else if let lastStatus = statuses.last {
                 listTimelineMaxId = lastStatus.id
                 Self.logger.debug("Updated list timeline maxId: \(lastStatus.id.prefix(8), privacy: .public)")
             }
             
             Task {
-                await prefetchFediverseCreators(for: listTimeline)
+                await prefetchFediverseCreators(for: statuses)
             }
         } catch let err as FediReaderError where err == .unauthorized {
             Self.logger.error("Unauthorized error loading list timeline")
@@ -923,12 +970,21 @@ final class TimelineService {
         isLoadingListTimeline = false
     }
     
-    func loadMoreListTimeline(listId: String) async {
-        guard !isLoadingMore, listTimelineMaxId != nil else { return }
+    func canLoadMoreListTimeline() -> Bool {
+        listTimelineMaxId != nil
+    }
+    
+    @discardableResult
+    func loadMoreListTimeline(listId: String) async -> [Status] {
+        guard !isLoadingMore, canLoadMoreListTimeline() else { return [] }
+        let previousCount = listTimeline.count
         
         isLoadingMore = true
         await loadListTimeline(listId: listId, refresh: false)
         isLoadingMore = false
+        
+        guard listTimeline.count > previousCount else { return [] }
+        return Array(listTimeline.dropFirst(previousCount))
     }
     
     func refreshListTimeline(listId: String) async {

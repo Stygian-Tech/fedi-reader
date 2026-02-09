@@ -18,6 +18,7 @@ enum StatusActionsBarSize {
 struct StatusActionsBar: View {
     let status: Status
     let size: StatusActionsBarSize
+    let shouldIgnoreTap: (() -> Bool)?
     
     @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
@@ -59,6 +60,20 @@ struct StatusActionsBar: View {
     private var statusURL: URL? {
         displayStatus.card?.linkURL ?? URL(string: displayStatus.url ?? "")
     }
+
+    private var isTapSuppressed: Bool {
+        shouldIgnoreTap?() == true
+    }
+
+    init(
+        status: Status,
+        size: StatusActionsBarSize,
+        shouldIgnoreTap: (() -> Bool)? = nil
+    ) {
+        self.status = status
+        self.size = size
+        self.shouldIgnoreTap = shouldIgnoreTap
+    }
     
     var body: some View {
         actionsRow
@@ -79,7 +94,7 @@ struct StatusActionsBar: View {
         action: @escaping () async -> Void
     ) -> some View {
         Button {
-            guard !isProcessing else { return }
+            guard !isProcessing, !isTapSuppressed else { return }
             Task {
                 await action()
             }
@@ -171,6 +186,7 @@ struct StatusActionsBar: View {
             // Already boosted - show menu with Unboost option
             Menu {
                 Button {
+                    guard !isTapSuppressed else { return }
                     Task {
                         await toggleReblog()
                     }
@@ -198,6 +214,7 @@ struct StatusActionsBar: View {
             // Not boosted and quote boost enabled - show menu with both options
             Menu {
                 Button {
+                    guard !isTapSuppressed else { return }
                     Task {
                         await toggleReblog()
                     }
@@ -206,6 +223,7 @@ struct StatusActionsBar: View {
                 }
                 
                 Button {
+                    guard !isTapSuppressed else { return }
                     appState.present(sheet: .compose(quote: status))
                 } label: {
                     Label("Quote Boost", systemImage: "quote.bubble")
@@ -259,6 +277,7 @@ struct StatusActionsBar: View {
                 Menu {
                     if let primary = readLaterManager.primaryService, let serviceType = primary.service {
                         Button {
+                            guard !isTapSuppressed else { return }
                             Task {
                                 try? await readLaterManager.save(
                                     url: url,
@@ -275,6 +294,7 @@ struct StatusActionsBar: View {
                         ForEach(readLaterManager.configuredServices, id: \.id) { config in
                             if let serviceType = config.service {
                                 Button {
+                                    guard !isTapSuppressed else { return }
                                     Task {
                                         try? await readLaterManager.save(
                                             url: url,

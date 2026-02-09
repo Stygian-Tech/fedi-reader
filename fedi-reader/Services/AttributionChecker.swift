@@ -8,9 +8,7 @@
 import Foundation
 import os
 
-@Observable
-@MainActor
-final class AttributionChecker {
+actor AttributionChecker {
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "AttributionChecker")
     
     private let session: URLSession
@@ -64,11 +62,12 @@ final class AttributionChecker {
         let uniqueURLs = Array(Set(urls))
         Self.logger.info("Batch checking attributions for \(uniqueURLs.count) URLs")
         var results: [URL: AuthorAttribution] = [:]
+        let checker = self
         
         await withTaskGroup(of: (URL, AuthorAttribution?).self) { group in
             for url in uniqueURLs {
-                group.addTask {
-                    let attribution = await self.checkAttribution(for: url)
+                group.addTask { [checker] in
+                    let attribution = await checker.checkAttribution(for: url)
                     return (url, attribution)
                 }
             }

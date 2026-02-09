@@ -198,23 +198,23 @@ struct Status: Codable, Identifiable, Hashable, Sendable {
     }
     
     // Convenience computed properties
-    var displayStatus: Status {
+    nonisolated var displayStatus: Status {
         reblog?.value ?? self
     }
     
-    var isReblog: Bool {
+    nonisolated var isReblog: Bool {
         reblog != nil
     }
     
-    var isQuotePost: Bool {
+    nonisolated var isQuotePost: Bool {
         quote != nil
     }
     
-    var hasLinkCard: Bool {
+    nonisolated var hasLinkCard: Bool {
         card?.type == .link
     }
     
-    var cardURL: URL? {
+    nonisolated var cardURL: URL? {
         guard let urlString = card?.url else { return nil }
         return URL(string: urlString)
     }
@@ -386,12 +386,12 @@ struct PreviewCard: Codable, Hashable, Sendable {
         case embedUrl = "embed_url"
     }
     
-    var imageURL: URL? {
+    nonisolated var imageURL: URL? {
         guard let image else { return nil }
         return URL(string: image)
     }
     
-    var linkURL: URL? {
+    nonisolated var linkURL: URL? {
         URL(string: url)
     }
 }
@@ -836,7 +836,7 @@ struct AuthorAttribution: Sendable {
     let mastodonProfileURL: String?  // https://instance.com/@username
     let profilePictureURL: String?  // Avatar/profile picture URL
     
-    init(
+    nonisolated init(
         name: String? = nil,
         url: String? = nil,
         source: AttributionSource,
