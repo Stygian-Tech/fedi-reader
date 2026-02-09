@@ -912,6 +912,111 @@ final class TimelineService {
         
         isLoadingLists = false
     }
+
+    func fetchListsContainingAccount(accountId: String) async -> [MastodonList] {
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for list membership load")
+            error = FediReaderError.noActiveAccount
+            return []
+        }
+
+        do {
+            return try await client.getAccountLists(instance: account.instance, accessToken: token, accountId: accountId)
+        } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error loading list memberships")
+            self.error = err
+            NotificationCenter.default.post(name: .accountDidChange, object: nil)
+        } catch {
+            Self.logger.error("Error loading list memberships: \(error.localizedDescription)")
+            self.error = error
+        }
+
+        return []
+    }
+
+    func createList(title: String) async -> MastodonList? {
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for list creation")
+            error = FediReaderError.noActiveAccount
+            return nil
+        }
+
+        do {
+            let list = try await client.createList(instance: account.instance, accessToken: token, title: title)
+            if !lists.contains(list) {
+                lists.append(list)
+                lists.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            }
+            return list
+        } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error creating list")
+            self.error = err
+            NotificationCenter.default.post(name: .accountDidChange, object: nil)
+        } catch {
+            Self.logger.error("Error creating list: \(error.localizedDescription)")
+            self.error = error
+        }
+
+        return nil
+    }
+
+    func addAccount(_ accountId: String, toList listId: String) async -> Bool {
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for list add")
+            error = FediReaderError.noActiveAccount
+            return false
+        }
+
+        do {
+            try await client.addAccountsToList(
+                instance: account.instance,
+                accessToken: token,
+                listId: listId,
+                accountIds: [accountId]
+            )
+            return true
+        } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error adding account to list")
+            self.error = err
+            NotificationCenter.default.post(name: .accountDidChange, object: nil)
+        } catch {
+            Self.logger.error("Error adding account to list: \(error.localizedDescription)")
+            self.error = error
+        }
+
+        return false
+    }
+
+    func removeAccount(_ accountId: String, fromList listId: String) async -> Bool {
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for list remove")
+            error = FediReaderError.noActiveAccount
+            return false
+        }
+
+        do {
+            try await client.removeAccountsFromList(
+                instance: account.instance,
+                accessToken: token,
+                listId: listId,
+                accountIds: [accountId]
+            )
+            return true
+        } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error removing account from list")
+            self.error = err
+            NotificationCenter.default.post(name: .accountDidChange, object: nil)
+        } catch {
+            Self.logger.error("Error removing account from list: \(error.localizedDescription)")
+            self.error = error
+        }
+
+        return false
+    }
     
     func loadListTimeline(listId: String, refresh: Bool = false) async {
         guard !isLoadingListTimeline else {

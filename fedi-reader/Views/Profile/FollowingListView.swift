@@ -92,10 +92,18 @@ struct FollowingListView: View {
 
 struct AccountRowView: View {
     let account: MastodonAccount
+    @State private var isManagingLists = false
     
     var body: some View {
         HStack(spacing: 12) {
             ProfileAvatarView(url: account.avatarURL, size: 50)
+                .contextMenu {
+                    Button {
+                        isManagingLists = true
+                    } label: {
+                        Label("Manage Lists", systemImage: "list.bullet")
+                    }
+                }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -122,6 +130,9 @@ struct AccountRowView: View {
                 .font(.roundedCaption)
                 .foregroundStyle(.tertiary)
                 .padding(.trailing, 8)
+        }
+        .sheet(isPresented: $isManagingLists) {
+            ListManagementView(account: account)
         }
     }
 }
