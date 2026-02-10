@@ -138,7 +138,8 @@ enum MockStatusFactory {
             statusesCount: 200,
             lastStatusAt: nil,
             emojis: [],
-            fields: []
+            fields: [],
+            source: nil
         )
     }
     

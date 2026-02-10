@@ -87,6 +87,26 @@ struct MastodonTypesTests {
         #expect(account.avatarURL != nil)
         #expect(account.headerURL != nil)
     }
+
+    @Test("MastodonAccount prefers source note when available")
+    func accountPrefersSourceNote() {
+        let account = makeAccount(
+            note: "<p>HTML bio line one<br />HTML bio line two</p>",
+            sourceNote: "Source line one\r\nSource line two"
+        )
+
+        #expect(account.preferredNote == "Source line one\r\nSource line two")
+    }
+
+    @Test("MastodonAccount falls back to note when source note is empty")
+    func accountFallsBackToNoteWhenSourceNoteEmpty() {
+        let account = makeAccount(
+            note: "<p>HTML bio line one<br />HTML bio line two</p>",
+            sourceNote: "   "
+        )
+
+        #expect(account.preferredNote == "<p>HTML bio line one<br />HTML bio line two</p>")
+    }
     
     // MARK: - Preview Card Tests
     
@@ -190,5 +210,30 @@ struct MastodonTypesTests {
         #expect(AsyncRefreshHeader.parse(headerValue: "  ") == nil)
         #expect(AsyncRefreshHeader.parse(headerValue: "junk") == nil)
         #expect(AsyncRefreshHeader.parse(headerValue: #"id="x", retry=0"#) == nil)
+    }
+
+    private func makeAccount(note: String, sourceNote: String?) -> MastodonAccount {
+        MastodonAccount(
+            id: "123",
+            username: "testuser",
+            acct: "testuser",
+            displayName: "Test User",
+            locked: false,
+            bot: false,
+            createdAt: Date(),
+            note: note,
+            url: "https://example.com/@testuser",
+            avatar: "https://example.com/avatar.jpg",
+            avatarStatic: "https://example.com/avatar.jpg",
+            header: "https://example.com/header.jpg",
+            headerStatic: "https://example.com/header.jpg",
+            followersCount: 0,
+            followingCount: 0,
+            statusesCount: 0,
+            lastStatusAt: nil,
+            emojis: [],
+            fields: [],
+            source: sourceNote.map { AccountSource(note: $0) }
+        )
     }
 }

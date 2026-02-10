@@ -74,7 +74,8 @@ struct AccountBadgesView: View {
                     statusesCount: 0,
                     lastStatusAt: nil,
                     emojis: [],
-                    fields: []
+                    fields: [],
+                    source: nil
                 ),
                 size: .medium
             )
@@ -102,7 +103,8 @@ struct AccountBadgesView: View {
                     statusesCount: 0,
                     lastStatusAt: nil,
                     emojis: [],
-                    fields: []
+                    fields: [],
+                    source: nil
                 ),
                 size: .medium
             )
@@ -130,7 +132,8 @@ struct AccountBadgesView: View {
                     statusesCount: 0,
                     lastStatusAt: nil,
                     emojis: [],
-                    fields: []
+                    fields: [],
+                    source: nil
                 ),
                 size: .medium
             )
