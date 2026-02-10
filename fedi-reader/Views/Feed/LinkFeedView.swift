@@ -60,8 +60,7 @@ struct LinkFeedView: View {
     }
     
     private var currentAccounts: [MastodonAccount] {
-        guard let service = timelineService else { return [] }
-        return service.listAccounts
+        linkFilterService.uniqueAccounts()
     }
     
     private var currentUserFilter: String? {
@@ -146,17 +145,6 @@ struct LinkFeedView: View {
                 .accessibilityHint("Opens user filter pane")
             }
 
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task {
-                        await linkFilterService.enrichWithAttributions()
-                    }
-                } label: {
-                    Image(systemName: "person.text.rectangle")
-                }
-                .accessibilityLabel("Load author info")
-                .accessibilityHint("Loads author attribution details for links")
-            }
         }
         .sheet(isPresented: $state.isUserFilterOpen) {
             UserFilterPane(
@@ -412,7 +400,6 @@ struct LinkFeedView: View {
         } else {
             // Load list timeline
             await service.refreshListTimeline(listId: tab.id)
-            await service.refreshListAccounts(listId: tab.id)
             _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
         }
         Task {

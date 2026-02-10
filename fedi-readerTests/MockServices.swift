@@ -17,6 +17,7 @@ enum MockStatusFactory {
         hasCard: Bool = false,
         cardURL: String? = nil,
         cardTitle: String? = nil,
+        account: MastodonAccount? = nil,
         isReblog: Bool = false,
         isQuote: Bool = false,
         favourited: Bool = false,
@@ -24,7 +25,7 @@ enum MockStatusFactory {
         visibility: Visibility = .public,
         inReplyToId: String? = nil
     ) -> Status {
-        let account = makeAccount()
+        let account = account ?? makeAccount()
         
         var card: PreviewCard? = nil
         if hasCard, let url = cardURL {
@@ -117,13 +118,14 @@ enum MockStatusFactory {
     
     static func makeAccount(
         id: String = UUID().uuidString,
-        username: String = "testuser"
+        username: String = "testuser",
+        displayName: String = "Test User"
     ) -> MastodonAccount {
         MastodonAccount(
             id: id,
             username: username,
             acct: username,
-            displayName: "Test User",
+            displayName: displayName,
             locked: false,
             bot: false,
             createdAt: Date(),

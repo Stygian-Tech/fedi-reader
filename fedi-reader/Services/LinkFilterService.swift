@@ -400,6 +400,31 @@ final class LinkFilterService {
         guard let accountId = accountId else { return linkStatuses }
         return linkStatuses.filter { $0.status.displayStatus.account.id == accountId }
     }
+
+    /// Returns unique author accounts present in the provided link statuses.
+    func uniqueAccounts(in linkStatuses: [LinkStatus]) -> [MastodonAccount] {
+        var seenAccountIds = Set<String>()
+        var uniqueAccounts: [MastodonAccount] = []
+        uniqueAccounts.reserveCapacity(linkStatuses.count)
+
+        for linkStatus in linkStatuses {
+            let account = linkStatus.status.displayStatus.account
+            if seenAccountIds.insert(account.id).inserted {
+                uniqueAccounts.append(account)
+            }
+        }
+
+        return uniqueAccounts.sorted { lhs, rhs in
+            let lhsName = lhs.displayName.isEmpty ? lhs.acct : lhs.displayName
+            let rhsName = rhs.displayName.isEmpty ? rhs.acct : rhs.displayName
+            return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
+        }
+    }
+
+    /// Returns unique author accounts for the active feed.
+    func uniqueAccounts() -> [MastodonAccount] {
+        uniqueAccounts(in: linkStatuses)
+    }
     
     /// Filters link statuses that have images
     func filterWithImages() -> [LinkStatus] {
