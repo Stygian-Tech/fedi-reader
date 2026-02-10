@@ -111,7 +111,8 @@ struct PostsListView: View {
                 statusesCount: 0,
                 lastStatusAt: nil,
                 emojis: [],
-                fields: []
+                fields: [],
+                source: nil
             )
         )
     }

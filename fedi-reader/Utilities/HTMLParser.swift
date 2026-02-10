@@ -90,16 +90,33 @@ struct HTMLParser: Sendable {
     
     /// Converts HTML to attributed text-friendly plain text with some formatting preserved
     nonisolated static func convertToPlainText(_ html: String) -> String {
+        convertToPlainText(html, collapseConsecutiveNewlines: true)
+    }
+
+    /// Converts HTML to plain text while preserving every line break.
+    nonisolated static func convertToPlainTextPreservingNewlines(_ html: String) -> String {
+        convertToPlainText(html, collapseConsecutiveNewlines: false)
+    }
+
+    /// Shared conversion routine used by plain text and newline-preserving paths.
+    nonisolated private static func convertToPlainText(_ html: String, collapseConsecutiveNewlines: Bool) -> String {
         var result = html
-        
-        // Convert line breaks
-        result = result.replacingOccurrences(of: "<br>", with: "\n", options: .caseInsensitive)
-        result = result.replacingOccurrences(of: "<br/>", with: "\n", options: .caseInsensitive)
-        result = result.replacingOccurrences(of: "<br />", with: "\n", options: .caseInsensitive)
-        
-        // Convert paragraphs to double newlines
-        result = result.replacingOccurrences(of: "</p>", with: "\n\n", options: .caseInsensitive)
-        result = result.replacingOccurrences(of: "<p>", with: "", options: .caseInsensitive)
+
+        // Normalize line break tags, including odd variants like </br> and tags with attributes.
+        if let breakRegex = try? NSRegularExpression(pattern: #"</?br\b[^>]*>"#, options: .caseInsensitive) {
+            let range = NSRange(result.startIndex..., in: result)
+            result = breakRegex.stringByReplacingMatches(in: result, options: [], range: range, withTemplate: "\n")
+        }
+
+        // Convert paragraph boundaries to spacing while keeping content.
+        if let closeParagraphRegex = try? NSRegularExpression(pattern: #"</p\s*>"#, options: .caseInsensitive) {
+            let range = NSRange(result.startIndex..., in: result)
+            result = closeParagraphRegex.stringByReplacingMatches(in: result, options: [], range: range, withTemplate: "\n\n")
+        }
+        if let openParagraphRegex = try? NSRegularExpression(pattern: #"<p\b[^>]*>"#, options: .caseInsensitive) {
+            let range = NSRange(result.startIndex..., in: result)
+            result = openParagraphRegex.stringByReplacingMatches(in: result, options: [], range: range, withTemplate: "")
+        }
         
         // Remove all other tags
         let tagPattern = #"<[^>]+>"#
@@ -110,13 +127,37 @@ struct HTMLParser: Sendable {
         
         // Decode HTML entities
         result = decodeHTMLEntities(result)
-        
-        // Collapse multiple newlines
-        while result.contains("\n\n\n") {
-            result = result.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+
+        // Normalize newline style so Text renders consistently across line-ending sources.
+        result = normalizeNewlineSeparators(in: result)
+
+        if collapseConsecutiveNewlines {
+            // Collapse multiple newlines for general content rendering.
+            while result.contains("\n\n\n") {
+                result = result.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+            }
         }
-        
+
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated private static func normalizeNewlineSeparators(in text: String) -> String {
+        var normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+
+        let additionalSeparators = [
+            "\r",          // Carriage return
+            "\u{000B}",    // Vertical tab
+            "\u{000C}",    // Form feed
+            "\u{0085}",    // Next line (NEL)
+            "\u{2028}",    // Unicode line separator
+            "\u{2029}"     // Unicode paragraph separator
+        ]
+
+        for separator in additionalSeparators {
+            normalized = normalized.replacingOccurrences(of: separator, with: "\n")
+        }
+
+        return normalized
     }
     
     // MARK: - HTML Entity Decoding
@@ -133,6 +174,7 @@ struct HTMLParser: Sendable {
             "&apos;": "'",
             "&#39;": "'",
             "&nbsp;": " ",
+            "&NewLine;": "\n",
             "&mdash;": "—",
             "&ndash;": "–",
             "&hellip;": "…",
@@ -372,14 +414,24 @@ struct HTMLParser: Sendable {
     
     /// Converts HTML to AttributedString with clickable links and hashtags
     @available(iOS 15.0, macOS 12.0, *)
-    nonisolated static func convertToAttributedString(_ html: String, hashtagHandler: ((String) -> URL?)? = nil, emojiLookup: [String: CustomEmoji]? = nil) -> AttributedString {
+    nonisolated static func convertToAttributedString(
+        _ html: String,
+        preserveNewlines: Bool = false,
+        hashtagHandler: ((String) -> URL?)? = nil,
+        emojiLookup: [String: CustomEmoji]? = nil
+    ) -> AttributedString {
         // Replace emoji shortcodes first if lookup is provided
         let processedHTML = if let lookup = emojiLookup {
             replaceEmojiShortcodes(html, emojiLookup: lookup)
         } else {
             html
         }
-        let plainText = convertToPlainText(processedHTML)
+        let plainText: String
+        if preserveNewlines {
+            plainText = convertToPlainTextPreservingNewlines(processedHTML)
+        } else {
+            plainText = convertToPlainText(processedHTML)
+        }
         var attributedString = AttributedString(plainText)
         
         // Extract links with their text content (handles nested tags)
@@ -395,8 +447,8 @@ struct HTMLParser: Sendable {
         
         // Process matches in forward order; compute indices immediately before each use to avoid invalidation after mutation
         for match in matches {
-            guard let urlRange = Range(match.range(at: 1), in: html),
-                  let textRange = Range(match.range(at: 2), in: html) else {
+            guard let urlRange = Range(match.range(at: 1), in: processedHTML),
+                  let textRange = Range(match.range(at: 2), in: processedHTML) else {
                 continue
             }
             
@@ -405,7 +457,12 @@ struct HTMLParser: Sendable {
             
             // Decode URL and link text
             let decodedURL = decodeHTMLEntities(urlString)
-            let decodedLinkText = convertToPlainText(linkHTML)
+            let decodedLinkText: String
+            if preserveNewlines {
+                decodedLinkText = convertToPlainTextPreservingNewlines(linkHTML)
+            } else {
+                decodedLinkText = convertToPlainText(linkHTML)
+            }
             
             guard let url = URL(string: decodedURL),
                   !decodedLinkText.isEmpty else {
@@ -467,6 +524,10 @@ extension String {
     var htmlToPlainText: String {
         HTMLParser.convertToPlainText(self)
     }
+
+    var htmlToPlainTextPreservingNewlines: String {
+        HTMLParser.convertToPlainTextPreservingNewlines(self)
+    }
     
     var extractedLinks: [URL] {
         HTMLParser.extractLinks(from: self)
@@ -480,5 +541,10 @@ extension String {
     @available(iOS 15.0, macOS 12.0, *)
     func htmlToAttributedStringWithHashtags(hashtagHandler: @escaping (String) -> URL?) -> AttributedString {
         HTMLParser.convertToAttributedString(self, hashtagHandler: hashtagHandler)
+    }
+
+    @available(iOS 15.0, macOS 12.0, *)
+    func htmlToAttributedStringPreservingNewlinesWithHashtags(hashtagHandler: @escaping (String) -> URL?) -> AttributedString {
+        HTMLParser.convertToAttributedString(self, preserveNewlines: true, hashtagHandler: hashtagHandler)
     }
 }

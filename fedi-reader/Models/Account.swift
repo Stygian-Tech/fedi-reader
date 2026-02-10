@@ -95,7 +95,8 @@ final class Account {
             statusesCount: statusesCount,
             lastStatusAt: nil,
             emojis: [],
-            fields: []
+            fields: [],
+            source: nil
         )
     }
 }
