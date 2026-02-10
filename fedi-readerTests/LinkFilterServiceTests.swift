@@ -230,44 +230,40 @@ struct LinkFilterServiceTests {
         #expect(service.isQuotePost(status) == true)
     }
     
-    // MARK: - Filtering by Domain
-    
-    @Test("Filters link statuses by domain")
-    func filtersByDomain() async {
+    // MARK: - Account Discovery
+
+    @Test("Gets unique accounts from link statuses")
+    func getsUniqueAccountsFromLinkStatuses() async {
+        let alice = MockStatusFactory.makeAccount(id: "acct-alice", username: "alice")
+        let bob = MockStatusFactory.makeAccount(id: "acct-bob", username: "bob")
+
         let statuses = [
-            MockStatusFactory.makeStatus(
-                id: "1",
-                hasCard: true,
-                cardURL: "https://example.com/article1"
-            ),
-            MockStatusFactory.makeStatus(
-                id: "2",
-                hasCard: true,
-                cardURL: "https://other.com/article2"
-            )
+            MockStatusFactory.makeStatus(id: "1", hasCard: true, cardURL: "https://example.com/a", account: alice),
+            MockStatusFactory.makeStatus(id: "2", hasCard: true, cardURL: "https://example.com/b", account: alice),
+            MockStatusFactory.makeStatus(id: "3", hasCard: true, cardURL: "https://other.com/c", account: bob)
         ]
-        
-        _ = await service.processStatuses(statuses)
-        let exampleLinks = service.filterByDomain("example.com")
-        
-        #expect(exampleLinks.count == 1)
-        #expect(exampleLinks.first?.domain == "example.com")
+
+        let linkStatuses = await service.processStatuses(statuses)
+        let accounts = service.uniqueAccounts(in: linkStatuses)
+
+        #expect(accounts.count == 2)
+        #expect(Set(accounts.map(\.id)) == Set(["acct-alice", "acct-bob"]))
     }
-    
-    @Test("Gets unique domains from link statuses")
-    func getsUniqueDomains() async {
+
+    @Test("Unique accounts are sorted by display name")
+    func uniqueAccountsAreSortedByDisplayName() async {
+        let charlie = MockStatusFactory.makeAccount(id: "acct-charlie", username: "charlie", displayName: "Charlie")
+        let alice = MockStatusFactory.makeAccount(id: "acct-alice", username: "alice", displayName: "Alice")
+
         let statuses = [
-            MockStatusFactory.makeStatus(id: "1", hasCard: true, cardURL: "https://example.com/a"),
-            MockStatusFactory.makeStatus(id: "2", hasCard: true, cardURL: "https://example.com/b"),
-            MockStatusFactory.makeStatus(id: "3", hasCard: true, cardURL: "https://other.com/c")
+            MockStatusFactory.makeStatus(id: "1", hasCard: true, cardURL: "https://example.com/a", account: charlie),
+            MockStatusFactory.makeStatus(id: "2", hasCard: true, cardURL: "https://example.com/b", account: alice)
         ]
-        
+
         _ = await service.processStatuses(statuses)
-        let domains = service.uniqueDomains()
-        
-        #expect(domains.count == 2)
-        #expect(domains.contains("example.com"))
-        #expect(domains.contains("other.com"))
+        let accounts = service.uniqueAccounts()
+
+        #expect(accounts.map(\.id) == ["acct-alice", "acct-charlie"])
     }
     
     // MARK: - Filter by Account

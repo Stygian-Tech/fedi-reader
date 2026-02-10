@@ -395,36 +395,40 @@ final class LinkFilterService {
     
     // MARK: - Filtering Options
     
-    /// Filters link statuses by domain
-    func filterByDomain(_ domain: String) -> [LinkStatus] {
-        linkStatuses.filter { linkStatus in
-            guard let host = linkStatus.primaryURL.host?.lowercased() else { return false }
-            return host.contains(domain.lowercased())
-        }
-    }
-    
     /// Filters link statuses by author account ID. Returns all when `accountId` is nil.
     func filter(linkStatuses: [LinkStatus], byAccountId accountId: String?) -> [LinkStatus] {
         guard let accountId = accountId else { return linkStatuses }
         return linkStatuses.filter { $0.status.displayStatus.account.id == accountId }
     }
+
+    /// Returns unique author accounts present in the provided link statuses.
+    func uniqueAccounts(in linkStatuses: [LinkStatus]) -> [MastodonAccount] {
+        var seenAccountIds = Set<String>()
+        var uniqueAccounts: [MastodonAccount] = []
+        uniqueAccounts.reserveCapacity(linkStatuses.count)
+
+        for linkStatus in linkStatuses {
+            let account = linkStatus.status.displayStatus.account
+            if seenAccountIds.insert(account.id).inserted {
+                uniqueAccounts.append(account)
+            }
+        }
+
+        return uniqueAccounts.sorted { lhs, rhs in
+            let lhsName = lhs.displayName.isEmpty ? lhs.acct : lhs.displayName
+            let rhsName = rhs.displayName.isEmpty ? rhs.acct : rhs.displayName
+            return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
+        }
+    }
+
+    /// Returns unique author accounts for the active feed.
+    func uniqueAccounts() -> [MastodonAccount] {
+        uniqueAccounts(in: linkStatuses)
+    }
     
     /// Filters link statuses that have images
     func filterWithImages() -> [LinkStatus] {
         linkStatuses.filter { $0.imageURL != nil }
-    }
-    
-    /// Groups link statuses by domain
-    func groupByDomain() -> [String: [LinkStatus]] {
-        Dictionary(grouping: linkStatuses) { linkStatus in
-            HTMLParser.extractDomain(from: linkStatus.primaryURL) ?? "unknown"
-        }
-    }
-    
-    /// Returns unique domains from current link statuses
-    func uniqueDomains() -> [String] {
-        let domains = linkStatuses.compactMap { HTMLParser.extractDomain(from: $0.primaryURL) }
-        return Array(Set(domains)).sorted()
     }
     
     // MARK: - Clear

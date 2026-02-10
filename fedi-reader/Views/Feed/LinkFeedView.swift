@@ -30,7 +30,6 @@ struct LinkFeedView: View {
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     
-    @State private var selectedDomain: String?
     @State private var selectedTabIndex: Int = 0
     @State private var scrollProxy: ScrollViewProxy?
     @AppStorage("hapticFeedback") private var hapticFeedback = true
@@ -61,8 +60,7 @@ struct LinkFeedView: View {
     }
     
     private var currentAccounts: [MastodonAccount] {
-        guard let service = timelineService else { return [] }
-        return service.listAccounts
+        linkFilterService.uniqueAccounts()
     }
     
     private var currentUserFilter: String? {
@@ -71,10 +69,6 @@ struct LinkFeedView: View {
     
     private var filteredStatuses: [LinkStatus] {
         var statuses = linkFilterService.linkStatuses
-        
-        if let domain = selectedDomain {
-            statuses = linkFilterService.filterByDomain(domain)
-        }
         
         statuses = linkFilterService.filter(linkStatuses: statuses, byAccountId: currentUserFilter)
         
@@ -151,38 +145,6 @@ struct LinkFeedView: View {
                 .accessibilityHint("Opens user filter pane")
             }
 
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    // Domain filter
-                    if !linkFilterService.uniqueDomains().isEmpty {
-                        Section("Filter by Domain") {
-                            Button("All Domains") {
-                                selectedDomain = nil
-                            }
-                            
-                            ForEach(linkFilterService.uniqueDomains(), id: \.self) { domain in
-                                Button(domain) {
-                                    selectedDomain = domain
-                                }
-                            }
-                        }
-                    }
-                    
-                    Section {
-                        Button {
-                            Task {
-                                await linkFilterService.enrichWithAttributions()
-                            }
-                        } label: {
-                            Label("Load Author Info", systemImage: "person.text.rectangle")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                }
-                .accessibilityLabel("Filter and options")
-                .accessibilityHint("Filter by domain or load author info")
-            }
         }
         .sheet(isPresented: $state.isUserFilterOpen) {
             UserFilterPane(
@@ -405,8 +367,6 @@ struct LinkFeedView: View {
         if appState.selectedListId != listId {
             appState.selectedListId = listId
         }
-        selectedDomain = nil
-        
         // Switch the active feed in LinkFilterService
         linkFilterService.switchToFeed(tab.id)
         
@@ -440,7 +400,6 @@ struct LinkFeedView: View {
         } else {
             // Load list timeline
             await service.refreshListTimeline(listId: tab.id)
-            await service.refreshListAccounts(listId: tab.id)
             _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
         }
         Task {

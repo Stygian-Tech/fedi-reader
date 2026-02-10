@@ -9,7 +9,6 @@ import SwiftUI
 
 struct UserFilterPane: View {
     @Environment(AppState.self) private var appState
-    @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     
     let feedId: String
     let accounts: [MastodonAccount]
