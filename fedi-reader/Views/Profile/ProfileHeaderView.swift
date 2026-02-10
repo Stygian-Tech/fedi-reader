@@ -57,12 +57,27 @@ struct ProfileHeaderView: View {
                 }
 
                 if let note = account.note, !note.isEmpty {
-                    Text(note)
-                        .font(.roundedSubheadline)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal)
+                    if #available(iOS 15.0, macOS 12.0, *) {
+                        ProfileBioText(content: note)
+                            .font(.roundedSubheadline)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .foregroundStyle(.secondary)
+                            .layoutPriority(1)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.horizontal)
+                    } else {
+                        Text(note.htmlToPlainTextPreservingNewlines)
+                            .font(.roundedSubheadline)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .foregroundStyle(.secondary)
+                            .layoutPriority(1)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.horizontal)
+                    }
                 }
             }
             .padding(.bottom, 16)

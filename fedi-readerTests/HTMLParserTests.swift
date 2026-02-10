@@ -95,6 +95,60 @@ struct HTMLParserTests {
         
         #expect(plain.contains("\n"))
     }
+
+    @Test("Converts break tags with flexible spacing")
+    func convertsBreakTagsWithFlexibleSpacing() {
+        let html = "Line one<br   />Line two<BR    >Line three"
+
+        let plain = HTMLParser.convertToPlainText(html)
+
+        #expect(plain == "Line one\nLine two\nLine three")
+    }
+
+    @Test("Converts break tags with attributes")
+    func convertsBreakTagsWithAttributes() {
+        let html = "Line one<br class=\"line-break\" data-test=\"true\">Line two<Br id='bio-break'>Line three"
+
+        let plain = HTMLParser.convertToPlainText(html)
+
+        #expect(plain == "Line one\nLine two\nLine three")
+    }
+
+    @Test("Converts closing break tags")
+    func convertsClosingBreakTags() {
+        let html = "Line one</br>Line two"
+
+        let plain = HTMLParser.convertToPlainTextPreservingNewlines(html)
+
+        #expect(plain == "Line one\nLine two")
+    }
+
+    @Test("Preserves consecutive newlines when requested")
+    func preservesConsecutiveNewlinesWhenRequested() {
+        let html = "<p>Line one<br><br>Line two</p>"
+
+        let plain = HTMLParser.convertToPlainTextPreservingNewlines(html)
+
+        #expect(plain == "Line one\n\nLine two")
+    }
+
+    @Test("Normalizes CRLF and Unicode newline separators")
+    func normalizesAdditionalNewlineSeparators() {
+        let html = "Line one\r\nLine two&#x2028;Line three&#x2029;Line four&#133;Line five"
+
+        let plain = HTMLParser.convertToPlainTextPreservingNewlines(html)
+
+        #expect(plain == "Line one\nLine two\nLine three\nLine four\nLine five")
+    }
+
+    @Test("Decodes HTML5 newline entity")
+    func decodesHTML5NewlineEntity() {
+        let html = "Line one&NewLine;Line two"
+
+        let plain = HTMLParser.convertToPlainTextPreservingNewlines(html)
+
+        #expect(plain == "Line one\nLine two")
+    }
     
     @Test("Handles paragraph tags")
     func handlesParagraphs() {
@@ -230,6 +284,31 @@ struct HTMLParserTests {
         let attributedString = html.htmlToAttributedString
         
         #expect(!attributedString.characters.isEmpty)
+    }
+
+    @Test("AttributedString preserves bio-style newlines when requested")
+    @available(iOS 15.0, macOS 12.0, *)
+    func attributedStringPreservesBioStyleNewlinesWhenRequested() {
+        let html = "<p>Line one<br><br><br>#swift</p>"
+        let hashtagHandler: (String) -> URL? = { tag in URL(string: "hashtag://\(tag)") }
+
+        let preserved = HTMLParser.convertToAttributedString(
+            html,
+            preserveNewlines: true,
+            hashtagHandler: hashtagHandler
+        )
+        let collapsed = HTMLParser.convertToAttributedString(
+            html,
+            hashtagHandler: hashtagHandler
+        )
+
+        let preservedText = String(preserved.characters)
+        let collapsedText = String(collapsed.characters)
+
+        #expect(preservedText.contains("\n\n\n"))
+        #expect(collapsedText.contains("\n\n"))
+        #expect(!collapsedText.contains("\n\n\n"))
+        #expect(preserved.runs.contains { $0.link?.scheme == "hashtag" })
     }
 
     @Test("Handles several links and hashtags in AttributedString without crashing")

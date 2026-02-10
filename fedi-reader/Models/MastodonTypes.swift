@@ -279,9 +279,10 @@ struct MastodonAccount: Codable, Identifiable, Hashable, Sendable {
     let lastStatusAt: String?
     let emojis: [CustomEmoji]
     let fields: [Field]
+    let source: AccountSource?
     
     enum CodingKeys: String, CodingKey {
-        case id, username, acct, locked, bot, note, url, avatar, header, emojis, fields
+        case id, username, acct, locked, bot, note, url, avatar, header, emojis, fields, source
         case displayName = "display_name"
         case createdAt = "created_at"
         case avatarStatic = "avatar_static"
@@ -299,6 +300,18 @@ struct MastodonAccount: Codable, Identifiable, Hashable, Sendable {
     var headerURL: URL? {
         URL(string: header)
     }
+
+    var preferredNote: String {
+        if let sourceNote = source?.note,
+           !sourceNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return sourceNote
+        }
+        return note
+    }
+}
+
+struct AccountSource: Codable, Hashable, Sendable {
+    let note: String?
 }
 
 // MARK: - Field (Profile fields)

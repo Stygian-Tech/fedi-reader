@@ -59,12 +59,25 @@ struct ProfileDetailView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Text(account.note.htmlToPlainText)
-                        .font(.roundedSubheadline)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal)
+                    if #available(iOS 15.0, macOS 12.0, *) {
+                        ProfileBioText(content: account.note)
+                            .font(.roundedSubheadline)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .foregroundStyle(.secondary)
+                            .layoutPriority(1)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal)
+                    } else {
+                        Text(account.note.htmlToPlainTextPreservingNewlines)
+                            .font(.roundedSubheadline)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .foregroundStyle(.secondary)
+                            .layoutPriority(1)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal)
+                    }
 
                     HStack(spacing: 24) {
                         statButton(count: account.statusesCount, label: "Posts", account: account)

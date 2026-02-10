@@ -187,7 +187,7 @@ final class AuthService {
                 avatarURL: mastodonAccount.avatar,
                 headerURL: mastodonAccount.header,
                 acct: mastodonAccount.acct,
-                note: mastodonAccount.note.htmlStripped,
+                note: mastodonAccount.preferredNote,
                 followersCount: mastodonAccount.followersCount,
                 followingCount: mastodonAccount.followingCount,
                 statusesCount: mastodonAccount.statusesCount,
@@ -284,7 +284,7 @@ final class AuthService {
         account.displayName = mastodonAccount.displayName
         account.avatarURL = mastodonAccount.avatar
         account.headerURL = mastodonAccount.header
-        account.note = mastodonAccount.note.htmlStripped
+        account.note = mastodonAccount.preferredNote
         account.followersCount = mastodonAccount.followersCount
         account.followingCount = mastodonAccount.followingCount
         account.statusesCount = mastodonAccount.statusesCount

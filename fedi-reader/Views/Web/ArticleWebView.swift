@@ -172,7 +172,8 @@ extension Status {
                 statusesCount: 0,
                 lastStatusAt: nil,
                 emojis: [],
-                fields: []
+                fields: [],
+                source: nil
             ),
             content: "<p>Preview content</p>",
             visibility: Visibility.public,
