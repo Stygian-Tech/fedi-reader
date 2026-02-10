@@ -9,6 +9,37 @@ import SwiftUI
 
 // MARK: - Status Actions Bar
 
+enum ToggleActionCount {
+    static func optimistic(currentCount: Int, wasActive: Bool) -> Int {
+        max(0, currentCount + (wasActive ? -1 : 1))
+    }
+
+    static func reconciled(
+        originalCount: Int,
+        wasActive: Bool,
+        serverCount: Int,
+        serverIsActive: Bool?
+    ) -> Int {
+        let normalizedServerCount = max(0, serverCount)
+        let expectedActiveState = !wasActive
+
+        guard serverIsActive == expectedActiveState else {
+            return normalizedServerCount
+        }
+
+        if wasActive {
+            // Some instances return stale counts after an un-toggle. Keep the expected local count in that case.
+            return normalizedServerCount >= originalCount
+                ? optimistic(currentCount: originalCount, wasActive: wasActive)
+                : normalizedServerCount
+        } else {
+            return normalizedServerCount <= originalCount
+                ? optimistic(currentCount: originalCount, wasActive: wasActive)
+                : normalizedServerCount
+        }
+    }
+}
+
 enum StatusActionsBarSize {
     case compact   // Link feed — medium
     case standard  // Main feed (Explore, etc.) — full
@@ -347,18 +378,24 @@ struct StatusActionsBar: View {
         defer { isProcessing = false }
         
         // Optimistic update
+        let originalFavoriteCount = favoriteCount
         let wasFavorited = isFavorited
         localFavorited = !wasFavorited
-        localFavoriteCount = favoriteCount + (wasFavorited ? -1 : 1)
+        localFavoriteCount = ToggleActionCount.optimistic(currentCount: originalFavoriteCount, wasActive: wasFavorited)
         
         do {
             let updatedStatus = try await service.setFavorite(status: status, isFavorited: !wasFavorited)
             localFavorited = updatedStatus.favourited
-            localFavoriteCount = updatedStatus.favouritesCount
+            localFavoriteCount = ToggleActionCount.reconciled(
+                originalCount: originalFavoriteCount,
+                wasActive: wasFavorited,
+                serverCount: updatedStatus.favouritesCount,
+                serverIsActive: updatedStatus.favourited
+            )
         } catch {
             // Revert optimistic update
             localFavorited = wasFavorited
-            localFavoriteCount = favoriteCount + (wasFavorited ? 0 : -1)
+            localFavoriteCount = originalFavoriteCount
             appState.handleError(error)
         }
     }
@@ -370,19 +407,25 @@ struct StatusActionsBar: View {
         defer { isProcessing = false }
         
         // Optimistic update
+        let originalReblogCount = reblogCount
         let wasReblogged = isReblogged
         localReblogged = !wasReblogged
-        localReblogCount = reblogCount + (wasReblogged ? -1 : 1)
+        localReblogCount = ToggleActionCount.optimistic(currentCount: originalReblogCount, wasActive: wasReblogged)
         
         do {
             let updatedStatus = try await service.setReblog(status: status, isReblogged: !wasReblogged)
             let resolvedStatus = updatedStatus.displayStatus
             localReblogged = resolvedStatus.reblogged
-            localReblogCount = resolvedStatus.reblogsCount
+            localReblogCount = ToggleActionCount.reconciled(
+                originalCount: originalReblogCount,
+                wasActive: wasReblogged,
+                serverCount: resolvedStatus.reblogsCount,
+                serverIsActive: resolvedStatus.reblogged
+            )
         } catch {
             // Revert optimistic update
             localReblogged = wasReblogged
-            localReblogCount = reblogCount + (wasReblogged ? 0 : -1)
+            localReblogCount = originalReblogCount
             appState.handleError(error)
         }
     }
