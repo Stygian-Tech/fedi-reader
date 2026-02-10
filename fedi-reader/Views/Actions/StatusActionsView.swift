@@ -376,8 +376,9 @@ struct StatusActionsBar: View {
         
         do {
             let updatedStatus = try await service.setReblog(status: status, isReblogged: !wasReblogged)
-            localReblogged = updatedStatus.reblogged
-            localReblogCount = updatedStatus.reblogsCount
+            let resolvedStatus = updatedStatus.displayStatus
+            localReblogged = resolvedStatus.reblogged
+            localReblogCount = resolvedStatus.reblogsCount
         } catch {
             // Revert optimistic update
             localReblogged = wasReblogged
@@ -407,12 +408,13 @@ struct StatusActionsBar: View {
     }
 
     private func applyUpdatedStatus(_ updated: Status) {
-        guard updated.id == displayStatus.id else { return }
-        localFavorited = updated.favourited
-        localReblogged = updated.reblogged
-        localBookmarked = updated.bookmarked
-        localFavoriteCount = updated.favouritesCount
-        localReblogCount = updated.reblogsCount
+        let resolvedStatus = updated.displayStatus
+        guard resolvedStatus.id == displayStatus.id else { return }
+        localFavorited = resolvedStatus.favourited
+        localReblogged = resolvedStatus.reblogged
+        localBookmarked = resolvedStatus.bookmarked
+        localFavoriteCount = resolvedStatus.favouritesCount
+        localReblogCount = resolvedStatus.reblogsCount
     }
 }
 
@@ -649,7 +651,7 @@ struct StatusActionsToolbar: View {
         
         do {
             let updated = try await service.setReblog(status: status, isReblogged: !wasReblogged)
-            localReblogged = updated.reblogged
+            localReblogged = updated.displayStatus.reblogged
         } catch {
             localReblogged = wasReblogged
             appState.handleError(error)
@@ -675,10 +677,11 @@ struct StatusActionsToolbar: View {
     }
 
     private func applyUpdatedStatus(_ updated: Status) {
-        guard updated.id == displayStatus.id else { return }
-        localFavorited = updated.favourited
-        localReblogged = updated.reblogged
-        localBookmarked = updated.bookmarked
+        let resolvedStatus = updated.displayStatus
+        guard resolvedStatus.id == displayStatus.id else { return }
+        localFavorited = resolvedStatus.favourited
+        localReblogged = resolvedStatus.reblogged
+        localBookmarked = resolvedStatus.bookmarked
     }
 }
 

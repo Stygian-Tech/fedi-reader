@@ -802,19 +802,24 @@ final class TimelineService {
     // MARK: - Helpers
     
     private func updateStatusInTimelines(_ status: Status) {
+        let resolvedStatus = status.displayStatus
+
         // Update in home timeline
-        if let index = homeTimeline.firstIndex(where: { $0.id == status.id || $0.reblog?.value.id == status.id }) {
+        if let index = homeTimeline.firstIndex(where: { $0.displayStatus.id == resolvedStatus.id }) {
             if homeTimeline[index].reblog != nil {
-                // This was a reblog, update the inner status
-                // Note: Due to immutability, we need to create a new reblog
-                // For simplicity, we'll just replace with the updated status
+                homeTimeline[index] = updatedReblogWrapper(from: homeTimeline[index], with: resolvedStatus)
+            } else {
+                homeTimeline[index] = resolvedStatus
             }
-            homeTimeline[index] = status
         }
         
         // Update in explore
-        if let index = exploreStatuses.firstIndex(where: { $0.id == status.id }) {
-            exploreStatuses[index] = status
+        if let index = exploreStatuses.firstIndex(where: { $0.displayStatus.id == resolvedStatus.id }) {
+            if exploreStatuses[index].reblog != nil {
+                exploreStatuses[index] = updatedReblogWrapper(from: exploreStatuses[index], with: resolvedStatus)
+            } else {
+                exploreStatuses[index] = resolvedStatus
+            }
         }
         
         // Update in mentions
@@ -822,6 +827,40 @@ final class TimelineService {
             // Notifications are immutable, so we can't easily update them
             // The UI should handle this via the notification
         }
+    }
+
+    private func updatedReblogWrapper(from status: Status, with resolvedStatus: Status) -> Status {
+        Status(
+            id: status.id,
+            uri: status.uri,
+            url: status.url,
+            createdAt: status.createdAt,
+            account: status.account,
+            content: status.content,
+            visibility: status.visibility,
+            sensitive: status.sensitive,
+            spoilerText: status.spoilerText,
+            mediaAttachments: status.mediaAttachments,
+            mentions: status.mentions,
+            tags: status.tags,
+            emojis: status.emojis,
+            reblogsCount: status.reblogsCount,
+            favouritesCount: status.favouritesCount,
+            repliesCount: status.repliesCount,
+            application: status.application,
+            language: status.language,
+            reblog: IndirectStatus(resolvedStatus),
+            card: status.card,
+            poll: status.poll,
+            quote: status.quote,
+            favourited: status.favourited,
+            reblogged: status.reblogged,
+            muted: status.muted,
+            bookmarked: status.bookmarked,
+            pinned: status.pinned,
+            inReplyToId: status.inReplyToId,
+            inReplyToAccountId: status.inReplyToAccountId
+        )
     }
 
     private func prefetchFediverseCreators(for statuses: [Status]) async {
