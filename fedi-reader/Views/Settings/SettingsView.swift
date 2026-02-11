@@ -144,8 +144,6 @@ enum ThemeColor: String, CaseIterable {
     case gray
     case black
     case white
-    case primary
-    case secondary
     
     var displayName: String {
         rawValue.capitalized
@@ -168,8 +166,6 @@ enum ThemeColor: String, CaseIterable {
         case .gray: return .gray
         case .black: return .black
         case .white: return .white
-        case .primary: return .primary
-        case .secondary: return .secondary
         }
     }
 }
