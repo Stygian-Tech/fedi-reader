@@ -191,7 +191,8 @@ private extension String {
             statusesCount: 0,
             lastStatusAt: nil,
             emojis: [],
-            fields: []
+            fields: [],
+            source: nil
         )
     )
     .environment(AppState())
