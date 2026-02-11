@@ -10,6 +10,7 @@ import SwiftUI
 struct ProfileDetailView: View {
     let account: MastodonAccount
     @Environment(AppState.self) private var appState
+    @State private var isManagingLists = false
 
     var body: some View {
         ScrollView {
@@ -45,6 +46,13 @@ struct ProfileDetailView: View {
                         .offset(y: account.headerURL != nil ? -40 : 0)
                         .padding(.bottom, account.headerURL != nil ? -40 : 0)
                         .padding(.top, account.headerURL != nil ? 0 : 16)
+                        .contextMenu {
+                            Button {
+                                isManagingLists = true
+                            } label: {
+                                Label("Manage Lists", systemImage: "list.bullet")
+                            }
+                        }
 
                     VStack(spacing: 4) {
                         HStack(spacing: 4) {
@@ -104,6 +112,9 @@ struct ProfileDetailView: View {
         .contentMargins(.top, 0, for: .scrollContent)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isManagingLists) {
+            ListManagementView(account: account)
+        }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text(account.displayName)

@@ -107,6 +107,12 @@ final class MastodonClient {
         
         return request
     }
+
+    private func formEncodedBody(_ items: [URLQueryItem]) -> Data? {
+        var components = URLComponents()
+        components.queryItems = items
+        return components.percentEncodedQuery?.data(using: .utf8)
+    }
     
     // MARK: - Request Execution
     
@@ -960,6 +966,89 @@ final class MastodonClient {
             throw FediReaderError.noActiveAccount
         }
         return try await getLists(instance: instance, accessToken: token)
+    }
+
+    func getAccountLists(instance: String, accessToken: String, accountId: String) async throws -> [MastodonList] {
+        Self.logger.debug("Fetching lists for account \(accountId.prefix(8), privacy: .public)")
+        let url = try buildURL(instance: instance, path: "\(Constants.API.accounts)/\(accountId)/lists")
+        let request = buildRequest(url: url, accessToken: accessToken)
+        let lists: [MastodonList] = try await execute(request)
+        Self.logger.debug("Fetched \(lists.count) lists for account")
+        return lists
+    }
+
+    func getAccountLists(accountId: String) async throws -> [MastodonList] {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await getAccountLists(instance: instance, accessToken: token, accountId: accountId)
+    }
+
+    func createList(instance: String, accessToken: String, title: String) async throws -> MastodonList {
+        Self.logger.debug("Creating list with title \(title, privacy: .public)")
+        let url = try buildURL(instance: instance, path: Constants.API.lists)
+        let body = formEncodedBody([URLQueryItem(name: "title", value: title)])
+        let request = buildRequest(
+            url: url,
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            contentType: "application/x-www-form-urlencoded"
+        )
+        let list: MastodonList = try await execute(request)
+        Self.logger.debug("Created list \(list.id.prefix(8), privacy: .public)")
+        return list
+    }
+
+    func createList(title: String) async throws -> MastodonList {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await createList(instance: instance, accessToken: token, title: title)
+    }
+
+    func addAccountsToList(instance: String, accessToken: String, listId: String, accountIds: [String]) async throws {
+        Self.logger.debug("Adding \(accountIds.count, privacy: .public) accounts to list \(listId.prefix(8), privacy: .public)")
+        let url = try buildURL(instance: instance, path: "\(Constants.API.lists)/\(listId)/accounts")
+        let items = accountIds.map { URLQueryItem(name: "account_ids[]", value: $0) }
+        let body = formEncodedBody(items)
+        let request = buildRequest(
+            url: url,
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            contentType: "application/x-www-form-urlencoded"
+        )
+        try await executeNoContent(request)
+    }
+
+    func addAccountsToList(listId: String, accountIds: [String]) async throws {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        try await addAccountsToList(instance: instance, accessToken: token, listId: listId, accountIds: accountIds)
+    }
+
+    func removeAccountsFromList(instance: String, accessToken: String, listId: String, accountIds: [String]) async throws {
+        Self.logger.debug("Removing \(accountIds.count, privacy: .public) accounts from list \(listId.prefix(8), privacy: .public)")
+        let url = try buildURL(instance: instance, path: "\(Constants.API.lists)/\(listId)/accounts")
+        let items = accountIds.map { URLQueryItem(name: "account_ids[]", value: $0) }
+        let body = formEncodedBody(items)
+        let request = buildRequest(
+            url: url,
+            method: "DELETE",
+            accessToken: accessToken,
+            body: body,
+            contentType: "application/x-www-form-urlencoded"
+        )
+        try await executeNoContent(request)
+    }
+
+    func removeAccountsFromList(listId: String, accountIds: [String]) async throws {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        try await removeAccountsFromList(instance: instance, accessToken: token, listId: listId, accountIds: accountIds)
     }
     
     func getListTimeline(
