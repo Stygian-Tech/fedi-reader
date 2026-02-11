@@ -24,12 +24,12 @@ struct LinkStatusRow: View {
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
 
-    @State private var isShowingActions = false
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
     @State private var resolvedMastodonAccount: MastodonAccount?
     @State private var isProcessing = false
     @State private var localBookmarked: Bool?
+    @State private var isManagingLists = false
 
     private var themeColor: Color {
         ThemeColor(rawValue: themeColorName)?.color ?? .blue
@@ -95,6 +95,9 @@ struct LinkStatusRow: View {
                 localBookmarked = updated.bookmarked
             }
         }
+        .sheet(isPresented: $isManagingLists) {
+            ListManagementView(account: linkStatus.status.displayStatus.account)
+        }
         .task(id: blueskyCardURL?.absoluteString) {
             guard let url = blueskyCardURL, !hasLoadedBlueskyDescription else { return }
             hasLoadedBlueskyDescription = true
@@ -150,7 +153,14 @@ struct LinkStatusRow: View {
 
     private var authorHeader: some View {
         HStack(spacing: 10) {
-            ProfileAvatarView(url: linkStatus.status.displayStatus.account.avatarURL, size: Constants.UI.avatarSize)
+            Button {
+                deferPostNavigation {
+                    appState.navigate(to: .profile(linkStatus.status.displayStatus.account))
+                }
+            } label: {
+                ProfileAvatarView(url: linkStatus.status.displayStatus.account.avatarURL, size: Constants.UI.avatarSize)
+            }
+            .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
@@ -541,6 +551,12 @@ struct LinkStatusRow: View {
             appState.present(sheet: .compose(quote: linkStatus.status))
         } label: {
             Label("Quote", systemImage: "quote.bubble")
+        }
+
+        Button {
+            isManagingLists = true
+        } label: {
+            Label("Manage Lists", systemImage: "list.bullet")
         }
     }
     

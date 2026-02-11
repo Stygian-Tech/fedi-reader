@@ -20,17 +20,17 @@ struct FollowersListView: View {
     var body: some View {
         Group {
             if !accounts.isEmpty {
-                List(accounts) { account in
-                    NavigationLink {
-                        ProfileDetailView(account: account)
-                    } label: {
-                        AccountRowView(account: account)
+                List(accounts) { listedAccount in
+                    AccountRowView(account: listedAccount)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        appState.navigate(to: .profile(listedAccount))
                     }
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
                     .onAppear {
-                        if account.id == accounts.last?.id {
+                        if listedAccount.id == accounts.last?.id {
                             loadMore()
                         }
                     }

@@ -26,6 +26,7 @@ struct StatusRowView: View {
     @State private var fediverseCreatorURL: URL?
     @State private var isProcessing = false
     @State private var localBookmarked: Bool?
+    @State private var isManagingLists = false
     
     var displayStatus: Status {
         status.displayStatus
@@ -95,6 +96,9 @@ struct StatusRowView: View {
             if updated.id == displayStatus.id {
                 localBookmarked = updated.bookmarked
             }
+        }
+        .sheet(isPresented: $isManagingLists) {
+            ListManagementView(account: displayStatus.account)
         }
     }
     
@@ -190,30 +194,30 @@ struct StatusRowView: View {
                 ProfileAvatarView(url: displayStatus.account.avatarURL, size: Constants.UI.avatarSize)
             }
             .buttonStyle(.plain)
-            
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(displayStatus.account.displayName)
-                            .font(.roundedSubheadline.bold())
-                            .lineLimit(1)
-                    
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(displayStatus.account.displayName)
+                        .font(.roundedSubheadline.bold())
+                        .lineLimit(1)
+
                     AccountBadgesView(account: displayStatus.account, size: .small)
                 }
-                    if showHandleInFeed {
-                        Text("@\(displayStatus.account.acct)")
-                            .font(.roundedCaption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                if showHandleInFeed {
+                    Text("@\(displayStatus.account.acct)")
+                        .font(.roundedCaption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
-            
+
             Spacer()
-            
+
             VStack(alignment: .trailing, spacing: 2) {
                 Text(TimeFormatter.relativeTimeString(from: displayStatus.createdAt))
                     .font(.roundedCaption)
                     .foregroundStyle(.tertiary)
-                
+
                 if displayStatus.visibility != .public {
                     Image(systemName: visibilityIcon)
                         .font(.roundedCaption2)
@@ -602,6 +606,12 @@ struct StatusRowView: View {
             appState.present(sheet: .compose(quote: status))
         } label: {
             Label("Quote", systemImage: "quote.bubble")
+        }
+        
+        Button {
+            isManagingLists = true
+        } label: {
+            Label("Manage Lists", systemImage: "list.bullet")
         }
         
         // Share and Copy Link (if URL available)

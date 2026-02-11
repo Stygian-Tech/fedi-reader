@@ -189,7 +189,7 @@ private extension String {
             followersCount: 0,
             followingCount: 0,
             statusesCount: 0,
-            lastStatusAt: Date(),
+            lastStatusAt: nil,
             emojis: [],
             fields: []
         )
