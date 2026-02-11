@@ -20,17 +20,17 @@ struct FollowingListView: View {
     var body: some View {
         Group {
             if !accounts.isEmpty {
-                List(accounts) { account in
-                    NavigationLink {
-                        ProfileDetailView(account: account)
-                    } label: {
-                        AccountRowView(account: account)
+                List(accounts) { listedAccount in
+                    AccountRowView(account: listedAccount)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        appState.navigate(to: .profile(listedAccount))
                     }
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
                     .onAppear {
-                        if account.id == accounts.last?.id {
+                        if listedAccount.id == accounts.last?.id {
                             loadMore()
                         }
                     }
@@ -92,18 +92,10 @@ struct FollowingListView: View {
 
 struct AccountRowView: View {
     let account: MastodonAccount
-    @State private var isManagingLists = false
     
     var body: some View {
         HStack(spacing: 12) {
             ProfileAvatarView(url: account.avatarURL, size: 50)
-                .contextMenu {
-                    Button {
-                        isManagingLists = true
-                    } label: {
-                        Label("Manage Lists", systemImage: "list.bullet")
-                    }
-                }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -130,9 +122,6 @@ struct AccountRowView: View {
                 .font(.roundedCaption)
                 .foregroundStyle(.tertiary)
                 .padding(.trailing, 8)
-        }
-        .sheet(isPresented: $isManagingLists) {
-            ListManagementView(account: account)
         }
     }
 }
