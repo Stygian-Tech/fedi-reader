@@ -75,6 +75,11 @@ struct TimelineTypeTests {
         #expect(types.contains(.explore))
         #expect(types.contains(.links))
     }
+    
+    @Test("Mentions timeline uses Messages display name")
+    func mentionsTimelineUsesMessagesDisplayName() {
+        #expect(TimelineType.mentions.displayName == "Messages")
+    }
 }
 
 // MARK: - App Tab Tests
@@ -104,6 +109,11 @@ struct AppTabTests {
         #expect(tabs.contains(.explore))
         #expect(tabs.contains(.mentions))
         #expect(tabs.contains(.profile))
+    }
+    
+    @Test("Mentions tab uses Messages title")
+    func mentionsTabUsesMessagesTitle() {
+        #expect(AppTab.mentions.title == "Messages")
     }
 }
 

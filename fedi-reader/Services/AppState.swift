@@ -174,7 +174,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .links: return "Home"
         case .explore: return "Explore"
-        case .mentions: return "Mentions"
+        case .mentions: return "Messages"
         case .profile: return "Profile"
         }
     }
