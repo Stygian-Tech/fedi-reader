@@ -25,6 +25,10 @@ struct SettingsView: View {
         timelineWrapper.service?.lists ?? []
     }
     
+    private var selectedThemeColor: Color {
+        ThemeColor.resolved(from: themeColorName).color
+    }
+    
     var body: some View {
         List {
             // Display
@@ -40,14 +44,10 @@ struct SettingsView: View {
                     HStack {
                         Text("Theme Color")
                         Spacer()
-                        if let selectedColor = ThemeColor(rawValue: themeColorName) {
-                            ThemeColorPreviewCircle(themeColor: selectedColor)
-                            Text(selectedColor.displayName)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text(themeColorName.capitalized)
-                                .foregroundStyle(.secondary)
-                        }
+                        let selectedColor = ThemeColor.resolved(from: themeColorName)
+                        ThemeColorPreviewCircle(themeColor: selectedColor)
+                        Text(selectedColor.displayName)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -128,6 +128,9 @@ struct SettingsView: View {
             #endif
         }
         .navigationTitle("Settings")
+        .tint(selectedThemeColor)
+        // Rebuild row styling when theme changes so text updates immediately.
+        .id("settings-theme-\(themeColorName)")
     }
 }
 
@@ -161,6 +164,10 @@ private struct ThemeColorPreviewCircle: View {
 private struct ThemeColorSelectionView: View {
     @Binding var selection: String
     
+    private var selectedThemeColor: Color {
+        ThemeColor.resolved(from: selection).color
+    }
+    
     var body: some View {
         List {
             ForEach(ThemeColor.allCases, id: \.rawValue) { color in
@@ -183,6 +190,7 @@ private struct ThemeColorSelectionView: View {
             }
         }
         .navigationTitle("Theme Color")
+        .tint(selectedThemeColor)
     }
 }
 
@@ -230,6 +238,10 @@ enum ThemeColor: String, CaseIterable {
         default:
             return false
         }
+    }
+    
+    static func resolved(from rawValue: String) -> ThemeColor {
+        ThemeColor(rawValue: rawValue) ?? .blue
     }
 }
 

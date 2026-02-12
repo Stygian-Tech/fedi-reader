@@ -41,7 +41,7 @@ struct FediReaderApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .tint(ThemeColor(rawValue: themeColorName)?.color ?? .blue)
+                .tint(ThemeColor.resolved(from: themeColorName).color)
         }
         .modelContainer(sharedModelContainer)
         
