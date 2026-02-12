@@ -494,7 +494,7 @@ struct StatusActionsToolbar: View {
     }
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 6) {
             // Reply
             toolbarButton(
                 icon: "arrowshape.turn.up.left",
@@ -547,19 +547,20 @@ struct StatusActionsToolbar: View {
                         }
                     }
                 } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: "tray.and.arrow.down")
-                            .font(.roundedSubheadline)
-                        
-                        Text("Save")
-                            .font(.roundedCaption2)
-                    }
-                    .foregroundStyle(.secondary)
+                    toolbarItemLabel(
+                        icon: "tray.and.arrow.down",
+                        label: "Save",
+                        foreground: .secondary
+                    )
                 }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .contentShape(Rectangle())
             }
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .frame(maxWidth: 300)
         .disabled(isProcessing)
         .onReceive(NotificationCenter.default.publisher(for: .statusDidUpdate)) { notification in
             guard let updated = notification.object as? Status else { return }
@@ -581,20 +582,39 @@ struct StatusActionsToolbar: View {
                 await action()
             }
         } label: {
-            VStack(spacing: 2) {
-                Image(systemName: icon)
-                    .font(.roundedSubheadline)
-                    .foregroundStyle(isActive ? activeColor : .secondary)
-
-                Text(label)
-                    .font(.roundedCaption2)
-                    .foregroundStyle(isActive ? activeColor : .secondary)
-            }
+            toolbarItemLabel(
+                icon: icon,
+                label: label,
+                foreground: isActive ? activeColor : .secondary
+            )
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .contentShape(Rectangle())
         .accessibilityLabel(label)
         .accessibilityValue(isActive ? "Active" : "Inactive")
         .accessibilityHint("Double tap to \(label.lowercased())")
+    }
+
+    @ViewBuilder
+    private func toolbarItemLabel(
+        icon: String,
+        label: String,
+        foreground: Color
+    ) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.roundedSubheadline)
+
+            Text(label)
+                .font(.roundedCaption2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
+                .allowsTightening(true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .padding(.vertical, 4)
+        .foregroundStyle(foreground)
     }
     
     @ViewBuilder
@@ -610,17 +630,15 @@ struct StatusActionsToolbar: View {
                     Label("Unboost", systemImage: "arrow.2.squarepath")
                 }
             } label: {
-                VStack(spacing: 2) {
-                    Image(systemName: "arrow.2.squarepath")
-                        .font(.roundedSubheadline)
-                        .foregroundStyle(.green)
-
-                    Text("Boost")
-                        .font(.roundedCaption2)
-                        .foregroundStyle(.green)
-                }
+                toolbarItemLabel(
+                    icon: "arrow.2.squarepath",
+                    label: "Boost",
+                    foreground: .green
+                )
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
             .accessibilityLabel("Boost")
             .accessibilityValue("Active")
         } else if showQuoteBoost {
@@ -640,17 +658,15 @@ struct StatusActionsToolbar: View {
                     Label("Quote Boost", systemImage: "quote.bubble")
                 }
             } label: {
-                VStack(spacing: 2) {
-                    Image(systemName: "arrow.2.squarepath")
-                        .font(.roundedSubheadline)
-                        .foregroundStyle(.secondary)
-
-                    Text("Boost")
-                        .font(.roundedCaption2)
-                        .foregroundStyle(.secondary)
-                }
+                toolbarItemLabel(
+                    icon: "arrow.2.squarepath",
+                    label: "Boost",
+                    foreground: .secondary
+                )
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
             .accessibilityLabel("Boost")
         } else {
             // Not boosted and quote boost disabled - show direct button

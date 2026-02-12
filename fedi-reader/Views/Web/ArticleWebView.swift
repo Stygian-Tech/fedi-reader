@@ -127,7 +127,8 @@ struct ArticleWebView: View {
     private var actionToolbar: some View {
         StatusActionsToolbar(status: status)
             .glassEffect(.regular)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 6)
     }
 }
 
