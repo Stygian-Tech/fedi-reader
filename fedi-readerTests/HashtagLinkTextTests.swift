@@ -70,11 +70,11 @@ struct HashtagLinkTextTests {
         let emoji2 = CustomEmoji(shortcode: "test", url: "https://example.com/second.png", staticUrl: "", visibleInPicker: true, category: nil)
         
         let emojis = [emoji1, emoji2]
-        let lookup = Dictionary(uniqueKeysWithValues: emojis.map { ($0.shortcode, $0) })
+        let lookup = Dictionary(emojis.map { ($0.shortcode, $0) }) { _, new in new }
         
         // Dictionary will only keep one (last one wins)
         #expect(lookup.count == 1)
-        #expect(lookup["test"] != nil)
+        #expect(lookup["test"]?.url == "https://example.com/second.png")
     }
     
     // MARK: - Hashtag Handler Tests

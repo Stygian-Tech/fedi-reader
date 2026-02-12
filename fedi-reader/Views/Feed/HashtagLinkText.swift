@@ -21,7 +21,7 @@ struct HashtagLinkText: View {
         let emojiLookup: [String: CustomEmoji] = {
             if let instance = appState.getCurrentInstance() {
                 let emojis = appState.emojiService.getCustomEmojis(for: instance)
-                let lookup = Dictionary(uniqueKeysWithValues: emojis.map { ($0.shortcode, $0) })
+                let lookup = Dictionary(emojis.map { ($0.shortcode, $0) }) { _, new in new }
                 Self.logger.debug("Built emoji lookup with \(lookup.count) entries for instance: \(instance, privacy: .public)")
                 return lookup
             } else {

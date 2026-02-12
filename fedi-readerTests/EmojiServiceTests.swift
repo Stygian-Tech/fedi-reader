@@ -270,6 +270,7 @@ struct EmojiServiceTests {
     
     @Test("Handles very long shortcodes")
     func handlesVeryLongShortcodes() {
+        // HTMLParser intentionally skips shortcode replacements longer than 50 chars.
         let longShortcode = String(repeating: "a", count: 100)
         let emoji = Self.makeCustomEmoji(shortcode: longShortcode, url: "https://example.com/long.png")
         let lookup: [String: CustomEmoji] = [longShortcode: emoji]
@@ -277,7 +278,8 @@ struct EmojiServiceTests {
         let html = ":\(longShortcode):"
         let result = HTMLParser.replaceEmojiShortcodes(html, emojiLookup: lookup)
         
-        #expect(result.contains("long.png"))
+        #expect(result == html)
+        #expect(!result.contains("long.png"))
     }
     
     @Test("Handles special characters in shortcode")
