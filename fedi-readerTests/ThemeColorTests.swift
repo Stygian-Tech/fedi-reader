@@ -37,4 +37,15 @@ struct ThemeColorTests {
         #expect(rawValues.contains("white") == false)
         #expect(rawValues.contains("blue") == true)
     }
+    
+    @Test("Theme resolver returns matching color for valid value")
+    func resolverReturnsMatchingThemeColor() {
+        #expect(ThemeColor.resolved(from: "mint") == .mint)
+        #expect(ThemeColor.resolved(from: "purple") == .purple)
+    }
+    
+    @Test("Theme resolver falls back to blue for unknown value")
+    func resolverFallsBackToBlue() {
+        #expect(ThemeColor.resolved(from: "not-a-theme-color") == .blue)
+    }
 }
