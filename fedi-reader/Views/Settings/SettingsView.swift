@@ -34,15 +34,20 @@ struct SettingsView: View {
                 Toggle("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
                 Toggle("Show Handle in Feed", isOn: $showHandleInFeed)
                 
-                Picker("Theme Color", selection: $themeColorName) {
-                    ForEach(ThemeColor.allCases, id: \.rawValue) { color in
-                        HStack {
-                            Circle()
-                                .fill(color.color)
-                                .frame(width: 20, height: 20)
-                            Text(color.displayName)
+                NavigationLink {
+                    ThemeColorSelectionView(selection: $themeColorName)
+                } label: {
+                    HStack {
+                        Text("Theme Color")
+                        Spacer()
+                        if let selectedColor = ThemeColor(rawValue: themeColorName) {
+                            ThemeColorPreviewCircle(themeColor: selectedColor)
+                            Text(selectedColor.displayName)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text(themeColorName.capitalized)
+                                .foregroundStyle(.secondary)
                         }
-                        .tag(color.rawValue)
                     }
                 }
             }
@@ -128,6 +133,59 @@ struct SettingsView: View {
 
 // MARK: - Theme Color
 
+private struct ThemeColorPreviewCircle: View {
+    let themeColor: ThemeColor
+    
+    var body: some View {
+        Circle()
+            .fill(.thinMaterial)
+            .overlay {
+                Circle()
+                    .inset(by: 3)
+                    .fill(themeColor.color)
+                    .overlay {
+                        if themeColor.requiresContrastStrokeInPreview {
+                            Circle()
+                                .stroke(.secondary.opacity(0.35), lineWidth: 1)
+                        }
+                    }
+            }
+            .overlay {
+                Circle()
+                    .stroke(.secondary.opacity(0.25), lineWidth: 1)
+            }
+            .frame(width: 22, height: 22)
+    }
+}
+
+private struct ThemeColorSelectionView: View {
+    @Binding var selection: String
+    
+    var body: some View {
+        List {
+            ForEach(ThemeColor.allCases, id: \.rawValue) { color in
+                Button {
+                    selection = color.rawValue
+                } label: {
+                    HStack(spacing: 12) {
+                        ThemeColorPreviewCircle(themeColor: color)
+                        Text(color.displayName)
+                        Spacer()
+                        if selection == color.rawValue {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.tint)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .navigationTitle("Theme Color")
+    }
+}
+
 enum ThemeColor: String, CaseIterable {
     case red
     case orange
@@ -142,8 +200,6 @@ enum ThemeColor: String, CaseIterable {
     case pink
     case brown
     case gray
-    case black
-    case white
     
     var displayName: String {
         rawValue.capitalized
@@ -164,8 +220,15 @@ enum ThemeColor: String, CaseIterable {
         case .pink: return .pink
         case .brown: return .brown
         case .gray: return .gray
-        case .black: return .black
-        case .white: return .white
+        }
+    }
+    
+    var requiresContrastStrokeInPreview: Bool {
+        switch self {
+        case .yellow, .mint, .cyan:
+            return true
+        default:
+            return false
         }
     }
 }
