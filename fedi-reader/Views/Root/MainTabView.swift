@@ -2,7 +2,7 @@
 //  MainTabView.swift
 //  fedi-reader
 //
-//  Main tab navigation with Home, Explore, Mentions, Profile.
+//  Main tab navigation with Home, Explore, Messages, Profile.
 //
 
 import SwiftUI
@@ -53,7 +53,7 @@ struct MainTabView: View {
                 }
             }
 
-            Tab(hideTabBarLabels ? "" : "Mentions", systemImage: "at", value: .mentions) {
+            Tab(hideTabBarLabels ? "" : "Messages", systemImage: "at", value: .mentions) {
                 NavigationStack {
                     MentionsView()
                         .navigationDestination(for: NavigationDestination.self) { destination in

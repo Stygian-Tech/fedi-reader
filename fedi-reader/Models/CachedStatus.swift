@@ -86,7 +86,7 @@ enum TimelineType: String, CaseIterable, Sendable {
     var displayName: String {
         switch self {
         case .home: return "Home"
-        case .mentions: return "Mentions"
+        case .mentions: return "Messages"
         case .explore: return "Explore"
         case .links: return "Links"
         }
