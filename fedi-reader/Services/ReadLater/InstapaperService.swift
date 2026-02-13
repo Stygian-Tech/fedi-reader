@@ -10,102 +10,76 @@ import os
 
 final class InstapaperService: ReadLaterServiceProtocol {
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "ReadLater.Instapaper")
+    private static let formURLEncodedAllowedCharacters: CharacterSet = {
+        var set = CharacterSet.alphanumerics
+        set.insert(charactersIn: "-._~")
+        return set
+    }()
     private let config: ReadLaterConfig
     private let keychain: KeychainHelper
     private let session: URLSession
     
-    private var oauthToken: String?
-    private var oauthTokenSecret: String?
+    private var username: String?
+    private var password: String?
     
     var isAuthenticated: Bool {
-        oauthToken != nil && oauthTokenSecret != nil
+        username != nil && password != nil
     }
     
-    init(config: ReadLaterConfig, keychain: KeychainHelper) {
+    init(
+        config: ReadLaterConfig,
+        keychain: KeychainHelper,
+        session: URLSession = .shared,
+        loadStoredCredentials: Bool = true
+    ) {
         self.config = config
         self.keychain = keychain
-        self.session = URLSession.shared
+        self.session = session
         
         // Load existing credentials
+        guard loadStoredCredentials else { return }
+        
         Task {
-            if let tokenData = try? await keychain.getReadLaterToken(forService: .instapaper, configId: config.id),
-               let parts = tokenData.split(separator: ":").map({ String($0) }) as? [String],
-               parts.count == 2 {
-                oauthToken = parts[0]
-                oauthTokenSecret = parts[1]
+            guard let credentialToken = try? await keychain.getReadLaterToken(forService: .instapaper, configId: config.id) else {
+                return
             }
+            setCredentials(fromToken: credentialToken)
         }
     }
     
     // MARK: - Authentication
     
     func authenticate() async throws {
-        // Instapaper uses xAuth (simplified OAuth for trusted apps)
-        // This requires getting OAuth credentials from Instapaper directly
-        throw FediReaderError.readLaterError("Instapaper authentication not implemented - use API key")
+        throw FediReaderError.readLaterError("Use account credentials to configure Instapaper")
     }
     
-    func authenticateWithCredentials(username: String, password: String) async throws {
-        Self.logger.info("Authenticating Instapaper with credentials")
-        let url = URL(string: Constants.ReadLater.instapaperAuthURL)!
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        
-        // xAuth requires OAuth signature - simplified implementation
-        let body = "x_auth_username=\(username.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&x_auth_password=\(password.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&x_auth_mode=client_auth"
-        request.httpBody = body.data(using: .utf8)
-        
-        let (data, response) = try await session.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            Self.logger.error("Invalid response type for Instapaper authentication")
-            throw FediReaderError.readLaterError("Instapaper authentication failed")
+    func authenticateWithCredentials(
+        username: String,
+        password: String,
+        persistCredentials: Bool = true
+    ) async throws {
+        guard !username.isEmpty, !password.isEmpty else {
+            throw FediReaderError.readLaterError("Instapaper username and password are required")
         }
         
-        guard httpResponse.statusCode == 200 else {
-            Self.logger.error("Instapaper authentication failed with status: \(httpResponse.statusCode)")
-            throw FediReaderError.readLaterError("Instapaper authentication failed")
+        self.username = username
+        self.password = password
+        
+        if persistCredentials {
+            try await keychain.saveReadLaterToken(
+                "\(username):\(password)",
+                forService: .instapaper,
+                configId: config.id
+            )
         }
-        
-        // Parse OAuth response
-        guard let responseString = String(data: data, encoding: .utf8) else {
-            Self.logger.error("Invalid Instapaper response format")
-            throw FediReaderError.readLaterError("Invalid Instapaper response")
-        }
-        
-        var params: [String: String] = [:]
-        for pair in responseString.split(separator: "&") {
-            let keyValue = pair.split(separator: "=")
-            if keyValue.count == 2 {
-                params[String(keyValue[0])] = String(keyValue[1])
-            }
-        }
-        
-        guard let token = params["oauth_token"],
-              let tokenSecret = params["oauth_token_secret"] else {
-            Self.logger.error("Missing OAuth tokens in Instapaper response")
-            throw FediReaderError.readLaterError("Missing OAuth tokens")
-        }
-        
-        oauthToken = token
-        oauthTokenSecret = tokenSecret
-        
-        // Store combined token
-        try await keychain.saveReadLaterToken(
-            "\(token):\(tokenSecret)",
-            forService: .instapaper,
-            configId: config.id
-        )
-        Self.logger.info("Instapaper authentication successful")
+        Self.logger.info("Instapaper credentials saved")
     }
     
     // MARK: - Save
     
     func save(url: URL, title: String?) async throws {
         Self.logger.info("Saving to Instapaper: \(url.absoluteString, privacy: .public), title: \(title ?? "nil", privacy: .public)")
-        guard isAuthenticated else {
+        guard let username, let password else {
             Self.logger.error("Not authenticated with Instapaper")
             throw FediReaderError.readLaterError("Not authenticated with Instapaper")
         }
@@ -116,29 +90,84 @@ final class InstapaperService: ReadLaterServiceProtocol {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         
-        var bodyParts = ["url=\(url.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"]
-        
-        if let title {
-            bodyParts.append("title=\(title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")")
+        var formFields = [("url", url.absoluteString)]
+        if let title, !title.isEmpty {
+            formFields.append(("title", title))
         }
         
-        request.httpBody = bodyParts.joined(separator: "&").data(using: .utf8)
+        request.httpBody = formURLEncodedData(from: formFields)
+        request.setValue(
+            basicAuthorizationHeader(username: username, password: password),
+            forHTTPHeaderField: "Authorization"
+        )
         
-        // Add OAuth signature (simplified - in production use proper OAuth signing)
-        // This would need proper OAuth 1.0a signature implementation
-        
-        let (_, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             Self.logger.error("Invalid response type for Instapaper save")
             throw FediReaderError.readLaterError("Failed to save to Instapaper")
         }
         
-        guard httpResponse.statusCode == 200 || httpResponse.statusCode == 201 else {
-            Self.logger.error("Instapaper save failed with status: \(httpResponse.statusCode)")
-            throw FediReaderError.readLaterError("Failed to save to Instapaper")
+        switch httpResponse.statusCode {
+        case 200, 201:
+            Self.logger.info("Successfully saved to Instapaper")
+        case 400:
+            let message = errorMessage(
+                from: data,
+                fallback: "Instapaper rejected this URL or request payload"
+            )
+            Self.logger.error("Instapaper save rejected: \(message, privacy: .public)")
+            throw FediReaderError.readLaterError(message)
+        case 401, 403:
+            Self.logger.error("Instapaper authentication failed with status: \(httpResponse.statusCode)")
+            throw FediReaderError.readLaterError("Instapaper authentication failed. Reconnect your account in Settings.")
+        default:
+            let message = errorMessage(
+                from: data,
+                fallback: "Instapaper returned status \(httpResponse.statusCode)"
+            )
+            Self.logger.error("Instapaper save failed with status \(httpResponse.statusCode): \(message, privacy: .public)")
+            throw FediReaderError.readLaterError(message)
+        }
+    }
+    
+    private func setCredentials(fromToken token: String) {
+        let components = token.split(separator: ":", maxSplits: 1).map(String.init)
+        guard components.count == 2 else {
+            Self.logger.error("Stored Instapaper credentials are invalid")
+            return
         }
         
-        Self.logger.info("Successfully saved to Instapaper")
+        username = components[0]
+        password = components[1]
+    }
+    
+    private func basicAuthorizationHeader(username: String, password: String) -> String {
+        let credentials = "\(username):\(password)"
+        let encoded = Data(credentials.utf8).base64EncodedString()
+        return "Basic \(encoded)"
+    }
+    
+    private func errorMessage(from data: Data, fallback: String) -> String {
+        let responseText = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard let responseText, !responseText.isEmpty else {
+            return fallback
+        }
+        
+        return "Instapaper error: \(responseText)"
+    }
+    
+    private func formURLEncodedData(from fields: [(String, String)]) -> Data {
+        let encoded = fields
+            .map { key, value in
+                let encodedKey = key.addingPercentEncoding(withAllowedCharacters: Self.formURLEncodedAllowedCharacters) ?? key
+                let encodedValue = value.addingPercentEncoding(withAllowedCharacters: Self.formURLEncodedAllowedCharacters) ?? value
+                return "\(encodedKey)=\(encodedValue)"
+            }
+            .joined(separator: "&")
+        
+        return Data(encoded.utf8)
     }
 }

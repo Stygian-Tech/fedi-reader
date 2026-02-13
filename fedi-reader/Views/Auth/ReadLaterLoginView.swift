@@ -232,7 +232,7 @@ struct ReadLaterLoginView: View {
                 }
                 
             case .instapaper:
-                // Store credentials (simplified - real implementation needs xAuth)
+                // Store credentials for Instapaper basic-auth save endpoint
                 try await readLaterManager.configureService(
                     .instapaper,
                     token: "\(username):\(password)",

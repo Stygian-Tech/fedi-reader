@@ -110,7 +110,7 @@ enum Constants {
         
         // Instapaper
         static let instapaperAuthURL = "https://www.instapaper.com/api/1/oauth/access_token"
-        static let instapaperAddURL = "https://www.instapaper.com/api/1/bookmarks/add"
+        static let instapaperAddURL = "https://www.instapaper.com/api/add"
         
         // Omnivore
         static let omnivoreAPIURL = "https://api-prod.omnivore.app/api/graphql"

@@ -9,6 +9,12 @@ import Testing
 import Foundation
 @testable import fedi_reader
 
+private struct GenericTestError: LocalizedError {
+    var errorDescription: String? {
+        "Something went wrong"
+    }
+}
+
 @Suite("AppState Tests")
 @MainActor
 struct AppStateTests {
@@ -53,5 +59,15 @@ struct AppStateTests {
         #expect(state.userFilterPerFeedId["home"] == "a1")
         #expect(state.userFilterPerFeedId["list-1"] == nil)
         #expect(state.userFilterPerFeedId["list-2"] == "a3")
+    }
+    
+    @Test("handleError shows alert for non-FediReaderError values")
+    func handleErrorShowsGenericAlert() async {
+        let state = AppState()
+        
+        state.handleError(GenericTestError())
+        
+        #expect(state.presentedAlert?.title == "Error")
+        #expect(state.presentedAlert?.message == "Something went wrong")
     }
 }

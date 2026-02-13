@@ -132,7 +132,9 @@ final class ReadLaterManager {
             NotificationCenter.default.post(name: .readLaterDidSave, object: result)
         } catch {
             Self.logger.error("Failed to save to \(serviceType.rawValue, privacy: .public): \(error.localizedDescription)")
-            lastSaveResult = .failure(url: url, service: serviceType, error: error)
+            let failure = ReadLaterSaveResult.failure(url: url, service: serviceType, error: error)
+            lastSaveResult = failure
+            NotificationCenter.default.post(name: .readLaterDidSave, object: failure)
             throw error
         }
     }
