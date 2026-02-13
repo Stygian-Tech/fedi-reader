@@ -188,6 +188,7 @@ enum MockStatusFactory {
 class MockURLProtocol: URLProtocol {
     static var mockResponses: [String: (Data, HTTPURLResponse)] = [:]
     static var mockErrors: [String: Error] = [:]
+    static var lastRequest: URLRequest?
     
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -198,6 +199,8 @@ class MockURLProtocol: URLProtocol {
     }
     
     override func startLoading() {
+        Self.lastRequest = request
+        
         guard let url = request.url?.absoluteString else {
             client?.urlProtocolDidFinishLoading(self)
             return
@@ -221,6 +224,7 @@ class MockURLProtocol: URLProtocol {
     static func reset() {
         mockResponses.removeAll()
         mockErrors.removeAll()
+        lastRequest = nil
     }
     
     static func setMockResponse(for url: String, data: Data, statusCode: Int = 200) {

@@ -42,6 +42,10 @@ struct ContentView: View {
         .onOpenURL { url in
             handleOpenURL(url)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .readLaterDidSave)) { notification in
+            guard let result = notification.object as? ReadLaterSaveResult else { return }
+            handleReadLaterSaveResult(result)
+        }
         .sheet(item: $appState.presentedSheet) { sheet in
             sheetContent(for: sheet)
         }
@@ -96,6 +100,26 @@ struct ContentView: View {
                     appState.handleError(error)
                 }
             }
+        }
+    }
+    
+    private func handleReadLaterSaveResult(_ result: ReadLaterSaveResult) {
+        if result.success {
+            let message = result.url.host ?? result.url.absoluteString
+            appState.presentedAlert = AlertItem(
+                title: "Saved to \(result.serviceType.displayName)",
+                message: message
+            )
+            return
+        }
+        
+        if let error = result.error {
+            appState.handleError(error)
+        } else {
+            appState.presentedAlert = AlertItem(
+                title: "Save Failed",
+                message: "Could not save to \(result.serviceType.displayName)"
+            )
         }
     }
 

@@ -86,6 +86,12 @@ final class AppState {
                 message: message
             )
             Self.logger.info("Presented error alert: \(title, privacy: .public)")
+        } else {
+            presentedAlert = AlertItem(
+                title: "Error",
+                message: error.localizedDescription
+            )
+            Self.logger.info("Presented generic error alert")
         }
     }
     
