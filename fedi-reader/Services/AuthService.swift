@@ -291,6 +291,32 @@ final class AuthService {
         
         try modelContext.save()
     }
+
+    func fetchVerifiedProfile(for account: Account) async throws -> MastodonAccount {
+        guard let token = await getAccessToken(for: account) else {
+            throw FediReaderError.unauthorized
+        }
+        let verifiedProfile = try await client.verifyCredentials(
+            instance: account.instance,
+            accessToken: token
+        )
+
+        if !verifiedProfile.preferredFields.isEmpty {
+            return verifiedProfile
+        }
+
+        let accountID = verifiedProfile.id
+        if let publicProfile = try? await client.getAccount(
+            instance: account.instance,
+            accessToken: token,
+            id: accountID
+        ),
+           !publicProfile.preferredFields.isEmpty {
+            return publicProfile
+        }
+
+        return verifiedProfile
+    }
     
     // MARK: - Token Verification
     

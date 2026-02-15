@@ -292,6 +292,75 @@ struct MastodonAccount: Codable, Identifiable, Hashable, Sendable {
         case statusesCount = "statuses_count"
         case lastStatusAt = "last_status_at"
     }
+
+    init(
+        id: String,
+        username: String,
+        acct: String,
+        displayName: String,
+        locked: Bool,
+        bot: Bool,
+        createdAt: Date,
+        note: String,
+        url: String,
+        avatar: String,
+        avatarStatic: String,
+        header: String,
+        headerStatic: String,
+        followersCount: Int,
+        followingCount: Int,
+        statusesCount: Int,
+        lastStatusAt: String?,
+        emojis: [CustomEmoji],
+        fields: [Field],
+        source: AccountSource?
+    ) {
+        self.id = id
+        self.username = username
+        self.acct = acct
+        self.displayName = displayName
+        self.locked = locked
+        self.bot = bot
+        self.createdAt = createdAt
+        self.note = note
+        self.url = url
+        self.avatar = avatar
+        self.avatarStatic = avatarStatic
+        self.header = header
+        self.headerStatic = headerStatic
+        self.followersCount = followersCount
+        self.followingCount = followingCount
+        self.statusesCount = statusesCount
+        self.lastStatusAt = lastStatusAt
+        self.emojis = emojis
+        self.fields = fields
+        self.source = source
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(String.self, forKey: .id)
+        username = try container.decode(String.self, forKey: .username)
+        acct = try container.decode(String.self, forKey: .acct)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        locked = try container.decode(Bool.self, forKey: .locked)
+        bot = try container.decode(Bool.self, forKey: .bot)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        note = try container.decode(String.self, forKey: .note)
+        url = try container.decode(String.self, forKey: .url)
+        avatar = try container.decode(String.self, forKey: .avatar)
+        avatarStatic = try container.decode(String.self, forKey: .avatarStatic)
+        header = try container.decode(String.self, forKey: .header)
+        headerStatic = try container.decode(String.self, forKey: .headerStatic)
+        followersCount = try container.decode(Int.self, forKey: .followersCount)
+        followingCount = try container.decode(Int.self, forKey: .followingCount)
+        statusesCount = try container.decode(Int.self, forKey: .statusesCount)
+        lastStatusAt = try container.decodeIfPresent(String.self, forKey: .lastStatusAt)
+        emojis = try container.decode([CustomEmoji].self, forKey: .emojis)
+        fields = try container.decodeIfPresent([Field].self, forKey: .fields) ?? []
+        source = try container.decodeIfPresent(AccountSource.self, forKey: .source)
+    }
     
     var avatarURL: URL? {
         URL(string: avatar)
@@ -308,10 +377,18 @@ struct MastodonAccount: Codable, Identifiable, Hashable, Sendable {
         }
         return note
     }
+
+    var preferredFields: [Field] {
+        if !fields.isEmpty {
+            return fields
+        }
+        return source?.fields ?? []
+    }
 }
 
 struct AccountSource: Codable, Hashable, Sendable {
     let note: String?
+    let fields: [Field]?
 }
 
 // MARK: - Field (Profile fields)
@@ -324,6 +401,40 @@ struct Field: Codable, Hashable, Sendable {
     enum CodingKeys: String, CodingKey {
         case name, value
         case verifiedAt = "verified_at"
+    }
+
+    init(name: String, value: String, verifiedAt: Date?) {
+        self.name = name
+        self.value = value
+        self.verifiedAt = verifiedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        name = try container.decode(String.self, forKey: .name)
+        value = try container.decode(String.self, forKey: .value)
+
+        if let decodedDate = try? container.decode(Date.self, forKey: .verifiedAt) {
+            verifiedAt = decodedDate
+            return
+        }
+
+        guard let decodedDateString = try? container.decode(String.self, forKey: .verifiedAt),
+              !decodedDateString.isEmpty else {
+            verifiedAt = nil
+            return
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let parsed = formatter.date(from: decodedDateString) {
+            verifiedAt = parsed
+            return
+        }
+
+        formatter.formatOptions = [.withInternetDateTime]
+        verifiedAt = formatter.date(from: decodedDateString)
     }
 }
 

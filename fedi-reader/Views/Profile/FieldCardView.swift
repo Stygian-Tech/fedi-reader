@@ -16,41 +16,62 @@ struct FieldCardView: View {
     let field: Field
 
     var body: some View {
+        let linkURL = destinationURL
+
         Button {
-            if let urlString = extractURL(from: field.value),
-               let url = URL(string: urlString) {
+            if let linkURL {
                 #if os(iOS)
-                UIApplication.shared.open(url)
+                UIApplication.shared.open(linkURL)
                 #elseif os(macOS)
-                NSWorkspace.shared.open(url)
+                NSWorkspace.shared.open(linkURL)
                 #endif
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 4) {
-                    if field.verifiedAt != nil {
-                        Image(systemName: "checkmark.seal.fill")
-                            .foregroundStyle(.green)
-                            .font(.roundedCaption)
+            HStack(spacing: 10) {
+                Image(systemName: "link.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(linkURL == nil ? .tertiary : .secondary)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text(field.name)
+                            .font(.roundedCaption.bold())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        if field.verifiedAt != nil {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                                .font(.roundedCaption)
+                        }
                     }
 
-                    Text(field.name)
-                        .font(.roundedCaption.bold())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    Text(field.value.htmlStripped)
+                        .font(.roundedSubheadline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                 }
 
-                Text(field.value.htmlStripped)
-                    .font(.roundedSubheadline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 8)
+
+                Image(systemName: linkURL == nil ? "link.slash" : "arrow.up.right.square")
+                    .font(.roundedCaption)
+                    .foregroundStyle(.tertiary)
             }
-            .frame(width: 200)
             .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+        .disabled(linkURL == nil)
+    }
+
+    private var destinationURL: URL? {
+        guard let urlString = extractURL(from: field.value) else {
+            return nil
+        }
+        return URL(string: urlString)
     }
 
     private func extractURL(from html: String) -> String? {

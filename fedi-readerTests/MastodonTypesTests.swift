@@ -107,6 +107,47 @@ struct MastodonTypesTests {
 
         #expect(account.preferredNote == "<p>HTML bio line one<br />HTML bio line two</p>")
     }
+
+    @Test("MastodonAccount preferredFields uses source fields when top-level fields are empty")
+    func accountPreferredFieldsUsesSourceFieldsFallback() {
+        let sourceField = Field(
+            name: "Website",
+            value: "<a href=\"https://example.com\">example.com</a>",
+            verifiedAt: nil
+        )
+        let account = makeAccount(
+            note: "<p>bio</p>",
+            sourceNote: "bio",
+            fields: [],
+            sourceFields: [sourceField]
+        )
+
+        #expect(account.preferredFields.count == 1)
+        #expect(account.preferredFields.first?.name == "Website")
+    }
+
+    @Test("MastodonAccount preferredFields favors top-level fields")
+    func accountPreferredFieldsPrefersTopLevelFields() {
+        let topLevelField = Field(
+            name: "Top",
+            value: "<a href=\"https://top.example\">top.example</a>",
+            verifiedAt: nil
+        )
+        let sourceField = Field(
+            name: "Source",
+            value: "<a href=\"https://source.example\">source.example</a>",
+            verifiedAt: nil
+        )
+        let account = makeAccount(
+            note: "<p>bio</p>",
+            sourceNote: "bio",
+            fields: [topLevelField],
+            sourceFields: [sourceField]
+        )
+
+        #expect(account.preferredFields.count == 1)
+        #expect(account.preferredFields.first?.name == "Top")
+    }
     
     // MARK: - Preview Card Tests
     
@@ -168,6 +209,55 @@ struct MastodonTypesTests {
         #expect(decoded.id == account.id)
         #expect(decoded.username == account.username)
     }
+
+    @Test("MastodonAccount decoding tolerates missing fields key")
+    func accountDecodingMissingFieldsKey() throws {
+        let json = """
+        {
+          "id": "123",
+          "username": "testuser",
+          "acct": "testuser",
+          "display_name": "Test User",
+          "locked": false,
+          "bot": false,
+          "created_at": "2024-01-01T00:00:00Z",
+          "note": "<p>bio</p>",
+          "url": "https://example.com/@testuser",
+          "avatar": "https://example.com/avatar.jpg",
+          "avatar_static": "https://example.com/avatar.jpg",
+          "header": "https://example.com/header.jpg",
+          "header_static": "https://example.com/header.jpg",
+          "followers_count": 1,
+          "following_count": 2,
+          "statuses_count": 3,
+          "last_status_at": null,
+          "emojis": []
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(MastodonAccount.self, from: Data(json.utf8))
+
+        #expect(decoded.fields.isEmpty)
+    }
+
+    @Test("Field decoding tolerates empty verified_at")
+    func fieldDecodingWithEmptyVerifiedAt() throws {
+        let json = """
+        {
+          "name": "Website",
+          "value": "<a href=\\"https://example.com\\">example.com</a>",
+          "verified_at": ""
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(Field.self, from: Data(json.utf8))
+
+        #expect(decoded.verifiedAt == nil)
+    }
     
     // MARK: - AsyncRefreshHeader Parse Tests
     
@@ -212,7 +302,12 @@ struct MastodonTypesTests {
         #expect(AsyncRefreshHeader.parse(headerValue: #"id="x", retry=0"#) == nil)
     }
 
-    private func makeAccount(note: String, sourceNote: String?) -> MastodonAccount {
+    private func makeAccount(
+        note: String,
+        sourceNote: String?,
+        fields: [Field] = [],
+        sourceFields: [Field]? = nil
+    ) -> MastodonAccount {
         MastodonAccount(
             id: "123",
             username: "testuser",
@@ -232,8 +327,8 @@ struct MastodonTypesTests {
             statusesCount: 0,
             lastStatusAt: nil,
             emojis: [],
-            fields: [],
-            source: sourceNote.map { AccountSource(note: $0) }
+            fields: fields,
+            source: sourceNote.map { AccountSource(note: $0, fields: sourceFields) }
         )
     }
 }
