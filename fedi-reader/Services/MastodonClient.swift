@@ -402,6 +402,16 @@ final class MastodonClient {
         let request = buildRequest(url: url, accessToken: accessToken)
         return try await execute(request)
     }
+
+    func getAccountFeaturedTags(
+        instance: String,
+        accessToken: String,
+        accountId: String
+    ) async throws -> [Tag] {
+        let url = try buildURL(instance: instance, path: "\(Constants.API.accounts)/\(accountId)/featured_tags")
+        let request = buildRequest(url: url, accessToken: accessToken)
+        return try await execute(request)
+    }
     
     // MARK: - Timelines
     

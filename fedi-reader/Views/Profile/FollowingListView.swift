@@ -16,6 +16,7 @@ struct FollowingListView: View {
     @State private var accounts: [MastodonAccount] = []
     @State private var isLoading = true
     @State private var maxId: String?
+    @State private var hasMore = true
     
     var body: some View {
         Group {
@@ -47,7 +48,11 @@ struct FollowingListView: View {
         }
         .navigationTitle("Following")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .task(id: accountId) {
+            maxId = nil
+            hasMore = true
+            accounts = []
+            isLoading = true
             await loadFollowing()
         }
     }
@@ -59,31 +64,35 @@ struct FollowingListView: View {
             return
         }
         
-        isLoading = true
         defer { isLoading = false }
-        
+
         do {
+            let requestMaxId = maxId
             let following = try await appState.client.getAccountFollowing(
                 instance: currentAccount.instance,
                 accessToken: token,
                 accountId: accountId,
-                maxId: maxId
+                maxId: requestMaxId
             )
-            
-            if maxId == nil {
-                accounts = following
-            } else {
-                accounts.append(contentsOf: following)
-            }
-            
-            maxId = following.last?.id
+
+            let mergeResult = PaginatedAccountList.merge(
+                existing: requestMaxId == nil ? [] : accounts,
+                incoming: following,
+                requestedMaxId: requestMaxId,
+                pageSize: Constants.Pagination.defaultLimit
+            )
+
+            accounts = mergeResult.mergedAccounts
+            maxId = mergeResult.nextMaxId
+            hasMore = mergeResult.hasMore
         } catch {
             Self.logger.error("Failed to load following: \(error.localizedDescription)")
         }
     }
     
     private func loadMore() {
-        guard !isLoading, maxId != nil else { return }
+        guard !isLoading, hasMore, maxId != nil else { return }
+        isLoading = true
         Task {
             await loadFollowing()
         }
