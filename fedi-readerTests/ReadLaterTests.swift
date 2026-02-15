@@ -9,6 +9,23 @@ import Testing
 import Foundation
 @testable import fedi_reader
 
+private final class NotificationResultStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: ReadLaterSaveResult?
+
+    func set(_ newValue: ReadLaterSaveResult?) {
+        lock.lock()
+        result = newValue
+        lock.unlock()
+    }
+
+    func get() -> ReadLaterSaveResult? {
+        lock.lock()
+        defer { lock.unlock() }
+        return result
+    }
+}
+
 private final class InstapaperMockURLProtocol: URLProtocol {
     static var responseData = Data()
     static var statusCode = 201
@@ -72,14 +89,6 @@ private final class InstapaperMockURLProtocol: URLProtocol {
     }
 }
 
-private actor NotificationResultStore {
-    private(set) var result: ReadLaterSaveResult?
-    
-    func set(_ newValue: ReadLaterSaveResult?) {
-        result = newValue
-    }
-}
-
 @Suite("Read Later Manager Tests")
 @MainActor
 struct ReadLaterManagerTests {
@@ -94,9 +103,7 @@ struct ReadLaterManagerTests {
             object: nil,
             queue: nil
         ) { notification in
-            Task {
-                await resultStore.set(notification.object as? ReadLaterSaveResult)
-            }
+            resultStore.set(notification.object as? ReadLaterSaveResult)
         }
         
         defer {
@@ -110,7 +117,7 @@ struct ReadLaterManagerTests {
             // Expected path
         }
         
-        let receivedResult = await resultStore.result
+        let receivedResult = resultStore.get()
         #expect(receivedResult != nil)
         #expect(receivedResult?.success == false)
         #expect(receivedResult?.serviceType == .instapaper)

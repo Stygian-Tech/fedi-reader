@@ -344,7 +344,7 @@ final class LinkFilterService {
             let targetStatus = status.displayStatus
             
             guard !isQuotePost(targetStatus) else { continue }
-            var tags = Array(Set(targetStatus.tags.map(\.name))).sorted()
+            var tags = TagExtractor.deduplicateCaseInsensitive(targetStatus.tags.map(\.name))
             if tags.isEmpty {
                 tags = TagExtractor.extractTags(from: targetStatus.content)
             }
