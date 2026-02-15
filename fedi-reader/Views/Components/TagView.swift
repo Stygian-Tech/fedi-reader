@@ -202,6 +202,23 @@ private struct TagSizePreferenceKey: PreferenceKey {
 // MARK: - Tag Extraction Helper
 
 struct TagExtractor {
+    nonisolated static func deduplicateCaseInsensitive(_ tags: [String]) -> [String] {
+        var seenCanonicalTags = Set<String>()
+        var deduplicatedTags: [String] = []
+        deduplicatedTags.reserveCapacity(tags.count)
+
+        for tag in tags {
+            let canonicalTag = tag.lowercased()
+            if seenCanonicalTags.insert(canonicalTag).inserted {
+                deduplicatedTags.append(tag)
+            }
+        }
+
+        return deduplicatedTags.sorted { lhs, rhs in
+            lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+        }
+    }
+
     /// Extract tags from status content (hashtags)
     nonisolated static func extractTags(from content: String) -> [String] {
         // Strip HTML first to avoid matching HTML entities like &#39; as #39
@@ -218,11 +235,13 @@ struct TagExtractor {
         let matches = regex.matches(in: plainText, options: [], range: range)
         
         var tags: [String] = []
+        var seenCanonicalTags = Set<String>()
         for match in matches {
             if let tagRange = Range(match.range(at: 1), in: plainText) {
                 let tag = String(plainText[tagRange])
+                let canonicalTag = tag.lowercased()
                 // Additional safety: filter out tags that are pure numbers (shouldn't happen with pattern, but just in case)
-                if !tag.allSatisfy(\.isNumber) && !tags.contains(tag) {
+                if !tag.allSatisfy(\.isNumber) && seenCanonicalTags.insert(canonicalTag).inserted {
                     tags.append(tag)
                 }
             }
@@ -241,7 +260,7 @@ struct TagExtractor {
         // Fall back to content extraction
         tags.append(contentsOf: extractTags(from: status.displayStatus.content))
         
-        return Array(Set(tags)).sorted() // Remove duplicates and sort
+        return deduplicateCaseInsensitive(tags)
     }
 }
 

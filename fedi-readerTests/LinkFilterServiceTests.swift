@@ -134,6 +134,42 @@ struct LinkFilterServiceTests {
         #expect(linkStatuses.first?.title == "Test Article")
         #expect(linkStatuses.first?.primaryURL.absoluteString == "https://example.com/article")
     }
+
+    @Test("Deduplicates API tags case-insensitively")
+    func deduplicatesAPITagsCaseInsensitively() async {
+        let status = MockStatusFactory.makeStatus(
+            id: "1",
+            hasCard: true,
+            cardURL: "https://example.com/article",
+            tags: [
+                Tag(name: "Swift", url: "https://mastodon.social/tags/swift", history: nil),
+                Tag(name: "swift", url: "https://mastodon.social/tags/swift", history: nil),
+                Tag(name: "iOS", url: "https://mastodon.social/tags/ios", history: nil)
+            ]
+        )
+
+        let linkStatuses = await service.processStatuses([status])
+
+        #expect(linkStatuses.count == 1)
+        let normalizedTags = Set((linkStatuses.first?.tags ?? []).map { $0.lowercased() })
+        #expect(normalizedTags == Set(["ios", "swift"]))
+    }
+
+    @Test("Deduplicates extracted content tags case-insensitively")
+    func deduplicatesExtractedContentTagsCaseInsensitively() async {
+        let status = MockStatusFactory.makeStatus(
+            id: "1",
+            content: "<p>#Swift #swift #iOS</p>",
+            hasCard: true,
+            cardURL: "https://example.com/article"
+        )
+
+        let linkStatuses = await service.processStatuses([status])
+
+        #expect(linkStatuses.count == 1)
+        let normalizedTags = Set((linkStatuses.first?.tags ?? []).map { $0.lowercased() })
+        #expect(normalizedTags == Set(["ios", "swift"]))
+    }
     
     // MARK: - Threads/Instagram Exclusion
     
