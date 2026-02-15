@@ -18,6 +18,7 @@ struct TagView: View {
     @State private var visibleTags: [String] = []
     @State private var hiddenTags: [String] = []
     @State private var tagSizes: [String: CGSize] = [:]
+    @State private var availableWidth: CGFloat = 0
     @State private var isExpanded: Bool = false
     
     init(tags: [String], onTagTap: ((String) -> Void)? = nil, showAllTags: Bool = false) {
@@ -38,66 +39,96 @@ struct TagView: View {
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                GeometryReader { geometry in
-                    FlowLayout(spacing: 8) {
-                        if isExpanded {
-                            // Show all tags when expanded
-                            ForEach(tags, id: \.self) { tag in
-                                LiquidGlassTag(tag) {
-                                    onTagTap?(tag)
-                                }
-                            }
-                            
-                            // "Less" button to collapse - styled distinctly from tags
-                            lessButton
-                        } else {
-                            // Collapsed state: show visible tags + count button
-                            ForEach(visibleTags, id: \.self) { tag in
-                                TagSizeReader(tag: tag) { size in
-                                    tagSizes[tag] = size
-                                } content: {
-                                    LiquidGlassTag(tag) {
-                                        onTagTap?(tag)
-                                    }
-                                }
-                            }
-                            
-                            // Show count of hidden tags only
-                            if !hiddenTags.isEmpty {
-                                LiquidGlassTag("+\(hiddenTags.count)") {
-                                    withAnimation {
-                                        isExpanded = true
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .onAppear {
-                        if !isExpanded {
-                            calculateVisibleTags(availableWidth: geometry.size.width)
-                        }
-                    }
-                    .onChange(of: geometry.size.width) { oldWidth, newWidth in
-                        if !isExpanded && newWidth != oldWidth && newWidth > 0 {
-                            calculateVisibleTags(availableWidth: newWidth)
-                        }
-                    }
-                    .onChange(of: tagSizes) { oldSizes, newSizes in
-                        if !isExpanded && newSizes.count > oldSizes.count {
-                            calculateVisibleTags(availableWidth: geometry.size.width)
-                        }
-                    }
-                    .onChange(of: isExpanded) { oldValue, newValue in
-                        // Recalculate when collapsing
-                        if !newValue {
-                            calculateVisibleTags(availableWidth: geometry.size.width)
-                        }
+                FlowLayout(spacing: 8) {
+                    if isExpanded {
+                        expandedTagsContent
+                    } else {
+                        collapsedTagsContent
                     }
                 }
-                .frame(height: isExpanded ? nil : 32) // Fixed height when collapsed, natural height when expanded
-                .fixedSize(horizontal: false, vertical: !isExpanded)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: isExpanded ? nil : 32, alignment: .topLeading)
+                .clipped()
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear
+                            .preference(key: TagContainerWidthPreferenceKey.self, value: geometry.size.width)
+                    }
+                }
+                .onPreferenceChange(TagContainerWidthPreferenceKey.self) { width in
+                    guard width > 0 else { return }
+                    let hasWidthChanged = abs(width - availableWidth) > 0.5
+                    guard hasWidthChanged else { return }
+
+                    availableWidth = width
+                    if !isExpanded {
+                        calculateVisibleTags(availableWidth: width)
+                    }
+                }
+                .onAppear {
+                    if !isExpanded {
+                        calculateVisibleTags(availableWidth: availableWidth)
+                    }
+                }
+                .onChange(of: tagSizes) { oldSizes, newSizes in
+                    if !isExpanded && newSizes.count > oldSizes.count {
+                        calculateVisibleTags(availableWidth: availableWidth)
+                    }
+                }
+                .onChange(of: isExpanded) { _, newValue in
+                    if !newValue {
+                        calculateVisibleTags(availableWidth: availableWidth)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.2), value: isExpanded)
             }
+        }
+    }
+
+    private struct TagContainerWidthPreferenceKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            let candidate = nextValue()
+            if candidate > 0 {
+                value = candidate
+            }
+        }
+    }
+
+    private var collapsedTagsContent: some View {
+        Group {
+            ForEach(visibleTags, id: \.self) { tag in
+                TagSizeReader(tag: tag) { size in
+                    tagSizes[tag] = size
+                } content: {
+                    LiquidGlassTag(tag) {
+                        onTagTap?(tag)
+                    }
+                }
+            }
+
+            if !hiddenTags.isEmpty {
+                LiquidGlassTag("+\(hiddenTags.count)") {
+                    withAnimation {
+                        isExpanded = true
+                    }
+                }
+            }
+        }
+    }
+
+    private var expandedTagsContent: some View {
+        Group {
+            ForEach(tags, id: \.self) { tag in
+                LiquidGlassTag(tag) {
+                    onTagTap?(tag)
+                }
+            }
+
+            lessButton
         }
     }
     
@@ -129,32 +160,37 @@ struct TagView: View {
     }
     
     private func calculateVisibleTags(availableWidth: CGFloat) {
+        let partition = TagView.partitionTags(
+            tags,
+            availableWidth: availableWidth,
+            measuredTagSizes: tagSizes
+        )
+        visibleTags = partition.visible
+        hiddenTags = partition.hidden
+    }
+
+    nonisolated static func partitionTags(
+        _ tags: [String],
+        availableWidth: CGFloat,
+        measuredTagSizes: [String: CGSize],
+        spacing: CGFloat = 8,
+        moreButtonWidth: CGFloat = 50
+    ) -> (visible: [String], hidden: [String]) {
         guard availableWidth > 0 else {
-            // If width not available yet, show all tags initially
-            visibleTags = tags
-            hiddenTags = []
-            return
+            return (tags, [])
         }
-        
+
         var currentWidth: CGFloat = 0
         var visible: [String] = []
         var hidden: [String] = []
-        let spacing: CGFloat = 8
-        let moreButtonWidth: CGFloat = 50 // Approximate width for "+X" button
-        
+
         for tag in tags {
-            // Use measured size if available, otherwise estimate
-            let tagWidth: CGFloat
-            if let size = tagSizes[tag] {
-                tagWidth = size.width
-            } else {
-                // Estimate: ~7-8px per character + 20px padding
-                tagWidth = CGFloat(tag.count * 7 + 20)
-            }
-            
-            // Check if we need the "more" button
-            let needsMoreButton = !hidden.isEmpty || (currentWidth + tagWidth + spacing + moreButtonWidth > availableWidth && currentWidth > 0)
-            
+            let tagWidth = measuredTagSizes[tag]?.width ?? CGFloat(tag.count * 7 + 20)
+            let needsMoreButton = !hidden.isEmpty || (
+                currentWidth + tagWidth + spacing + moreButtonWidth > availableWidth &&
+                currentWidth > 0
+            )
+
             if currentWidth + tagWidth + spacing <= availableWidth && !needsMoreButton {
                 visible.append(tag)
                 currentWidth += tagWidth + spacing
@@ -162,9 +198,12 @@ struct TagView: View {
                 hidden.append(tag)
             }
         }
-        
-        visibleTags = visible
-        hiddenTags = hidden
+
+        if visible.isEmpty, let firstTag = tags.first {
+            return ([firstTag], Array(tags.dropFirst()))
+        }
+
+        return (visible, hidden)
     }
 }
 
@@ -251,15 +290,15 @@ struct TagExtractor {
     }
     
     /// Extract tags from status, checking multiple sources
-    static func extractTags(from status: Status) -> [String] {
+    nonisolated static func extractTags(from status: Status) -> [String] {
         var tags: [String] = []
-        
-        // Prefer API hashtags when available
-        tags.append(contentsOf: status.displayStatus.tags.map(\.name))
-        
-        // Fall back to content extraction
+
+        // Prefer hashtag casing from the rendered post content when available.
         tags.append(contentsOf: extractTags(from: status.displayStatus.content))
-        
+
+        // Include API hashtags as a fallback source for tags missing from content.
+        tags.append(contentsOf: status.displayStatus.tags.map(\.name))
+
         return deduplicateCaseInsensitive(tags)
     }
 }
