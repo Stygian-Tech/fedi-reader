@@ -170,6 +170,28 @@ struct LinkFilterServiceTests {
         let normalizedTags = Set((linkStatuses.first?.tags ?? []).map { $0.lowercased() })
         #expect(normalizedTags == Set(["ios", "swift"]))
     }
+
+    @Test("Preserves original hashtag case from post content")
+    func preservesOriginalHashtagCaseFromPostContent() async {
+        let status = MockStatusFactory.makeStatus(
+            id: "1",
+            content: "<p>#SwiftUI #OpenAI</p>",
+            hasCard: true,
+            cardURL: "https://example.com/article",
+            tags: [
+                Tag(name: "swiftui", url: "https://mastodon.social/tags/swiftui", history: nil),
+                Tag(name: "openai", url: "https://mastodon.social/tags/openai", history: nil)
+            ]
+        )
+
+        let linkStatuses = await service.processStatuses([status])
+
+        #expect(linkStatuses.count == 1)
+        #expect(linkStatuses.first?.tags.contains("SwiftUI") == true)
+        #expect(linkStatuses.first?.tags.contains("OpenAI") == true)
+        #expect(linkStatuses.first?.tags.contains("swiftui") == false)
+        #expect(linkStatuses.first?.tags.contains("openai") == false)
+    }
     
     // MARK: - Threads/Instagram Exclusion
     

@@ -344,10 +344,7 @@ final class LinkFilterService {
             let targetStatus = status.displayStatus
             
             guard !isQuotePost(targetStatus) else { continue }
-            var tags = TagExtractor.deduplicateCaseInsensitive(targetStatus.tags.map(\.name))
-            if tags.isEmpty {
-                tags = TagExtractor.extractTags(from: targetStatus.content)
-            }
+            let tags = TagExtractor.extractTags(from: targetStatus)
             
             if let card = targetStatus.card,
                card.type == .link,
@@ -501,7 +498,7 @@ struct LinkStatus: Identifiable, Hashable, Sendable {
     }
     
     var displayDescription: String? {
-        description ?? status.displayStatus.content.htmlStripped
+        description
     }
     
     var domain: String {

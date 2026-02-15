@@ -249,4 +249,28 @@ struct LinkStatusTests {
         #expect(withImage.hasImage == true)
         #expect(withoutImage.hasImage == false)
     }
+
+    @Test("LinkStatus uses metadata description for displayDescription")
+    func linkStatusDisplayDescriptionUsesMetadata() {
+        let status = MockStatusFactory.makeStatus(content: "<p>Post body content</p>")
+        let linkStatus = LinkStatus(
+            status: status,
+            primaryURL: URL(string: "https://example.com")!,
+            description: "Preview description"
+        )
+
+        #expect(linkStatus.displayDescription == "Preview description")
+    }
+
+    @Test("LinkStatus does not fall back to post content for displayDescription")
+    func linkStatusDisplayDescriptionNoPostFallback() {
+        let status = MockStatusFactory.makeStatus(content: "<p>Post body content</p>")
+        let linkStatus = LinkStatus(
+            status: status,
+            primaryURL: URL(string: "https://example.com")!,
+            description: nil
+        )
+
+        #expect(linkStatus.displayDescription == nil)
+    }
 }
