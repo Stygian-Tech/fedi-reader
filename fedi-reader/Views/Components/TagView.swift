@@ -13,79 +13,91 @@ import os
 struct TagView: View {
     let tags: [String]
     let onTagTap: ((String) -> Void)?
+    let showAllTags: Bool
     
     @State private var visibleTags: [String] = []
     @State private var hiddenTags: [String] = []
     @State private var tagSizes: [String: CGSize] = [:]
     @State private var isExpanded: Bool = false
     
-    init(tags: [String], onTagTap: ((String) -> Void)? = nil) {
+    init(tags: [String], onTagTap: ((String) -> Void)? = nil, showAllTags: Bool = false) {
         self.tags = tags
         self.onTagTap = onTagTap
+        self.showAllTags = showAllTags
         // Initialize with all tags visible, will be recalculated when width is known
         _visibleTags = State(initialValue: tags)
     }
     
     var body: some View {
         if !tags.isEmpty {
-            GeometryReader { geometry in
+            if showAllTags {
                 FlowLayout(spacing: 8) {
-                    if isExpanded {
-                        // Show all tags when expanded
-                        ForEach(tags, id: \.self) { tag in
-                            LiquidGlassTag(tag) {
-                                onTagTap?(tag)
-                            }
+                    ForEach(tags, id: \.self) { tag in
+                        LiquidGlassTag(tag) {
+                            onTagTap?(tag)
                         }
-                        
-                        // "Less" button to collapse - styled distinctly from tags
-                        lessButton
-                    } else {
-                        // Collapsed state: show visible tags + count button
-                        ForEach(visibleTags, id: \.self) { tag in
-                            TagSizeReader(tag: tag) { size in
-                                tagSizes[tag] = size
-                            } content: {
+                    }
+                }
+            } else {
+                GeometryReader { geometry in
+                    FlowLayout(spacing: 8) {
+                        if isExpanded {
+                            // Show all tags when expanded
+                            ForEach(tags, id: \.self) { tag in
                                 LiquidGlassTag(tag) {
                                     onTagTap?(tag)
                                 }
                             }
-                        }
-                        
-                        // Show count of hidden tags only
-                        if !hiddenTags.isEmpty {
-                            LiquidGlassTag("+\(hiddenTags.count)") {
-                                withAnimation {
-                                    isExpanded = true
+                            
+                            // "Less" button to collapse - styled distinctly from tags
+                            lessButton
+                        } else {
+                            // Collapsed state: show visible tags + count button
+                            ForEach(visibleTags, id: \.self) { tag in
+                                TagSizeReader(tag: tag) { size in
+                                    tagSizes[tag] = size
+                                } content: {
+                                    LiquidGlassTag(tag) {
+                                        onTagTap?(tag)
+                                    }
+                                }
+                            }
+                            
+                            // Show count of hidden tags only
+                            if !hiddenTags.isEmpty {
+                                LiquidGlassTag("+\(hiddenTags.count)") {
+                                    withAnimation {
+                                        isExpanded = true
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                .onAppear {
-                    if !isExpanded {
-                        calculateVisibleTags(availableWidth: geometry.size.width)
+                    .onAppear {
+                        if !isExpanded {
+                            calculateVisibleTags(availableWidth: geometry.size.width)
+                        }
+                    }
+                    .onChange(of: geometry.size.width) { oldWidth, newWidth in
+                        if !isExpanded && newWidth != oldWidth && newWidth > 0 {
+                            calculateVisibleTags(availableWidth: newWidth)
+                        }
+                    }
+                    .onChange(of: tagSizes) { oldSizes, newSizes in
+                        if !isExpanded && newSizes.count > oldSizes.count {
+                            calculateVisibleTags(availableWidth: geometry.size.width)
+                        }
+                    }
+                    .onChange(of: isExpanded) { oldValue, newValue in
+                        // Recalculate when collapsing
+                        if !newValue {
+                            calculateVisibleTags(availableWidth: geometry.size.width)
+                        }
                     }
                 }
-                .onChange(of: geometry.size.width) { oldWidth, newWidth in
-                    if !isExpanded && newWidth != oldWidth && newWidth > 0 {
-                        calculateVisibleTags(availableWidth: newWidth)
-                    }
-                }
-                .onChange(of: tagSizes) { oldSizes, newSizes in
-                    if !isExpanded && newSizes.count > oldSizes.count {
-                        calculateVisibleTags(availableWidth: geometry.size.width)
-                    }
-                }
-                .onChange(of: isExpanded) { oldValue, newValue in
-                    // Recalculate when collapsing
-                    if !newValue {
-                        calculateVisibleTags(availableWidth: geometry.size.width)
-                    }
-                }
+                .frame(height: isExpanded ? nil : 32) // Fixed height when collapsed, natural height when expanded
+                .fixedSize(horizontal: false, vertical: !isExpanded)
             }
-            .frame(height: isExpanded ? nil : 32) // Fixed height when collapsed, natural height when expanded
-            .fixedSize(horizontal: false, vertical: !isExpanded)
         }
     }
     

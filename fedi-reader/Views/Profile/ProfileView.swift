@@ -11,7 +11,6 @@ import SwiftData
 struct ProfileView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.openURL) private var openURL
 
     @State private var profileFieldsByAccountID: [String: [Field]] = [:]
     @State private var fetchedProfileFieldAccounts: Set<String> = []
@@ -30,45 +29,11 @@ struct ProfileView: View {
     
     private func profileContent(_ account: Account) -> some View {
         List {
-            // Profile header
-            Section {
-                ProfileHeaderView(account: account)
-            }
+            ProfileSummaryView(account: account.mastodonAccount, fields: profileFields(for: account))
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-            
-            // Stats
-            Section {
-                HStack {
-                    statButton(count: account.statusesCount, label: "Posts", account: account)
-                    Divider()
-                    statButton(count: account.followingCount, label: "Following", account: account)
-                    Divider()
-                    statButton(count: account.followersCount, label: "Followers", account: account)
-                }
-                .padding(.vertical, 8)
-            }
+            .listRowSeparator(.hidden)
 
-            // Profile links
-            if !profileFields(for: account).isEmpty {
-                Section("Links") {
-                    ForEach(Array(profileFields(for: account).enumerated()), id: \.offset) { _, field in
-                        let destinationURL = profileFieldDestinationURL(for: field)
-
-                        Button {
-                            if let destinationURL {
-                                openURL(destinationURL)
-                            }
-                        } label: {
-                            profileLinkRow(field: field, destinationURL: destinationURL)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(destinationURL == nil)
-                    }
-                }
-            }
-            
-            // Account actions
             Section("Account") {
                 Button {
                     appState.present(sheet: .accountSwitcher)
@@ -118,20 +83,19 @@ struct ProfileView: View {
             }
             
             // App info
-            Section {
-                HStack {
-                    Spacer()
-                    VStack(spacing: 4) {
-                        Text("Fedi Reader")
-                            .font(.roundedCaption.bold())
-                        Text("Version \(Constants.appVersion) (\(Constants.appBuild))")
-                            .font(.roundedCaption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    Spacer()
+            HStack {
+                Spacer()
+                VStack(spacing: 4) {
+                    Text("Fedi Reader")
+                        .font(.roundedCaption.bold())
+                    Text("Version \(Constants.appVersion) (\(Constants.appBuild))")
+                        .font(.roundedCaption2)
+                        .foregroundStyle(.tertiary)
                 }
+                Spacer()
             }
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -140,39 +104,6 @@ struct ProfileView: View {
         .task(id: account.id) {
             await loadProfileFieldsIfNeeded(for: account)
         }
-    }
-    
-    private func statItem(count: Int, label: String) -> some View {
-        VStack(spacing: 4) {
-            Text("\(count)")
-                .font(.roundedTitle2.bold())
-            
-            Text(label)
-                .font(.roundedCaption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-    
-    private func statButton(count: Int, label: String, account: Account) -> some View {
-        Button {
-            let accountId = account.id.components(separatedBy: ":").last ?? account.id
-            let mastodonAccount = account.mastodonAccount
-            
-            switch label {
-            case "Posts":
-                appState.navigate(to: .accountPosts(accountId: accountId, account: mastodonAccount))
-            case "Following":
-                appState.navigate(to: .accountFollowing(accountId: accountId, account: mastodonAccount))
-            case "Followers":
-                appState.navigate(to: .accountFollowers(accountId: accountId, account: mastodonAccount))
-            default:
-                break
-            }
-        } label: {
-            statItem(count: count, label: label)
-        }
-        .buttonStyle(.plain)
     }
     
     private var notLoggedInView: some View {
@@ -190,50 +121,6 @@ struct ProfileView: View {
 
     private func profileFields(for account: Account) -> [Field] {
         profileFieldsByAccountID[account.id] ?? []
-    }
-
-    private func profileLinkRow(field: Field, destinationURL: URL?) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(field.name)
-                        .font(.roundedCaption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-
-                    if field.verifiedAt != nil {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.roundedCaption2)
-                            .foregroundStyle(.green)
-                    }
-                }
-
-                Text(field.value.htmlStripped)
-                    .font(.roundedSubheadline)
-                    .foregroundStyle(destinationURL == nil ? .secondary : .primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer(minLength: 8)
-
-            Image(systemName: destinationURL == nil ? "link.slash" : "arrow.up.right.square")
-                .font(.roundedCaption)
-                .foregroundStyle(.tertiary)
-        }
-        .contentShape(Rectangle())
-    }
-
-    private func profileFieldDestinationURL(for field: Field) -> URL? {
-        if let url = field.value.extractedLinks.first {
-            return url
-        }
-
-        let stripped = field.value.htmlStripped.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard stripped.hasPrefix("http://") || stripped.hasPrefix("https://") else {
-            return nil
-        }
-        return URL(string: stripped)
     }
 
     @MainActor

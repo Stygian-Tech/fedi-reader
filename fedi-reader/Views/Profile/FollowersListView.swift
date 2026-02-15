@@ -16,6 +16,7 @@ struct FollowersListView: View {
     @State private var accounts: [MastodonAccount] = []
     @State private var isLoading = true
     @State private var maxId: String?
+    @State private var hasMore = true
     
     var body: some View {
         Group {
@@ -47,7 +48,11 @@ struct FollowersListView: View {
         }
         .navigationTitle("Followers")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .task(id: accountId) {
+            maxId = nil
+            hasMore = true
+            accounts = []
+            isLoading = true
             await loadFollowers()
         }
     }
@@ -59,31 +64,35 @@ struct FollowersListView: View {
             return
         }
         
-        isLoading = true
         defer { isLoading = false }
-        
+
         do {
+            let requestMaxId = maxId
             let followers = try await appState.client.getAccountFollowers(
                 instance: currentAccount.instance,
                 accessToken: token,
                 accountId: accountId,
-                maxId: maxId
+                maxId: requestMaxId
             )
-            
-            if maxId == nil {
-                accounts = followers
-            } else {
-                accounts.append(contentsOf: followers)
-            }
-            
-            maxId = followers.last?.id
+
+            let mergeResult = PaginatedAccountList.merge(
+                existing: requestMaxId == nil ? [] : accounts,
+                incoming: followers,
+                requestedMaxId: requestMaxId,
+                pageSize: Constants.Pagination.defaultLimit
+            )
+
+            accounts = mergeResult.mergedAccounts
+            maxId = mergeResult.nextMaxId
+            hasMore = mergeResult.hasMore
         } catch {
             Self.logger.error("Failed to load followers: \(error.localizedDescription)")
         }
     }
     
     private func loadMore() {
-        guard !isLoading, maxId != nil else { return }
+        guard !isLoading, hasMore, maxId != nil else { return }
+        isLoading = true
         Task {
             await loadFollowers()
         }
