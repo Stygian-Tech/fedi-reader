@@ -87,14 +87,7 @@ struct ProfileDetailView: View {
                     .padding(.top, 8)
 
                     if !account.fields.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(account.fields, id: \.name) { field in
-                                    FieldCardView(field: field)
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
+                        ProfileLinksGridView(fields: account.fields)
                         .padding(.top, 8)
                     }
                 }

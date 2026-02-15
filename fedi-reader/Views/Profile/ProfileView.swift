@@ -11,7 +11,12 @@ import SwiftData
 struct ProfileView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
-    
+    @Environment(\.openURL) private var openURL
+
+    @State private var profileFieldsByAccountID: [String: [Field]] = [:]
+    @State private var fetchedProfileFieldAccounts: Set<String> = []
+    @State private var loadingProfileFieldAccounts: Set<String> = []
+
     var body: some View {
         Group {
             if let account = appState.currentAccount {
@@ -42,6 +47,25 @@ struct ProfileView: View {
                     statButton(count: account.followersCount, label: "Followers", account: account)
                 }
                 .padding(.vertical, 8)
+            }
+
+            // Profile links
+            if !profileFields(for: account).isEmpty {
+                Section("Links") {
+                    ForEach(Array(profileFields(for: account).enumerated()), id: \.offset) { _, field in
+                        let destinationURL = profileFieldDestinationURL(for: field)
+
+                        Button {
+                            if let destinationURL {
+                                openURL(destinationURL)
+                            }
+                        } label: {
+                            profileLinkRow(field: field, destinationURL: destinationURL)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(destinationURL == nil)
+                    }
+                }
             }
             
             // Account actions
@@ -113,6 +137,9 @@ struct ProfileView: View {
         .scrollContentBackground(.hidden)
         .contentMargins(.top, 0, for: .scrollContent)
         .ignoresSafeArea(edges: .top)
+        .task(id: account.id) {
+            await loadProfileFieldsIfNeeded(for: account)
+        }
     }
     
     private func statItem(count: Int, label: String) -> some View {
@@ -158,6 +185,77 @@ struct ProfileView: View {
                 appState.present(sheet: .login)
             }
             .buttonStyle(.bordered)
+        }
+    }
+
+    private func profileFields(for account: Account) -> [Field] {
+        profileFieldsByAccountID[account.id] ?? []
+    }
+
+    private func profileLinkRow(field: Field, destinationURL: URL?) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(field.name)
+                        .font(.roundedCaption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    if field.verifiedAt != nil {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.roundedCaption2)
+                            .foregroundStyle(.green)
+                    }
+                }
+
+                Text(field.value.htmlStripped)
+                    .font(.roundedSubheadline)
+                    .foregroundStyle(destinationURL == nil ? .secondary : .primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: destinationURL == nil ? "link.slash" : "arrow.up.right.square")
+                .font(.roundedCaption)
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func profileFieldDestinationURL(for field: Field) -> URL? {
+        if let url = field.value.extractedLinks.first {
+            return url
+        }
+
+        let stripped = field.value.htmlStripped.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard stripped.hasPrefix("http://") || stripped.hasPrefix("https://") else {
+            return nil
+        }
+        return URL(string: stripped)
+    }
+
+    @MainActor
+    private func loadProfileFieldsIfNeeded(for account: Account) async {
+        guard !fetchedProfileFieldAccounts.contains(account.id),
+              !loadingProfileFieldAccounts.contains(account.id) else {
+            return
+        }
+
+        loadingProfileFieldAccounts.insert(account.id)
+        defer {
+            loadingProfileFieldAccounts.remove(account.id)
+        }
+
+        do {
+            let profile = try await appState.authService.fetchVerifiedProfile(for: account)
+            profileFieldsByAccountID[account.id] = profile.preferredFields
+            fetchedProfileFieldAccounts.insert(account.id)
+        } catch {
+            if profileFieldsByAccountID[account.id] == nil {
+                profileFieldsByAccountID[account.id] = []
+            }
         }
     }
 }

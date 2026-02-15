@@ -40,4 +40,28 @@ struct AuthServiceTests {
         let url = URL(string: "fedi-reader://oauth/callback")!
         #expect(auth.isValidCallback(url: url) == true)
     }
+
+    @Test("fetchVerifiedProfile throws unauthorized when token is missing")
+    func fetchVerifiedProfileThrowsUnauthorizedWhenTokenMissing() async {
+        let auth = AuthService(client: nil, keychain: .shared)
+        let accountID = "example.social:\(UUID().uuidString)"
+        let account = Account(
+            id: accountID,
+            instance: "example.social",
+            username: "tester",
+            displayName: "Tester",
+            acct: "tester@example.social"
+        )
+
+        try? await KeychainHelper.shared.deleteToken(forAccount: account.id)
+
+        do {
+            _ = try await auth.fetchVerifiedProfile(for: account)
+            Issue.record("Expected fetchVerifiedProfile to throw unauthorized")
+        } catch let error as FediReaderError {
+            #expect(error == .unauthorized)
+        } catch {
+            Issue.record("Expected FediReaderError.unauthorized, got \(error)")
+        }
+    }
 }

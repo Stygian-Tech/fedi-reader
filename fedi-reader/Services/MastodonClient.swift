@@ -320,7 +320,11 @@ final class MastodonClient {
     
     func verifyCredentials(instance: String, accessToken: String) async throws -> MastodonAccount {
         Self.logger.info("Verifying credentials on instance: \(instance, privacy: .public)")
-        let url = try buildURL(instance: instance, path: Constants.API.verifyCredentials)
+        let url = try buildURL(
+            instance: instance,
+            path: Constants.API.verifyCredentials,
+            queryItems: [URLQueryItem(name: "with_source", value: "true")]
+        )
         let request = buildRequest(url: url, accessToken: accessToken)
         let account: MastodonAccount = try await execute(request)
         Self.logger.info("Credentials verified for account: \(account.username, privacy: .public)@\(instance, privacy: .public)")
