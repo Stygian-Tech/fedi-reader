@@ -50,8 +50,7 @@ struct ProfileSummaryView: View {
 
                 VStack(spacing: 4) {
                     HStack(spacing: 4) {
-                        Text(account.displayName)
-                            .font(.roundedTitle2.bold())
+                        EmojiText(text: account.displayName, emojis: account.emojis, font: .roundedTitle2.bold())
 
                         AccountBadgesView(account: account, size: .medium)
                     }
@@ -63,7 +62,7 @@ struct ProfileSummaryView: View {
 
                 if !account.preferredNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     if #available(iOS 15.0, macOS 12.0, *) {
-                        ProfileBioText(content: account.preferredNote)
+                        ProfileBioText(content: account.preferredNote, emojis: account.emojis)
                             .font(.roundedSubheadline)
                             .multilineTextAlignment(.center)
                             .lineLimit(nil)

@@ -13,6 +13,7 @@ struct ProfileBioText: View {
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "ProfileBioText")
 
     let content: String
+    var emojis: [CustomEmoji] = []
 
     @Environment(AppState.self) private var appState
     @AppStorage("themeColor") private var themeColorName = "blue"
@@ -57,12 +58,14 @@ struct ProfileBioText: View {
     }
 
     private func makeAttributedBio(from content: String) -> AttributedString {
+        let emojiLookup: [String: CustomEmoji]? = emojis.isEmpty ? nil : Dictionary(uniqueKeysWithValues: emojis.map { ($0.shortcode, $0) })
         var attributedBio = HTMLParser.convertToAttributedString(
             content,
             preserveNewlines: true,
             hashtagHandler: { tag in
                 URL(string: "hashtag://\(tag)")
-            }
+            },
+            emojiLookup: emojiLookup
         )
 
         applyThemeColorToHashtags(in: &attributedBio)

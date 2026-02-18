@@ -10,6 +10,7 @@ import SwiftData
 
 struct ProfileHeaderView: View {
     let account: Account
+    @Environment(AppState.self) private var appState
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,8 +48,7 @@ struct ProfileHeaderView: View {
 
                 VStack(spacing: 4) {
                     HStack(spacing: 4) {
-                        Text(account.displayName)
-                            .font(.roundedTitle2.bold())
+                        EmojiText(text: account.displayName, emojis: appState.emojiService.getCustomEmojis(for: account.instance), font: .roundedTitle2.bold())
                     }
 
                     Text(account.fullHandle)
@@ -58,7 +58,7 @@ struct ProfileHeaderView: View {
 
                 if let note = account.note, !note.isEmpty {
                     if #available(iOS 15.0, macOS 12.0, *) {
-                        ProfileBioText(content: note)
+                        ProfileBioText(content: note, emojis: appState.emojiService.getCustomEmojis(for: account.instance))
                             .font(.roundedSubheadline)
                             .multilineTextAlignment(.center)
                             .lineLimit(nil)

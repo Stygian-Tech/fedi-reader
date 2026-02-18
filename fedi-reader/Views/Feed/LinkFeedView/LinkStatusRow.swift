@@ -120,8 +120,7 @@ struct LinkStatusRow: View {
                 }
 
                 HStack(spacing: 4) {
-                    Text(reblogger.displayName)
-                        .font(.roundedCaption.bold())
+                    EmojiText(text: reblogger.displayName, emojis: reblogger.emojis, font: .roundedCaption.bold())
                         .lineLimit(1)
 
                     AccountBadgesView(account: reblogger, size: .small)
@@ -164,8 +163,7 @@ struct LinkStatusRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Text(linkStatus.status.displayStatus.account.displayName)
-                        .font(.roundedSubheadline.bold())
+                    EmojiText(text: linkStatus.status.displayStatus.account.displayName, emojis: linkStatus.status.displayStatus.account.emojis, font: .roundedSubheadline.bold())
                         .lineLimit(1)
 
                     AccountBadgesView(account: linkStatus.status.displayStatus.account, size: .small)

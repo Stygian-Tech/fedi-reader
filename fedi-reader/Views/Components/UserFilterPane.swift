@@ -130,8 +130,7 @@ struct UserFilterRow: View {
                 ProfileAvatarView(url: account.avatarURL, size: Constants.UI.avatarSize)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.displayName)
-                        .font(.roundedSubheadline.bold())
+                    EmojiText(text: account.displayName, emojis: account.emojis, font: .roundedSubheadline.bold())
                         .lineLimit(1)
                     
                     Text("@\(account.acct)")

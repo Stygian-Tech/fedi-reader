@@ -189,8 +189,7 @@ struct CompactStatusRowView: View {
                 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
-                        Text(displayStatus.account.displayName)
-                            .font(.roundedSubheadline.bold())
+                        EmojiText(text: displayStatus.account.displayName, emojis: displayStatus.account.emojis, font: .roundedSubheadline.bold())
                             .lineLimit(1)
                         
                         AccountBadgesView(account: displayStatus.account, size: .small)
@@ -217,16 +216,19 @@ struct CompactStatusRowView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(.orange)
-                    Text(displayStatus.spoilerText)
-                        .font(.roundedCaption.bold())
+                    EmojiText(text: displayStatus.spoilerText, emojis: displayStatus.emojis, font: .roundedCaption.bold())
                 }
                 .padding(.horizontal, 5)
                 .padding(.vertical, 4)
                 .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
             } else {
                 if #available(iOS 15.0, macOS 12.0, *) {
-                    Text(displayStatus.content.htmlToAttributedString)
-                        .font(.roundedBody)
+                    HashtagLinkText(
+                        content: displayStatus.content,
+                        onHashtagTap: { appState.navigate(to: .hashtag($0)) },
+                        emojiLookup: Dictionary(uniqueKeysWithValues: displayStatus.emojis.map { ($0.shortcode, $0) })
+                    )
+                    .font(.roundedBody)
                 } else {
                     Text(displayStatus.content.htmlToPlainText)
                         .font(.roundedBody)

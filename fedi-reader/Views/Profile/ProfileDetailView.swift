@@ -19,8 +19,7 @@ struct ProfileDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text(account.displayName)
-                    .font(.roundedHeadline)
+                EmojiText(text: account.displayName, emojis: account.emojis, font: .roundedHeadline)
             }
 
             ToolbarItem(placement: .primaryAction) {

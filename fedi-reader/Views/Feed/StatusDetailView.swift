@@ -40,8 +40,7 @@ struct StatusDetailRowView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
-                        Text(displayStatus.account.displayName)
-                            .font(.roundedSubheadline.bold())
+                        EmojiText(text: displayStatus.account.displayName, emojis: displayStatus.account.emojis, font: .roundedSubheadline.bold())
                             .lineLimit(1)
 
                         AccountBadgesView(account: displayStatus.account, size: .small)
@@ -66,16 +65,19 @@ struct StatusDetailRowView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
 
-                    Text(displayStatus.spoilerText)
-                        .font(.roundedSubheadline.bold())
+                    EmojiText(text: displayStatus.spoilerText, emojis: displayStatus.emojis, font: .roundedSubheadline.bold())
                 }
                 .padding()
                 .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
             }
 
             if #available(iOS 15.0, macOS 12.0, *) {
-                Text(displayStatus.content.htmlToAttributedString)
-                    .font(.roundedBody)
+                HashtagLinkText(
+                    content: displayStatus.content,
+                    onHashtagTap: { appState.navigate(to: .hashtag($0)) },
+                    emojiLookup: Dictionary(uniqueKeysWithValues: displayStatus.emojis.map { ($0.shortcode, $0) })
+                )
+                .font(.roundedBody)
             } else {
                 Text(displayStatus.content.htmlToPlainText)
                     .font(.roundedBody)
@@ -147,8 +149,7 @@ struct StatusDetailRowView: View {
                     Text("Boosted by")
                         .font(.roundedCaption)
                     
-                    Text(status.account.displayName)
-                        .font(.roundedCaption.bold())
+                    EmojiText(text: status.account.displayName, emojis: status.account.emojis, font: .roundedCaption.bold())
                         .lineLimit(1)
                     
                     AccountBadgesView(account: status.account, size: .small)

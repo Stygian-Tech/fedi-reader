@@ -903,8 +903,7 @@ struct ChatMessageGroup: View {
                                 appState.navigate(to: .profile(group.account))
                             } label: {
                                 HStack(spacing: 4) {
-                                    Text(group.account.displayName)
-                                        .font(.roundedCaption.bold())
+                                    EmojiText(text: group.account.displayName, emojis: group.account.emojis, font: .roundedCaption.bold())
                                         .foregroundStyle(.secondary)
                                     
                                     AccountBadgesView(account: group.account, size: .small)
@@ -983,9 +982,13 @@ struct ChatBubble: View {
                 VStack(alignment: isSent ? .trailing : .leading, spacing: 6) {
                     // Message content
                     if #available(iOS 15.0, macOS 12.0, *) {
-                        Text(status.content.htmlToAttributedString)
-                            .font(.roundedBody)
-                            .multilineTextAlignment(.leading)
+                        HashtagLinkText(
+                            content: status.content,
+                            onHashtagTap: { appState.navigate(to: .hashtag($0)) },
+                            emojiLookup: Dictionary(uniqueKeysWithValues: status.emojis.map { ($0.shortcode, $0) })
+                        )
+                        .font(.roundedBody)
+                        .multilineTextAlignment(.leading)
                     } else {
                         Text(status.content.htmlToPlainText)
                             .font(.roundedBody)
@@ -1392,8 +1395,7 @@ struct RecipientChip: View {
             ProfileAvatarView(url: account.avatarURL, size: 20)
 
             HStack(spacing: 4) {
-                Text(account.displayName)
-                    .font(.roundedSubheadline)
+                EmojiText(text: account.displayName, emojis: account.emojis, font: .roundedSubheadline)
                     .lineLimit(1)
                 
                 AccountBadgesView(account: account, size: .small)
@@ -1430,8 +1432,7 @@ struct UserSearchRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Text(account.displayName)
-                        .font(.roundedBody)
+                    EmojiText(text: account.displayName, emojis: account.emojis, font: .roundedBody)
                         .foregroundStyle(.primary)
                     
                     AccountBadgesView(account: account, size: .small)

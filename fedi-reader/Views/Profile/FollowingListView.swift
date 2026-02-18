@@ -108,8 +108,7 @@ struct AccountRowView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
-                    Text(account.displayName)
-                        .font(.roundedHeadline)
+                    EmojiText(text: account.displayName, emojis: account.emojis, font: .roundedHeadline)
                         .lineLimit(1)
                     
                     AccountBadgesView(account: account, size: .small)
