@@ -14,11 +14,15 @@ struct HashtagLinkText: View {
     
     let content: String
     let onHashtagTap: (String) -> Void
+    /// When provided (e.g. from status.emojis), used for emoji replacement; otherwise uses current instance's cached emoji.
+    var emojiLookup: [String: CustomEmoji]? = nil
     @Environment(AppState.self) private var appState
     
     var body: some View {
-        // Get emoji lookup from emoji service
-        let emojiLookup: [String: CustomEmoji] = {
+        let resolvedLookup: [String: CustomEmoji] = {
+            if let passed = emojiLookup, !passed.isEmpty {
+                return passed
+            }
             if let instance = appState.getCurrentInstance() {
                 let emojis = appState.emojiService.getCustomEmojis(for: instance)
                 let lookup = Dictionary(emojis.map { ($0.shortcode, $0) }) { _, new in new }
@@ -37,7 +41,7 @@ struct HashtagLinkText: View {
                 return nil
             }
             return url
-        }, emojiLookup: emojiLookup)
+        }, emojiLookup: resolvedLookup)
         
         #if os(iOS)
         if #available(iOS 16.0, *) {

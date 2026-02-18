@@ -31,8 +31,7 @@ struct AccountSettingsView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(account.displayName)
-                                .font(.roundedHeadline)
+                            EmojiText(text: account.displayName, emojis: appState.emojiService.getCustomEmojis(for: account.instance), font: .roundedHeadline)
 
                             Text(account.fullHandle)
                                 .font(.roundedSubheadline)

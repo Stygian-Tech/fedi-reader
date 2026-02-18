@@ -151,8 +151,7 @@ struct StatusRowView: View {
                     }
                     
                     HStack(spacing: 4) {
-                        Text(status.account.displayName)
-                            .font(.roundedCaption.bold())
+                        EmojiText(text: status.account.displayName, emojis: status.account.emojis, font: .roundedCaption.bold())
                             .lineLimit(1)
                         
                         AccountBadgesView(account: status.account, size: .small)
@@ -197,8 +196,7 @@ struct StatusRowView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Text(displayStatus.account.displayName)
-                        .font(.roundedSubheadline.bold())
+                    EmojiText(text: displayStatus.account.displayName, emojis: displayStatus.account.emojis, font: .roundedSubheadline.bold())
                         .lineLimit(1)
 
                     AccountBadgesView(account: displayStatus.account, size: .small)
@@ -264,8 +262,7 @@ struct StatusRowView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                 
-                Text(displayStatus.spoilerText)
-                    .font(.roundedSubheadline.bold())
+                EmojiText(text: displayStatus.spoilerText, emojis: displayStatus.emojis, font: .roundedSubheadline.bold())
                 
                 Spacer()
                 
@@ -296,7 +293,8 @@ struct StatusRowView: View {
                     content: displayStatus.content,
                     onHashtagTap: { tag in
                         appState.navigate(to: .hashtag(tag))
-                    }
+                    },
+                    emojiLookup: Dictionary(uniqueKeysWithValues: displayStatus.emojis.map { ($0.shortcode, $0) })
                 )
                 .font(.roundedBody)
                 .lineLimit(Constants.UI.maxContentPreviewLines)
@@ -512,8 +510,7 @@ struct StatusRowView: View {
         let isVoted = poll.ownVotes?.contains(index) ?? false
         
         return HStack {
-            Text(option.title)
-                .font(.roundedSubheadline)
+            EmojiText(text: option.title, emojis: poll.emojis, font: .roundedSubheadline)
             
             Spacer()
             
@@ -680,8 +677,7 @@ struct CompactStatusRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     HStack(spacing: 4) {
-                        Text(displayStatus.account.displayName)
-                            .font(.roundedSubheadline.bold())
+                        EmojiText(text: displayStatus.account.displayName, emojis: displayStatus.account.emojis, font: .roundedSubheadline.bold())
                             .lineLimit(1)
                         
                         AccountBadgesView(account: displayStatus.account, size: .small)

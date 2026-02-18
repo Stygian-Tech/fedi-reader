@@ -12,6 +12,7 @@ struct AccountRow: View {
     let account: Account
     let isActive: Bool
     let onSelect: () -> Void
+    @Environment(AppState.self) private var appState
 
     var body: some View {
         Button(action: onSelect) {
@@ -28,8 +29,7 @@ struct AccountRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.displayName)
-                        .font(.roundedHeadline)
+                    EmojiText(text: account.displayName, emojis: appState.emojiService.getCustomEmojis(for: account.instance), font: .roundedHeadline)
 
                     Text(account.fullHandle)
                         .font(.roundedCaption)

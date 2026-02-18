@@ -164,8 +164,7 @@ struct ComposeView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(status.displayStatus.account.displayName)
-                        .font(.roundedCaption.bold())
+                    EmojiText(text: status.displayStatus.account.displayName, emojis: status.displayStatus.account.emojis, font: .roundedCaption.bold())
                     
                     Text(status.displayStatus.content.htmlToPlainText)
                         .font(.roundedCaption)
