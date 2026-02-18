@@ -97,64 +97,6 @@ struct ChatMessage: Identifiable {
     }
 }
 
-// MARK: - Threaded Status
-
-struct ThreadedStatus: Identifiable {
-    let id: String
-    let status: Status
-    let depth: Int
-    let parentId: String?
-    let hasReplies: Bool
-    
-    init(status: Status, depth: Int, parentId: String?, hasReplies: Bool) {
-        self.id = status.id
-        self.status = status
-        self.depth = depth
-        self.parentId = parentId
-        self.hasReplies = hasReplies
-    }
-}
-
-// MARK: - Grouped Conversation (handles both 1:1 and group chats)
-
-struct GroupedConversation: Identifiable {
-    let id: String
-    let participants: [MastodonAccount] // Other participants (excluding current user)
-    let conversations: [MastodonConversation]
-    let isGroupChat: Bool
-    
-    var lastStatus: Status? {
-        conversations
-            .compactMap { $0.lastStatus }
-            .sorted { $0.createdAt > $1.createdAt }
-            .first
-    }
-    
-    var lastUpdated: Date {
-        lastStatus?.createdAt ?? Date.distantPast
-    }
-    
-    var unread: Bool {
-        conversations.contains { $0.unread == true }
-    }
-    
-    var displayName: String {
-        if isGroupChat {
-            let names = participants.prefix(3).map { $0.displayName }
-            if participants.count > 3 {
-                return names.joined(separator: ", ") + " +\(participants.count - 3)"
-            }
-            return names.joined(separator: ", ")
-        } else {
-            return participants.first?.displayName ?? "Unknown"
-        }
-    }
-    
-    var primaryAccount: MastodonAccount? {
-        participants.first
-    }
-}
-
 // MARK: - Conversations List View
 
 struct ConversationsListView: View {
@@ -166,62 +108,11 @@ struct ConversationsListView: View {
         guard let currentAccountId = appState.currentAccount?.mastodonAccount.id else {
             return []
         }
-        
-        // Separate group chats from 1:1 conversations
-        var oneOnOneGrouped: [String: (account: MastodonAccount, conversations: [MastodonConversation])] = [:]
-        var groupChats: [String: (participants: [MastodonAccount], conversations: [MastodonConversation])] = [:]
-        
-        for conversation in conversations {
-            // Get all participants except current user
-            let otherParticipants = conversation.accounts.filter { $0.id != currentAccountId }
-            
-            if otherParticipants.count > 1 {
-                // This is a group chat - group by sorted participant IDs
-                let participantIds = otherParticipants.map { $0.id }.sorted().joined(separator: "-")
-                let groupId = "group-\(participantIds)"
-                
-                if var existing = groupChats[groupId] {
-                    existing.conversations.append(conversation)
-                    groupChats[groupId] = existing
-                } else {
-                    groupChats[groupId] = (participants: otherParticipants, conversations: [conversation])
-                }
-            } else if let otherAccount = otherParticipants.first ?? conversation.accounts.first {
-                // 1:1 conversation
-                if var existing = oneOnOneGrouped[otherAccount.id] {
-                    existing.conversations.append(conversation)
-                    oneOnOneGrouped[otherAccount.id] = existing
-                } else {
-                    oneOnOneGrouped[otherAccount.id] = (account: otherAccount, conversations: [conversation])
-                }
-            }
-        }
-        
-        // Convert to GroupedConversation
-        var result: [GroupedConversation] = []
-        
-        // Add 1:1 conversations
-        for (id, data) in oneOnOneGrouped {
-            result.append(GroupedConversation(
-                id: id,
-                participants: [data.account],
-                conversations: data.conversations,
-                isGroupChat: false
-            ))
-        }
-        
-        // Add group chats
-        for (id, data) in groupChats {
-            result.append(GroupedConversation(
-                id: id,
-                participants: data.participants,
-                conversations: data.conversations,
-                isGroupChat: true
-            ))
-        }
-        
-        // Sort by most recent
-        return result.sorted { $0.lastUpdated > $1.lastUpdated }
+
+        return ConversationGroupingHelper.groupedConversations(
+            from: conversations,
+            currentAccountId: currentAccountId
+        )
     }
     
     var body: some View {
@@ -392,20 +283,32 @@ struct GroupedConversationDetailView: View {
     
     @State private var statusContexts: [String: StatusContext] = [:]
     @State private var isLoadingThreads = false
+    @State private var loadedContextStatusIds = Set<String>()
     
-    private let threadingService = ThreadingService()
-    
+    private var currentGroupedConversation: GroupedConversation {
+        guard let service = timelineService,
+              let currentAccountId = appState.currentAccount?.mastodonAccount.id else {
+            return groupedConversation
+        }
+
+        let grouped = ConversationGroupingHelper.groupedConversations(
+            from: service.conversations,
+            currentAccountId: currentAccountId
+        )
+        return grouped.first(where: { $0.id == groupedConversation.id }) ?? groupedConversation
+    }
+
     private var participants: [MastodonAccount] {
-        groupedConversation.participants
+        currentGroupedConversation.participants
     }
     
     private var isGroupChat: Bool {
-        groupedConversation.isGroupChat
+        currentGroupedConversation.isGroupChat
     }
     
     // Get the most recent status across all conversations to reply to
     private var mostRecentStatus: Status? {
-        groupedConversation.lastStatus
+        currentGroupedConversation.lastStatus
     }
     
     // Combine all statuses from all conversations
@@ -413,7 +316,7 @@ struct GroupedConversationDetailView: View {
         var allStatuses: [Status] = []
         
         // Get statuses from all conversations
-        for conversation in groupedConversation.conversations {
+        for conversation in currentGroupedConversation.conversations {
             if let lastStatus = conversation.lastStatus {
                 allStatuses.append(lastStatus)
             }
@@ -433,52 +336,15 @@ struct GroupedConversationDetailView: View {
         return uniqueStatuses
     }
     
-    // Build thread trees from all conversation statuses
-    private var threadTrees: [ThreadNode] {
-        let statuses = allConversationStatuses
-        guard !statuses.isEmpty else { return [] }
-        
-        // Handle orphaned replies and build thread trees
-        return threadingService.handleOrphanedReplies(statuses)
-    }
-    
-    // Flatten thread trees to chronological list with threading info
-    private var threadedStatuses: [ThreadedStatus] {
-        let trees = threadTrees
-        var result: [ThreadedStatus] = []
-        
-        // Flatten all trees and collect with depth info
-        for tree in trees {
-            flattenTree(tree, depth: 0, parentId: nil, into: &result)
-        }
-        
-        // Sort chronologically
-        return result.sorted { $0.status.createdAt < $1.status.createdAt }
-    }
-    
-    // Helper to flatten a tree node with threading information
-    private func flattenTree(_ node: ThreadNode, depth: Int, parentId: String?, into result: inout [ThreadedStatus]) {
-        result.append(ThreadedStatus(
-            status: node.status,
-            depth: depth,
-            parentId: parentId,
-            hasReplies: !node.children.isEmpty
-        ))
-        
-        for child in node.children.sorted(by: { $0.status.createdAt < $1.status.createdAt }) {
-            flattenTree(child, depth: depth + 1, parentId: node.id, into: &result)
-        }
-    }
-    
-    // Group threaded messages for display (consecutive messages from same user, preserving thread structure)
+    // Group messages for display in chronological chat order.
     private var groupedMessages: [GroupedMessage] {
-        let threaded = threadedStatuses
-        let messages = threaded.map { threadedStatus in
-            ChatMessage(status: threadedStatus.status, isSent: isSentMessage(threadedStatus.status))
-        }
-        
-        // Group consecutive messages from same user, but preserve threading context
-        return groupMessagesWithThreading(messages, threadedStatuses: threaded)
+        let chronologicalMessages = allConversationStatuses
+            .sorted { $0.createdAt < $1.createdAt }
+            .map { status in
+                ChatMessage(status: status, isSent: isSentMessage(status))
+            }
+
+        return groupMessages(chronologicalMessages)
     }
     
     private var canSend: Bool {
@@ -525,7 +391,7 @@ struct GroupedConversationDetailView: View {
             // Compose bar
             composeBar
         }
-        .navigationTitle(groupedConversation.displayName)
+        .navigationTitle(currentGroupedConversation.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -557,6 +423,13 @@ struct GroupedConversationDetailView: View {
             // Mark all unread conversations in this group as read
             await markConversationsAsRead()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .timelineDidRefresh)) { notification in
+            guard let timeline = notification.object as? TimelineType, timeline == .mentions else { return }
+            Task {
+                await loadAllConversationThreads()
+                await markConversationsAsRead()
+            }
+        }
         .refreshable {
             await timelineService?.refreshConversations()
             await loadAllConversationThreads()
@@ -565,14 +438,17 @@ struct GroupedConversationDetailView: View {
     
     private func loadAllConversationThreads() async {
         guard let service = timelineService, !isLoadingThreads else { return }
+        let statusesToLoad = currentGroupedConversation.conversations.compactMap(\.lastStatus).filter { lastStatus in
+            !loadedContextStatusIds.contains(lastStatus.id)
+        }
+        guard !statusesToLoad.isEmpty else { return }
+
         isLoadingThreads = true
         defer { isLoadingThreads = false }
         
         // Load context for each conversation's last status
         await withTaskGroup(of: (String, StatusContext?).self) { group in
-            for conversation in groupedConversation.conversations {
-                guard let lastStatus = conversation.lastStatus else { continue }
-                
+            for lastStatus in statusesToLoad {
                 group.addTask {
                     do {
                         let context = try await service.getStatusContext(for: lastStatus)
@@ -587,6 +463,7 @@ struct GroupedConversationDetailView: View {
                 if let context {
                     statusContexts[statusId] = context
                 }
+                loadedContextStatusIds.insert(statusId)
             }
         }
     }
@@ -595,7 +472,7 @@ struct GroupedConversationDetailView: View {
         guard let service = timelineService else { return }
         
         // Mark all unread conversations in this group as read
-        for conversation in groupedConversation.conversations {
+        for conversation in currentGroupedConversation.conversations {
             if conversation.unread == true {
                 await service.markConversationAsRead(conversationId: conversation.id)
             }
@@ -655,8 +532,6 @@ struct GroupedConversationDetailView: View {
             // Clear input
             messageText = ""
             
-            // Refresh mentions and user replies to get the new message
-            await timelineService?.refreshConversations()
             await loadAllConversationThreads()
         } catch {
             Logger(subsystem: "app.fedi-reader", category: "Mentions").error("Failed to send message: \(error.localizedDescription)")
@@ -704,61 +579,6 @@ struct GroupedConversationDetailView: View {
         return groups
     }
     
-    // Group messages with threading information preserved
-    private func groupMessagesWithThreading(_ messages: [ChatMessage], threadedStatuses: [ThreadedStatus]) -> [GroupedMessage] {
-        var groups: [GroupedMessage] = []
-        var currentGroup: [ChatMessage] = []
-        var currentSenderId: String?
-        var currentDepth: Int = 0
-        
-        // Create a map for quick lookup
-        let statusMap = Dictionary(uniqueKeysWithValues: threadedStatuses.map { ($0.status.id, $0) })
-        
-        for message in messages {
-            guard let status = message.status else { continue }
-            let threadedStatus = statusMap[status.id]
-            let senderId = status.account.id
-            let depth = threadedStatus?.depth ?? 0
-            
-            // If same sender, same depth, and within 5 minutes, add to current group
-            if let lastMessage = currentGroup.last,
-               let lastStatus = lastMessage.status,
-               statusMap[lastStatus.id] != nil,
-               senderId == currentSenderId,
-               depth == currentDepth,
-               abs(message.createdAt.timeIntervalSince(lastMessage.createdAt)) < 300 {
-                currentGroup.append(message)
-            } else {
-                // Start new group
-                if !currentGroup.isEmpty, let firstMessage = currentGroup.first {
-                    let account = firstMessage.status?.account ?? unknownAccount
-                    groups.append(GroupedMessage(
-                        account: account,
-                        messages: currentGroup,
-                        isSent: firstMessage.isSent,
-                        threadDepth: currentDepth
-                    ))
-                }
-                currentGroup = [message]
-                currentSenderId = senderId
-                currentDepth = depth
-            }
-        }
-        
-        // Add final group
-        if !currentGroup.isEmpty, let firstMessage = currentGroup.first {
-            let account = firstMessage.status?.account ?? unknownAccount
-            groups.append(GroupedMessage(
-                account: account,
-                messages: currentGroup,
-                isSent: firstMessage.isSent,
-                threadDepth: currentDepth
-            ))
-        }
-        
-        return groups
-    }
-    
     private var unknownAccount: MastodonAccount {
         MastodonAccount(
             id: "unknown",
@@ -792,14 +612,12 @@ struct GroupedMessage: Identifiable {
     let account: MastodonAccount
     let messages: [ChatMessage]
     let isSent: Bool
-    let threadDepth: Int
     
-    init(account: MastodonAccount, messages: [ChatMessage], isSent: Bool = false, threadDepth: Int = 0) {
+    init(account: MastodonAccount, messages: [ChatMessage], isSent: Bool = false) {
         self.id = "\(account.id)-\(messages.first?.id ?? UUID().uuidString)"
         self.account = account
         self.messages = messages
         self.isSent = isSent
-        self.threadDepth = threadDepth
     }
 }
 
@@ -809,35 +627,14 @@ struct ChatMessageGroup: View {
     let group: GroupedMessage
     @Environment(AppState.self) private var appState
     
-    private let indentPerLevel: CGFloat = 16
-    
     var body: some View {
         if group.isSent {
             // Sent messages (right-aligned)
             HStack(alignment: .bottom, spacing: 8) {
                 Spacer(minLength: 60)
                 
-                // Thread indentation
-                if group.threadDepth > 0 {
-                    Spacer()
-                        .frame(width: CGFloat(group.threadDepth) * indentPerLevel)
-                }
-                
                 // Messages
                 VStack(alignment: .trailing, spacing: 4) {
-                    // Thread indicator for replies
-                    if group.threadDepth > 0, let firstMessage = group.messages.first,
-                       let status = firstMessage.status, status.inReplyToId != nil {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrowshape.turn.up.left")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                            Text("Reply")
-                                .font(.roundedCaption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    
                     // Chat bubbles
                     ForEach(group.messages) { message in
                         ChatBubble(message: message, account: group.account, isSent: true)
@@ -862,15 +659,9 @@ struct ChatMessageGroup: View {
                 }
             }
             .padding(.vertical, 4)
-            .padding(.leading, group.threadDepth > 0 ? CGFloat(group.threadDepth) * indentPerLevel : 0)
         } else {
             // Received messages (left-aligned)
             HStack(alignment: .bottom, spacing: 8) {
-                // Thread connectors for nested replies
-                if group.threadDepth > 0 {
-                    threadConnectors
-                }
-                
                 // Avatar (only shown for first message in group)
                 if group.messages.first != nil {
                     Button {
@@ -891,14 +682,6 @@ struct ChatMessageGroup: View {
                     // Account name (only for first message)
                     if !group.messages.isEmpty {
                         HStack(spacing: 4) {
-                            // Thread indicator for replies
-                            if group.threadDepth > 0, let firstMessage = group.messages.first,
-                               let status = firstMessage.status, status.inReplyToId != nil {
-                                Image(systemName: "arrowshape.turn.up.left")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.secondary)
-                            }
-                            
                             Button {
                                 appState.navigate(to: .profile(group.account))
                             } label: {
@@ -923,28 +706,6 @@ struct ChatMessageGroup: View {
             }
             .padding(.vertical, 4)
         }
-    }
-    
-    @ViewBuilder
-    private var threadConnectors: some View {
-        HStack(spacing: 0) {
-            ForEach(0..<group.threadDepth, id: \.self) { level in
-                if level == group.threadDepth - 1 {
-                    // Current level: show connector line
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.3))
-                        .frame(width: 2)
-                } else {
-                    // Previous levels: show vertical line
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.2))
-                        .frame(width: 2)
-                }
-                Spacer()
-                    .frame(width: indentPerLevel - 2)
-            }
-        }
-        .frame(width: CGFloat(group.threadDepth) * indentPerLevel)
     }
 }
 
@@ -1109,12 +870,17 @@ struct TapbackView: View {
 
 struct NewMessageView: View {
     @Environment(AppState.self) private var appState
+    @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @Environment(\.dismiss) private var dismiss
     
     @State private var searchText = ""
     @State private var selectedRecipients: [MastodonAccount] = []
+    @State private var unresolvedHandleTokens: [String] = []
+    @State private var existingConversationMatches: [GroupedConversation] = []
     @State private var searchResults: [MastodonAccount] = []
-    @State private var isSearching = false
+    @State private var isSearchingSuggestions = false
+    @State private var searchGeneration = 0
+    @State private var searchTask: Task<Void, Never>?
     @State private var messageText = ""
     @State private var isSending = false
     @State private var error: Error?
@@ -1122,10 +888,19 @@ struct NewMessageView: View {
     @FocusState private var isSearchFocused: Bool
     @FocusState private var isMessageFocused: Bool
     
+    private var timelineService: TimelineService? {
+        timelineWrapper.service
+    }
+    
     private var canSend: Bool {
-        !selectedRecipients.isEmpty && 
+        !selectedRecipients.isEmpty &&
+        unresolvedHandleTokens.isEmpty &&
         !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !isSending
+    }
+    
+    private var hasActiveSearchToken: Bool {
+        HandleInputParser.tokenize(searchText).activeToken != nil
     }
     
     var body: some View {
@@ -1181,6 +956,16 @@ struct NewMessageView: View {
                 }
             }
         }
+        .onAppear {
+            refreshExistingConversationMatches()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .timelineDidRefresh)) { notification in
+            guard let timeline = notification.object as? TimelineType, timeline == .mentions else { return }
+            refreshExistingConversationMatches()
+        }
+        .onDisappear {
+            searchTask?.cancel()
+        }
     }
     
     // MARK: - Recipients Section
@@ -1196,26 +981,44 @@ struct NewMessageView: View {
                     
                     ForEach(selectedRecipients) { recipient in
                         RecipientChip(account: recipient) {
-                            withAnimation {
-                                selectedRecipients.removeAll { $0.id == recipient.id }
-                            }
+                            removeRecipient(recipient)
                         }
                     }
                     
                     // Search field inline
-                    TextField("Search users...", text: $searchText)
+                    TextField("Search users or @handles...", text: $searchText)
                         .textFieldStyle(.plain)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                        .autocorrectionDisabled(true)
                         .focused($isSearchFocused)
                         .frame(minWidth: 120)
                         .onChange(of: searchText) { _, newValue in
-                            Task {
-                                await performSearch(query: newValue)
-                            }
+                            scheduleHandleInputProcessing(for: newValue)
                         }
                 }
                 .padding(.horizontal, 16)
             }
             .padding(.vertical, 12)
+            
+            if !unresolvedHandleTokens.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Resolve all handles before sending")
+                        .font(.roundedCaption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 2)
+                
+                Text(unresolvedHandleTokens.map { "@\($0)" }.joined(separator: ", "))
+                    .font(.roundedCaption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
         }
         .background(Color(.secondarySystemBackground))
     }
@@ -1224,26 +1027,40 @@ struct NewMessageView: View {
     
     private var searchResultsSection: some View {
         List {
-            if isSearching {
+            if !existingConversationMatches.isEmpty {
+                Section("Existing conversations") {
+                    ForEach(existingConversationMatches) { groupedConversation in
+                        NavigationLink {
+                            GroupedConversationDetailView(groupedConversation: groupedConversation)
+                        } label: {
+                            GroupedConversationRow(groupedConversation: groupedConversation)
+                        }
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                    }
+                }
+            }
+            
+            if isSearchingSuggestions && searchResults.isEmpty {
                 HStack {
                     Spacer()
                     ProgressView()
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
-            } else if searchResults.isEmpty && !searchText.isEmpty {
+            } else if searchResults.isEmpty && hasActiveSearchToken && !isSearchingSuggestions {
                 Text("No users found")
                     .foregroundStyle(.secondary)
                     .listRowBackground(Color.clear)
-            } else {
-                ForEach(searchResults) { account in
-                    Button {
-                        addRecipient(account)
-                    } label: {
-                        UserSearchRow(account: account, isSelected: selectedRecipients.contains { $0.id == account.id })
-                    }
-                    .listRowBackground(Color.clear)
+            }
+
+            ForEach(searchResults) { account in
+                Button {
+                    addRecipient(account)
+                } label: {
+                    UserSearchRow(account: account, isSelected: selectedRecipients.contains { $0.id == account.id })
                 }
+                .listRowBackground(Color.clear)
             }
         }
         .listStyle(.plain)
@@ -1323,32 +1140,262 @@ struct NewMessageView: View {
         
         withAnimation {
             selectedRecipients.append(account)
-            searchText = ""
-            searchResults = []
-            isSearchFocused = false
+        }
+        
+        let resolvedCandidates = ConversationGroupingHelper.normalizedHandleCandidates(for: account)
+        unresolvedHandleTokens.removeAll { resolvedCandidates.contains($0) }
+        searchResults = []
+        rebuildSearchText(unresolvedTokens: unresolvedHandleTokens, activeToken: nil)
+        isSearchFocused = false
+        refreshExistingConversationMatches()
+    }
+    
+    private func removeRecipient(_ account: MastodonAccount) {
+        withAnimation {
+            selectedRecipients.removeAll { $0.id == account.id }
+        }
+        refreshExistingConversationMatches()
+    }
+    
+    private func scheduleHandleInputProcessing(for query: String) {
+        searchTask?.cancel()
+        searchGeneration += 1
+        let generation = searchGeneration
+        searchTask = Task {
+            await processHandleInput(query: query, generation: generation)
+        }
+    }
+
+    private func processHandleInput(query: String, generation: Int) async {
+        guard !Task.isCancelled else { return }
+        let tokens = HandleInputParser.tokenize(query)
+        let currentUserId = appState.currentAccount?.mastodonAccount.id
+
+        var completedTokens: [(raw: String, normalized: String)] = []
+        var seenCompletedTokens = Set<String>()
+        for rawToken in tokens.completedTokens {
+            guard let normalized = HandleInputParser.normalizeHandle(rawToken) else { continue }
+            guard seenCompletedTokens.insert(normalized).inserted else { continue }
+            completedTokens.append((raw: rawToken, normalized: normalized))
+        }
+
+        let rawActiveToken = tokens.activeToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedActiveToken = rawActiveToken.flatMap(HandleInputParser.normalizeHandle)
+        if let rawActiveToken, normalizedActiveToken != nil {
+            if generation == searchGeneration {
+                isSearchingSuggestions = true
+            }
+
+            do {
+                let results = try await searchAccountsForToken(rawToken: rawActiveToken, limit: 15)
+                guard generation == searchGeneration, !Task.isCancelled else { return }
+                searchResults = filteredSearchResults(results, currentUserId: currentUserId)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard generation == searchGeneration else { return }
+                searchResults = []
+            }
+        } else {
+            if generation == searchGeneration {
+                searchResults = []
+            }
+        }
+
+        if generation == searchGeneration {
+            isSearchingSuggestions = false
+        }
+
+        var knownHandles = Set<String>()
+        for recipient in selectedRecipients {
+            knownHandles.formUnion(ConversationGroupingHelper.normalizedHandleCandidates(for: recipient))
+        }
+
+        var autoResolvedRecipients: [MastodonAccount] = []
+        var unresolved: [String] = []
+        var unresolvedSuggestions: [MastodonAccount] = []
+
+        for token in completedTokens {
+            let normalizedToken = token.normalized
+            guard !Task.isCancelled else { return }
+            guard !knownHandles.contains(normalizedToken) else { continue }
+
+            do {
+                let results = try await searchAccountsForToken(rawToken: token.raw, limit: 15)
+                guard generation == searchGeneration, !Task.isCancelled else { return }
+
+                let filteredResults = filteredSearchResults(
+                    results,
+                    currentUserId: currentUserId,
+                    additionalExcludedIds: Set(autoResolvedRecipients.map(\.id))
+                )
+                let exactMatches = exactMatches(
+                    for: normalizedToken,
+                    in: filteredResults
+                )
+
+                if exactMatches.count == 1, let match = exactMatches.first {
+                    autoResolvedRecipients.append(match)
+                    knownHandles.formUnion(ConversationGroupingHelper.normalizedHandleCandidates(for: match))
+                } else {
+                    unresolved.append(normalizedToken)
+                    unresolvedSuggestions = filteredResults
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                unresolved.append(normalizedToken)
+            }
+        }
+
+        guard generation == searchGeneration, !Task.isCancelled else { return }
+
+        if !autoResolvedRecipients.isEmpty {
+            withAnimation {
+                for account in autoResolvedRecipients where !selectedRecipients.contains(where: { $0.id == account.id }) {
+                    selectedRecipients.append(account)
+                }
+            }
+        }
+
+        unresolvedHandleTokens = deduplicated(unresolved)
+        if tokens.activeToken == nil {
+            searchResults = unresolvedSuggestions
+        }
+
+        rebuildSearchText(
+            unresolvedTokens: unresolvedHandleTokens,
+            activeToken: tokens.activeToken
+        )
+        refreshExistingConversationMatches()
+    }
+    
+    private func filteredSearchResults(
+        _ results: [MastodonAccount],
+        currentUserId: String?,
+        additionalExcludedIds: Set<String> = []
+    ) -> [MastodonAccount] {
+        results.filter { account in
+            account.id != currentUserId &&
+            !selectedRecipients.contains(where: { $0.id == account.id }) &&
+            !additionalExcludedIds.contains(account.id)
         }
     }
     
-    private func performSearch(query: String) async {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            searchResults = []
+    private func exactMatches(for normalizedHandle: String, in results: [MastodonAccount]) -> [MastodonAccount] {
+        results.filter { account in
+            ConversationGroupingHelper
+                .normalizedHandleCandidates(for: account)
+                .contains(normalizedHandle)
+        }
+    }
+
+    private func searchAccountsForToken(rawToken: String, limit: Int) async throws -> [MastodonAccount] {
+        let queries = HandleInputParser.searchQueryVariants(for: rawToken)
+        let normalizedToken = HandleInputParser.normalizeHandle(rawToken)
+        guard !queries.isEmpty || normalizedToken != nil else { return [] }
+        guard let account = appState.currentAccount,
+              let token = await appState.getAccessToken() else {
+            throw FediReaderError.noActiveAccount
+        }
+
+        var mergedResults: [MastodonAccount] = []
+        var seenIds = Set<String>()
+        var hasSuccess = false
+        var lastError: Error?
+
+        if let normalizedToken, normalizedToken.contains("@") {
+            do {
+                let matchedAccount = try await appState.client.lookupAccount(
+                    instance: account.instance,
+                    accessToken: token,
+                    acct: normalizedToken
+                )
+                hasSuccess = true
+                if seenIds.insert(matchedAccount.id).inserted {
+                    mergedResults.append(matchedAccount)
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                lastError = error
+            }
+        }
+
+        for query in queries {
+            do {
+                let results = try await appState.client.search(
+                    instance: account.instance,
+                    accessToken: token,
+                    query: query,
+                    type: "accounts",
+                    limit: limit
+                ).accounts
+                hasSuccess = true
+                for account in results where seenIds.insert(account.id).inserted {
+                    mergedResults.append(account)
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                lastError = error
+            }
+        }
+
+        if !hasSuccess, let lastError {
+            throw lastError
+        }
+
+        return mergedResults
+    }
+    
+    private func rebuildSearchText(unresolvedTokens: [String], activeToken: String?) {
+        var components = unresolvedTokens.map { "@\($0)" }
+        if let activeToken, !activeToken.isEmpty {
+            components.append(activeToken)
+        }
+
+        var rebuilt = components.joined(separator: " ")
+        if !unresolvedTokens.isEmpty && (activeToken == nil || activeToken?.isEmpty == true) {
+            rebuilt.append(" ")
+        }
+
+        if rebuilt != searchText {
+            searchText = rebuilt
+        }
+    }
+    
+    private func refreshExistingConversationMatches() {
+        guard !selectedRecipients.isEmpty else {
+            existingConversationMatches = []
             return
         }
-        
-        isSearching = true
-        defer { isSearching = false }
-        
-        do {
-            let results = try await appState.client.searchAccounts(query: trimmed, limit: 15)
-            // Filter out already selected recipients and current user
-            let currentUserId = appState.currentAccount?.mastodonAccount.id
-            searchResults = results.filter { account in
-                account.id != currentUserId && !selectedRecipients.contains { $0.id == account.id }
-            }
-        } catch {
-            searchResults = []
+        guard let currentAccountId = appState.currentAccount?.mastodonAccount.id,
+              let conversations = timelineService?.conversations else {
+            existingConversationMatches = []
+            return
         }
+
+        let grouped = ConversationGroupingHelper.groupedConversations(
+            from: conversations,
+            currentAccountId: currentAccountId
+        )
+        let handleSet = ConversationGroupingHelper.normalizedHandleSet(for: selectedRecipients)
+        existingConversationMatches = ConversationGroupingHelper.exactParticipantMatches(
+            in: grouped,
+            normalizedHandleSet: handleSet
+        )
+    }
+    
+    private func deduplicated(_ values: [String]) -> [String] {
+        var result: [String] = []
+        var seen = Set<String>()
+        for value in values {
+            if seen.insert(value).inserted {
+                result.append(value)
+            }
+        }
+        return result
     }
     
     private func sendMessage() async {
@@ -1364,8 +1411,9 @@ struct NewMessageView: View {
             }
             
             // Build mentions for all recipients
-            let mentions = selectedRecipients.map { "@\($0.acct)" }.joined(separator: " ")
-            let fullContent = "\(mentions) \(messageText)"
+            let mentions = DirectMessageMentionFormatter.mentionPrefix(for: selectedRecipients)
+            let body = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let fullContent = "\(mentions) \(body)"
             
             // Post as a direct message
             _ = try await appState.client.postStatus(
@@ -1376,6 +1424,17 @@ struct NewMessageView: View {
                 spoilerText: nil,
                 visibility: .direct
             )
+
+            // Clear composer state immediately after successful send.
+            messageText = ""
+            searchText = ""
+            selectedRecipients = []
+            unresolvedHandleTokens = []
+            existingConversationMatches = []
+            searchResults = []
+            isSearchFocused = false
+
+            await timelineService?.refreshConversations()
             
             dismiss()
         } catch {

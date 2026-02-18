@@ -13,6 +13,7 @@ import UIKit
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("defaultListId") private var defaultListId = ""
     @State private var appState = AppState()
     @State private var timelineWrapper = TimelineServiceWrapper()
@@ -34,6 +35,7 @@ struct ContentView: View {
         .environment(timelineWrapper)
         .onAppear {
             setupServices()
+            updateInboxAutoRefresh(for: scenePhase)
         }
         .task {
             await appState.authService.migrateOAuthClientSecretsToKeychain(modelContext: modelContext)
@@ -41,6 +43,12 @@ struct ContentView: View {
         }
         .onOpenURL { url in
             handleOpenURL(url)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            updateInboxAutoRefresh(for: newPhase)
+        }
+        .onChange(of: appState.currentAccount?.id) { _, _ in
+            updateInboxAutoRefresh(for: scenePhase)
         }
         .onReceive(NotificationCenter.default.publisher(for: .readLaterDidSave)) { notification in
             guard let result = notification.object as? ReadLaterSaveResult else { return }
@@ -71,6 +79,17 @@ struct ContentView: View {
             Task {
                 await appState.emojiService.fetchCustomEmojis(for: instance)
             }
+        }
+
+        updateInboxAutoRefresh(for: scenePhase)
+    }
+
+    private func updateInboxAutoRefresh(for phase: ScenePhase) {
+        guard let service = timelineWrapper.service else { return }
+        if appState.hasAccount, phase == .active {
+            service.startInboxAutoRefresh()
+        } else {
+            service.stopInboxAutoRefresh()
         }
     }
 
@@ -136,6 +155,7 @@ struct ContentView: View {
         case .newMessage:
             NewMessageView()
                 .environment(appState)
+                .environment(timelineWrapper)
         case .readLaterLogin(let serviceType):
             ReadLaterLoginView(serviceType: serviceType)
                 .environment(readLaterManager)

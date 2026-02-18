@@ -85,8 +85,8 @@ struct MainTabView: View {
                     HapticFeedback.play(.medium, enabled: hapticFeedback)
                 }
             } else if newValue == .mentions {
-                // Refresh conversations when switching to mentions tab to get latest unread count
                 Task {
+                    await timelineWrapper.service?.refreshMentions()
                     await timelineWrapper.service?.refreshConversations()
                 }
                 tabTracker.reset()
