@@ -1,10 +1,3 @@
-//
-//  MainTabView.swift
-//  fedi-reader
-//
-//  Main tab navigation with Home, Explore, Messages, Profile.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -128,45 +121,4 @@ struct MainTabView: View {
 
 // MARK: - Profile Tab Label
 
-struct ProfileTabLabel: View {
-    let account: Account?
 
-    var body: some View {
-        Label {
-            Text("Profile")
-        } icon: {
-            ProfileAvatarView(
-                url: account.flatMap { $0.avatarURL }.flatMap { URL(string: $0) },
-                size: 24,
-                usePersonIconForFallback: true
-            )
-        }
-    }
-}
-
-// MARK: - Account Tab Accessory
-
-#if os(iOS)
-struct AccountTabAccessory: View {
-    let account: Account
-    @Environment(AppState.self) private var appState
-
-    var body: some View {
-        Button {
-            appState.present(sheet: .accountSwitcher)
-        } label: {
-            HStack(spacing: 8) {
-                ProfileAvatarView(url: URL(string: account.avatarURL ?? ""), size: 24)
-
-                Text("@\(account.username)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .glassEffect(.clear, in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-}
-#endif

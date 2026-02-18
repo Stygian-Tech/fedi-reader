@@ -1,29 +1,4 @@
-//
-//  LinkFeedView.swift
-//  fedi-reader
-//
-//  Main filtered link feed showing posts with links
-//
-
 import SwiftUI
-
-// MARK: - Feed Tab Item
-
-struct FeedTabItem: Identifiable, Hashable {
-    let id: String
-    let title: String
-    let isHome: Bool
-    
-    init(id: String, title: String, isHome: Bool = false) {
-        self.id = id
-        self.title = title
-        self.isHome = isHome
-    }
-    
-    static let home = FeedTabItem(id: "home", title: "Home", isHome: true)
-}
-
-// MARK: - Link Feed View
 
 struct LinkFeedView: View {
     @Environment(AppState.self) private var appState
@@ -524,3 +499,4 @@ struct LinkFeedView: View {
     .environment(ReadLaterManager())
     .environment(TimelineServiceWrapper())
 }
+
