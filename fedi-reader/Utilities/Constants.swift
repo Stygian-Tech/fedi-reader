@@ -96,6 +96,7 @@ enum Constants {
         static let smallAvatarSize: CGFloat = 28
         static let cardImageHeight: CGFloat = 180
         static let cardCornerRadius: CGFloat = 12
+        nonisolated static let messagesAutoRefreshInterval: TimeInterval = 8
     }
     
     // MARK: - Read Later Services
@@ -165,6 +166,8 @@ enum Constants {
         static let fetchTimeout: TimeInterval = 10
         static let maxConcurrentFetches = 5
         static let maxRetries = 2
+        /// Fallback retry interval when server provides only async_refresh_id without header metadata.
+        static let asyncRefreshFallbackRetrySeconds = 5
         /// Max polling attempts for async refresh before giving up (~2 min at typical retry=5–10s).
         static let asyncRefreshMaxPollAttempts = 15
     }

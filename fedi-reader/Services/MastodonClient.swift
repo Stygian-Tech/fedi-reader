@@ -815,6 +815,13 @@ final class MastodonClient {
         let results = try await search(instance: instance, accessToken: token, query: query, type: "accounts", limit: limit)
         return results.accounts
     }
+
+    func lookupAccount(acct: String) async throws -> MastodonAccount {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await lookupAccount(instance: instance, accessToken: token, acct: acct)
+    }
     
     func getHashtagTimeline(instance: String, accessToken: String, tag: String, limit: Int = Constants.Pagination.defaultLimit) async throws -> [Status] {
         let url = try buildURL(
@@ -936,6 +943,20 @@ final class MastodonClient {
         if let type { queryItems.append(URLQueryItem(name: "type", value: type)) }
         
         let url = try buildURL(instance: instance, path: Constants.API.search, queryItems: queryItems)
+        let request = buildRequest(url: url, accessToken: accessToken)
+        return try await execute(request)
+    }
+
+    func lookupAccount(
+        instance: String,
+        accessToken: String,
+        acct: String
+    ) async throws -> MastodonAccount {
+        let url = try buildURL(
+            instance: instance,
+            path: "\(Constants.API.accounts)/lookup",
+            queryItems: [URLQueryItem(name: "acct", value: acct)]
+        )
         let request = buildRequest(url: url, accessToken: accessToken)
         return try await execute(request)
     }

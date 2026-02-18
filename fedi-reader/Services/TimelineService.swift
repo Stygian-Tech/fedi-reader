@@ -53,6 +53,7 @@ final class TimelineService {
     
     /// Polling tasks for async refresh, keyed by status ID. Cancelled when starting a new refresh for same status or via cancelAsyncRefreshPolling.
     private var asyncRefreshPollingTasks: [String: Task<Void, Never>] = [:]
+    private var inboxAutoRefreshTask: Task<Void, Never>?
     
     // Error state
     var error: Error?
@@ -387,6 +388,43 @@ final class TimelineService {
         conversationsMaxId = nil
         await loadConversations(refresh: true)
     }
+
+    func startInboxAutoRefresh(interval: TimeInterval = Constants.UI.messagesAutoRefreshInterval) {
+        guard inboxAutoRefreshTask == nil else { return }
+
+        let refreshInterval = max(interval, 2)
+        inboxAutoRefreshTask = Task { [weak self] in
+            await self?.refreshInboxInBackground()
+
+            while !Task.isCancelled {
+                let sleepNanoseconds = UInt64(refreshInterval * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: sleepNanoseconds)
+                if Task.isCancelled { return }
+                await self?.refreshInboxInBackground()
+            }
+        }
+    }
+
+    func stopInboxAutoRefresh() {
+        inboxAutoRefreshTask?.cancel()
+        inboxAutoRefreshTask = nil
+    }
+
+    /// Backward-compatible API used by existing callers.
+    func startConversationsAutoRefresh(interval: TimeInterval = Constants.UI.messagesAutoRefreshInterval) {
+        startInboxAutoRefresh(interval: interval)
+    }
+
+    /// Backward-compatible API used by existing callers.
+    func stopConversationsAutoRefresh() {
+        stopInboxAutoRefresh()
+    }
+
+    private func refreshInboxInBackground() async {
+        async let mentionsRefresh: Void = refreshMentions()
+        async let conversationsRefresh: Void = refreshConversations()
+        _ = await (mentionsRefresh, conversationsRefresh)
+    }
     
     func markConversationAsRead(conversationId: String) async {
         guard let account = authService.currentAccount,
@@ -430,8 +468,8 @@ final class TimelineService {
         
         let context = contextWithRefresh.context
         
-        if let header = contextWithRefresh.asyncRefreshHeader {
-            Self.logger.info("Async refresh header present for status \(status.id.prefix(8), privacy: .public), starting polling")
+        if let header = buildAsyncRefreshHeader(from: contextWithRefresh) {
+            Self.logger.info("Async refresh available for status \(status.id.prefix(8), privacy: .public), starting polling")
             startAsyncRefreshPolling(status: status, header: header, instance: account.instance, token: token)
         } else if shouldFetchRemoteReplies(context: context, status: status) {
             Self.logger.info("Fetching remote replies for status: \(status.id.prefix(8), privacy: .public)")
@@ -459,7 +497,7 @@ final class TimelineService {
         return context
     }
     
-    /// Re-GETs context for a status, runs async-refresh polling if header present, then updates UI via notification.
+    /// Re-GETs context for a status, runs async-refresh polling when metadata is present (header or payload id), then updates UI via notification.
     /// Use for "Fetch Remote" and any explicit refresh.
     func refreshContextForStatus(_ status: Status) async throws {
         guard let account = authService.currentAccount,
@@ -475,8 +513,8 @@ final class TimelineService {
         
         let context = contextWithRefresh.context
         
-        if let header = contextWithRefresh.asyncRefreshHeader {
-            Self.logger.info("Async refresh header present on refresh for status \(status.id.prefix(8), privacy: .public), starting polling")
+        if let header = buildAsyncRefreshHeader(from: contextWithRefresh) {
+            Self.logger.info("Async refresh available on refresh for status \(status.id.prefix(8), privacy: .public), starting polling")
             startAsyncRefreshPolling(status: status, header: header, instance: account.instance, token: token)
         } else {
             let payload = StatusContextUpdatePayload(statusId: status.id, context: context)
@@ -488,6 +526,25 @@ final class TimelineService {
     func cancelAsyncRefreshPolling(forStatusId statusId: String) {
         asyncRefreshPollingTasks[statusId]?.cancel()
         asyncRefreshPollingTasks.removeValue(forKey: statusId)
+    }
+    
+    private func buildAsyncRefreshHeader(from contextWithRefresh: MastodonClient.StatusContextWithRefresh) -> AsyncRefreshHeader? {
+        if let header = contextWithRefresh.asyncRefreshHeader {
+            return header
+        }
+        
+        guard let asyncRefreshId = contextWithRefresh.context.asyncRefreshId?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !asyncRefreshId.isEmpty else {
+            return nil
+        }
+        
+        Self.logger.debug("Using async_refresh_id fallback for polling: \(asyncRefreshId.prefix(12), privacy: .public)")
+        return AsyncRefreshHeader(
+            id: asyncRefreshId,
+            retrySeconds: Constants.RemoteReplies.asyncRefreshFallbackRetrySeconds,
+            resultCount: nil
+        )
     }
     
     private func startAsyncRefreshPolling(status: Status, header: AsyncRefreshHeader, instance: String, token: String) {
@@ -762,6 +819,10 @@ final class TimelineService {
             inReplyToId: targetStatus.id,
             visibility: targetStatus.visibility
         )
+
+        if result.visibility == .direct || result.visibility == .private {
+            await refreshConversations()
+        }
         
         Self.logger.info("Reply posted successfully: \(result.id.prefix(8), privacy: .public)")
         return result
@@ -878,6 +939,8 @@ final class TimelineService {
     }
     
     func clearAllTimelines() {
+        stopInboxAutoRefresh()
+
         homeTimeline = []
         exploreStatuses = []
         trendingLinks = []

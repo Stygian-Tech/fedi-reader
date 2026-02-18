@@ -272,18 +272,20 @@ struct ComposeView: View {
         defer { isPosting = false }
         
         do {
+            let postedStatus: Status
+
             if let replyTo {
                 // Reply
                 guard let service = timelineWrapper.service else {
                     throw FediReaderError.noActiveAccount
                 }
-                _ = try await service.reply(to: replyTo.displayStatus, content: content)
+                postedStatus = try await service.reply(to: replyTo.displayStatus, content: content)
             } else if let quote {
                 // Quote boost
                 guard let service = timelineWrapper.service else {
                     throw FediReaderError.noActiveAccount
                 }
-                _ = try await service.quoteBoost(status: quote, content: content)
+                postedStatus = try await service.quoteBoost(status: quote, content: content)
             } else {
                 // New post (would need to add postStatus to TimelineService)
                 guard let account = appState.currentAccount,
@@ -291,7 +293,7 @@ struct ComposeView: View {
                     throw FediReaderError.noActiveAccount
                 }
                 
-                _ = try await appState.client.postStatus(
+                postedStatus = try await appState.client.postStatus(
                     instance: account.instance,
                     accessToken: token,
                     status: content,
@@ -299,6 +301,10 @@ struct ComposeView: View {
                     spoilerText: showSpoiler ? spoilerText : nil,
                     visibility: visibility
                 )
+            }
+
+            if postedStatus.visibility == .direct || postedStatus.visibility == .private {
+                await timelineWrapper.service?.refreshConversations()
             }
             
             dismiss()
