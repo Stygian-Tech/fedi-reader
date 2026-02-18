@@ -24,7 +24,7 @@ enum Constants {
         
         static let scopes = "read write follow push"
         
-        nonisolated static let appWebsite = "https://github.com/fedi-reader/fedi-reader"
+        nonisolated static let appWebsite = "https://github.com/stygian-tech/fedi-reader"
     }
     
     // MARK: - API

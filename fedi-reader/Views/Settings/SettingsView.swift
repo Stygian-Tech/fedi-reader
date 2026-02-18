@@ -104,7 +104,7 @@ struct SettingsView: View {
                     }
                 }
                 
-                Link(destination: URL(string: "https://github.com/fedi-reader/fedi-reader/issues")!) {
+                Link(destination: URL(string: "\(Constants.OAuth.appWebsite)/issues")!) {
                     HStack {
                         Text("Report an Issue")
                         Spacer()

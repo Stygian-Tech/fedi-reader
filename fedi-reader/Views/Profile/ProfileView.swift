@@ -64,10 +64,6 @@ struct ProfileView: View {
                 } label: {
                     Label("Settings", systemImage: "gear")
                 }
-                
-                Link(destination: URL(string: Constants.OAuth.appWebsite)!) {
-                    Label("About Fedi Reader", systemImage: "info.circle")
-                }
             }
             
             // Logout
