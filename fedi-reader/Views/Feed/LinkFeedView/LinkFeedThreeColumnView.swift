@@ -1,0 +1,543 @@
+//
+//  LinkFeedThreeColumnView.swift
+//  fedi-reader
+//
+//  Three-column layout for iPadOS and macOS: lists | posts | article/empty.
+//
+
+import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
+
+struct LinkFeedThreeColumnView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(LinkFilterService.self) private var linkFilterService
+    @Environment(TimelineServiceWrapper.self) private var timelineWrapper
+    @Environment(\.layoutMode) private var layoutMode
+
+    @State private var selectedTabIndex: Int = 0
+    @State private var selectedArticle: (url: URL, status: Status)?
+    @State private var scrollProxy: ScrollViewProxy?
+    @AppStorage("themeColor") private var themeColorName = "blue"
+    @AppStorage("threeColumnListsWidth") private var persistedListsWidth: Double = 200
+    @AppStorage("threeColumnPostsWidth") private var persistedPostsWidth: Double = 300
+    @State private var listsWidth: Double = 200
+    @State private var postsWidth: Double = 300
+    @State private var isPaginating = false
+    @State private var retainedLists: [MastodonList] = []
+
+    private static let minListsWidth: CGFloat = 150
+    private static let minPostsWidth: CGFloat = 200
+    private static let minArticleWidth: CGFloat = 400
+    private static let dividerWidth: CGFloat = 4
+    private static let dividerCount: CGFloat = 2
+
+    private var sidebarTopPadding: CGFloat {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .pad ? 0 : WindowChromeLayoutMetrics.defaultTopPadding
+        #else
+        WindowChromeLayoutMetrics.defaultTopPadding
+        #endif
+    }
+
+    private var timelineService: TimelineService? {
+        timelineWrapper.service
+    }
+
+    private var accountId: String? {
+        appState.currentAccount?.id
+    }
+
+    private var liveLists: [MastodonList] {
+        timelineService?.lists ?? []
+    }
+
+    private var cachedLists: [MastodonList] {
+        timelineWrapper.cachedLists(for: accountId)
+    }
+
+    private var lists: [MastodonList] {
+        if !liveLists.isEmpty {
+            return liveLists
+        }
+        if !retainedLists.isEmpty {
+            return retainedLists
+        }
+        return cachedLists
+    }
+
+    private var feedTabs: [FeedTabItem] {
+        var tabs = [FeedTabItem.home]
+        tabs.append(contentsOf: lists.map { FeedTabItem(id: $0.id, title: $0.title) })
+        return tabs
+    }
+
+    private var currentTab: FeedTabItem {
+        guard selectedTabIndex >= 0, selectedTabIndex < feedTabs.count else {
+            return .home
+        }
+        return feedTabs[selectedTabIndex]
+    }
+
+    private var currentAccounts: [MastodonAccount] {
+        linkFilterService.uniqueAccounts()
+    }
+
+    private var currentUserFilter: String? {
+        appState.userFilterPerFeedId[currentTab.id]
+    }
+
+    private var filteredStatuses: [LinkStatus] {
+        var statuses = linkFilterService.linkStatuses
+        statuses = linkFilterService.filter(linkStatuses: statuses, byAccountId: currentUserFilter)
+        return statuses
+    }
+
+    private func shouldShowPaginationLoadingRow(for statuses: [LinkStatus]) -> Bool {
+        (isPaginating || timelineService?.isLoadingMore == true) && !statuses.isEmpty
+    }
+
+    private struct ThreeColumnLayout {
+        let listsWidth: CGFloat
+        let postsWidth: CGFloat
+        let articleWidth: CGFloat
+        let showsDividers: Bool
+        let firstDividerMaxListsWidth: CGFloat
+        let secondDividerMaxPostsWidth: CGFloat
+    }
+
+    private func sanitizedTotalWidth(_ width: CGFloat) -> CGFloat {
+        let fallback =
+            Self.minListsWidth + Self.minPostsWidth + Self.minArticleWidth + (Self.dividerWidth * Self.dividerCount)
+        guard width.isFinite, width > 0 else { return fallback }
+        return width
+    }
+
+    private func resolvedLayout(totalWidth: CGFloat) -> ThreeColumnLayout {
+        let safeTotalWidth = sanitizedTotalWidth(totalWidth)
+        let requiredWidthForResizableLayout =
+            Self.minListsWidth + Self.minPostsWidth + Self.minArticleWidth + (Self.dividerWidth * Self.dividerCount)
+        let showsDividers = safeTotalWidth >= requiredWidthForResizableLayout
+
+        let contentWidth = max(safeTotalWidth - (showsDividers ? (Self.dividerWidth * Self.dividerCount) : 0), 1)
+
+        if !showsDividers {
+            let lists = max(min(contentWidth * 0.2, contentWidth - 2), 1)
+            let posts = max(min(contentWidth * 0.35, contentWidth - lists - 1), 1)
+            let article = max(contentWidth - lists - posts, 1)
+            return ThreeColumnLayout(
+                listsWidth: lists,
+                postsWidth: posts,
+                articleWidth: article,
+                showsDividers: false,
+                firstDividerMaxListsWidth: lists,
+                secondDividerMaxPostsWidth: posts
+            )
+        }
+
+        let preferredListsWidth = CGFloat(listsWidth.isFinite ? listsWidth : Double(Self.minListsWidth))
+        let maxListsWidth = max(contentWidth - Self.minPostsWidth - Self.minArticleWidth, Self.minListsWidth)
+        let resolvedListsWidth = min(max(preferredListsWidth, Self.minListsWidth), maxListsWidth)
+
+        let preferredPostsWidth = CGFloat(postsWidth.isFinite ? postsWidth : Double(Self.minPostsWidth))
+        let maxPostsWidth = max(contentWidth - resolvedListsWidth - Self.minArticleWidth, Self.minPostsWidth)
+        let resolvedPostsWidth = min(max(preferredPostsWidth, Self.minPostsWidth), maxPostsWidth)
+
+        let resolvedArticleWidth = max(contentWidth - resolvedListsWidth - resolvedPostsWidth, 1)
+
+        return ThreeColumnLayout(
+            listsWidth: resolvedListsWidth,
+            postsWidth: resolvedPostsWidth,
+            articleWidth: resolvedArticleWidth,
+            showsDividers: true,
+            firstDividerMaxListsWidth: maxListsWidth,
+            secondDividerMaxPostsWidth: maxPostsWidth
+        )
+    }
+
+    var body: some View {
+        @Bindable var state = appState
+
+        GeometryReader { geometry in
+            let layout = resolvedLayout(totalWidth: geometry.size.width)
+
+            HStack(spacing: 0) {
+                // Column 1: Lists
+                listsColumn
+                    .frame(width: layout.listsWidth)
+                    .zIndex(1)
+
+                if layout.showsDividers {
+                    ResizableColumnDivider(
+                        width: $listsWidth,
+                        minValue: Self.minListsWidth,
+                        maxValue: layout.firstDividerMaxListsWidth
+                    ) {
+                        persistedListsWidth = listsWidth
+                    }
+                }
+
+                // Column 2: Posts
+                postsColumnContent(statuses: filteredStatuses)
+                    .frame(width: layout.postsWidth)
+
+                if layout.showsDividers {
+                    ResizableColumnDivider(
+                        width: $postsWidth,
+                        minValue: Self.minPostsWidth,
+                        maxValue: layout.secondDividerMaxPostsWidth
+                    ) {
+                        persistedPostsWidth = postsWidth
+                    }
+                }
+
+                // Column 3: Article
+                detailColumn
+                    .frame(width: layout.articleWidth)
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .onPreferenceChange(ScrollToTopKey.self) { shouldScroll in
+            if shouldScroll {
+                scrollToTop()
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    appState.isUserFilterOpen = true
+                } label: {
+                    Image(systemName: currentUserFilter != nil ? "person.fill" : "person.2")
+                }
+                .accessibilityLabel(currentUserFilter != nil ? "User filter active" : "Filter by user")
+                .accessibilityHint("Opens user filter pane")
+            }
+        }
+        .sheet(isPresented: $state.isUserFilterOpen) {
+            UserFilterPane(
+                feedId: currentTab.id,
+                accounts: currentAccounts,
+                onSelectAccount: { account in
+                    if let id = account?.id {
+                        appState.userFilterPerFeedId[currentTab.id] = id
+                    } else {
+                        appState.userFilterPerFeedId.removeValue(forKey: currentTab.id)
+                    }
+                    appState.isUserFilterOpen = false
+                }
+            )
+            .presentationDetents([.medium, .large])
+        }
+        .onAppear {
+            listsWidth = persistedListsWidth.isFinite ? persistedListsWidth : Double(Self.minListsWidth)
+            postsWidth = persistedPostsWidth.isFinite ? persistedPostsWidth : Double(Self.minPostsWidth)
+        }
+        .task {
+            await loadInitialContent()
+        }
+        .onChange(of: selectedTabIndex) { _, newIndex in
+            handleTabChange(to: newIndex)
+        }
+        .onChange(of: appState.selectedListId) { _, newListId in
+            let targetId = newListId ?? "home"
+            if let index = feedTabs.firstIndex(where: { $0.id == targetId }), selectedTabIndex != index {
+                selectedTabIndex = index
+            }
+        }
+        .onChange(of: liveLists) { _, newLists in
+            syncRetainedLists(with: newLists, allowEmpty: false)
+        }
+        .onChange(of: timelineService?.isLoadingLists ?? false) { oldValue, isLoading in
+            guard oldValue, !isLoading else { return }
+            syncRetainedLists(
+                with: liveLists,
+                allowEmpty: timelineService?.error == nil
+            )
+        }
+        .refreshable {
+            await refreshCurrentFeed()
+        }
+        .onAppear {
+            if retainedLists.isEmpty, !cachedLists.isEmpty {
+                retainedLists = cachedLists
+            }
+            syncRetainedLists(with: liveLists, allowEmpty: false)
+        }
+    }
+
+    // MARK: - Column 1: Lists
+
+    private var listsColumn: some View {
+        ZStack {
+            Color(.systemBackground)
+
+            GlassEffectContainer {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(feedTabs.enumerated()), id: \.element.id) { index, tab in
+                            Button {
+                                selectTab(at: index)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: tab.isHome ? "house.fill" : "list.bullet")
+                                        .font(.title3)
+                                        .foregroundStyle(selectedTabIndex == index ? .primary : .secondary)
+                                    Text(tab.title)
+                                        .font(.roundedBody)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(selectedTabIndex == index ? ThemeColor.resolved(from: themeColorName).color.opacity(0.12) : Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                }
+                .padding(.top, layoutMode.useSidebarLayout ? sidebarTopPadding : 0)
+            }
+        }
+    }
+
+    // MARK: - Column 2: Posts
+
+    private func postsColumnContent(statuses: [LinkStatus]) -> some View {
+        Group {
+            if statuses.isEmpty, !linkFilterService.isLoading {
+                emptyStateView
+            } else {
+                LinkFeedPostList(
+                    statuses: statuses,
+                    isLoading: linkFilterService.isLoading,
+                    shouldShowPaginationLoading: shouldShowPaginationLoadingRow(for: statuses),
+                    deferPostNavigation: { action in action() },
+                    shouldBlockPostTaps: { false },
+                    onItemAppear: { checkLoadMore(at: $0, totalCount: $1) },
+                    onArticleSelect: { url, status in
+                        selectedArticle = (url: url, status: status)
+                    },
+                    scrollProxy: $scrollProxy
+                )
+            }
+        }
+        .id(currentTab.id)
+    }
+
+    private var emptyStateView: some View {
+        ContentUnavailableView {
+            Label("No Links Yet", systemImage: "link.badge.plus")
+        } description: {
+            Text("Posts with links from your \(currentTab.isHome ? "home timeline" : "list") will appear here.")
+        } actions: {
+            Button("Refresh") {
+                Task {
+                    await refreshCurrentFeed()
+                }
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    // MARK: - Column 3: Article or empty
+
+    private var detailColumn: some View {
+        Group {
+            if let selected = selectedArticle {
+                ArticleWebView(url: selected.url, status: selected.status)
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            selectedArticle = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 28))
+                                .symbolRenderingMode(.hierarchical)
+                        }
+                        .padding(16)
+                        .accessibilityLabel("Close article")
+                        .accessibilityHint("Closes the article and returns to the empty state")
+                    }
+            } else {
+                ContentUnavailableView {
+                    Label("Select an Article", systemImage: "doc.text.magnifyingglass")
+                } description: {
+                    Text("Tap a link in a post to read the article here.")
+                }
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func selectTab(at index: Int) {
+        guard index >= 0, index < feedTabs.count, index != selectedTabIndex else { return }
+        selectedTabIndex = index
+    }
+
+    private func handleTabChange(to newIndex: Int) {
+        guard newIndex >= 0, newIndex < feedTabs.count else { return }
+
+        let tab = feedTabs[newIndex]
+        let listId = tab.isHome ? nil : tab.id
+
+        if appState.selectedListId != listId {
+            appState.selectedListId = listId
+        }
+        linkFilterService.switchToFeed(tab.id)
+
+        Task {
+            await loadContentForTabIfNeeded(tab)
+            Task.detached(priority: .background) { [feedTabs] in
+                await prefetchAdjacentFeeds(currentIndex: newIndex, tabs: feedTabs)
+            }
+        }
+    }
+
+    private func scrollToTop() {
+        guard let proxy = scrollProxy, !filteredStatuses.isEmpty else { return }
+        HapticFeedback.prepare(.medium)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            if let firstStatus = filteredStatuses.first {
+                proxy.scrollTo(firstStatus.id, anchor: .top)
+            }
+        }
+    }
+
+    private func checkLoadMore(at index: Int, totalCount: Int) {
+        guard let service = timelineService else { return }
+        guard !isPaginating, !service.isLoadingMore else { return }
+
+        if index >= totalCount - (Constants.Pagination.prefetchThreshold * 2) {
+            let tab = currentTab
+            let canLoadMore = tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
+            guard canLoadMore else { return }
+
+            isPaginating = true
+            Task {
+                await loadMoreForCurrentTab(tab, using: service)
+            }
+        }
+    }
+
+    private func syncRetainedLists(with incomingLists: [MastodonList], allowEmpty: Bool) {
+        if incomingLists.isEmpty {
+            guard allowEmpty else { return }
+            if !retainedLists.isEmpty {
+                retainedLists = []
+            }
+            return
+        }
+
+        if retainedLists != incomingLists {
+            retainedLists = incomingLists
+        }
+        if cachedLists != incomingLists {
+            timelineWrapper.updateCachedLists(incomingLists, for: accountId)
+        }
+    }
+
+    // MARK: - Data Loading
+
+    private func loadInitialContent() async {
+        guard let service = timelineService else { return }
+
+        await service.loadLists(forceRefresh: liveLists.isEmpty)
+        syncRetainedLists(with: service.lists, allowEmpty: service.error == nil)
+
+        if let listId = appState.selectedListId,
+           let index = feedTabs.firstIndex(where: { $0.id == listId }) {
+            selectedTabIndex = index
+        }
+
+        await loadContentForTab(currentTab, forceRefresh: true)
+
+        Task.detached(priority: .background) { [feedTabs, selectedTabIndex] in
+            await prefetchAdjacentFeeds(currentIndex: selectedTabIndex, tabs: feedTabs)
+        }
+    }
+
+    private func loadContentForTab(_ tab: FeedTabItem, forceRefresh: Bool = false) async {
+        guard let service = timelineService else { return }
+
+        linkFilterService.switchToFeed(tab.id)
+
+        if tab.isHome {
+            if forceRefresh || service.homeTimeline.isEmpty {
+                await service.refreshHomeTimeline()
+            }
+            _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
+        } else {
+            await service.refreshListTimeline(listId: tab.id)
+            _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
+        }
+        Task {
+            await linkFilterService.enrichWithAttributions()
+        }
+    }
+
+    private func loadContentForTabIfNeeded(_ tab: FeedTabItem) async {
+        guard !linkFilterService.hasCachedContent(for: tab.id) else { return }
+        await loadContentForTab(tab)
+    }
+
+    private func refreshCurrentFeed() async {
+        guard let service = timelineService else { return }
+        let tab = currentTab
+
+        if tab.isHome {
+            await service.refreshHomeTimeline()
+            _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
+        } else {
+            await service.refreshListTimeline(listId: tab.id)
+            _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
+        }
+        Task {
+            await linkFilterService.enrichWithAttributions()
+        }
+    }
+
+    private func prefetchAdjacentFeeds(currentIndex: Int, tabs: [FeedTabItem]) async {
+        guard let service = timelineWrapper.service else { return }
+
+        var indicesToPrefetch: [Int] = []
+        if currentIndex > 0 { indicesToPrefetch.append(currentIndex - 1) }
+        if currentIndex < tabs.count - 1 { indicesToPrefetch.append(currentIndex + 1) }
+
+        for index in indicesToPrefetch {
+            let tab = tabs[index]
+            guard !linkFilterService.hasCachedContent(for: tab.id),
+                  !linkFilterService.isLoadingFeed(tab.id) else { continue }
+
+            if tab.isHome {
+                if service.homeTimeline.isEmpty {
+                    await service.refreshHomeTimeline()
+                }
+                _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
+            } else {
+                let statuses = await service.fetchListTimelineStatuses(listId: tab.id)
+                if !statuses.isEmpty {
+                    _ = await linkFilterService.processStatuses(statuses, for: tab.id)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func loadMoreForCurrentTab(_ tab: FeedTabItem, using service: TimelineService) async {
+        defer { isPaginating = false }
+
+        if tab.isHome {
+            let newStatuses = await service.loadMoreHomeTimeline()
+            guard !newStatuses.isEmpty else { return }
+            _ = await linkFilterService.appendStatuses(newStatuses, for: tab.id)
+        } else {
+            let newStatuses = await service.loadMoreListTimeline(listId: tab.id)
+            guard !newStatuses.isEmpty else { return }
+            _ = await linkFilterService.appendStatuses(newStatuses, for: tab.id)
+        }
+    }
+}

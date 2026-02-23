@@ -1,10 +1,14 @@
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UIKit
+#endif
 
 struct MainTabView: View {
     @Environment(AppState.self) private var appState
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
+    @Environment(\.layoutMode) private var layoutMode
 
     @State private var tabTracker = TabSelectionTracker()
     @State private var scrollToTopTrigger = false
@@ -15,29 +19,72 @@ struct MainTabView: View {
         timelineWrapper.service?.unreadConversationsCount ?? 0
     }
 
+    private var useSidebarLayout: Bool {
+        layoutMode.useSidebarLayout
+    }
+
     var body: some View {
         @Bindable var state = appState
 
         TabView(selection: $state.selectedTab) {
-            Tab(hideTabBarLabels ? "" : "Home", systemImage: "house", value: .links) {
-                NavigationStack(path: $state.linksNavigationPath) {
-                    LinkFeedView()
-                        .navigationDestination(for: NavigationDestination.self) { destination in
-                            destinationView(for: destination)
-                        }
-                        .onAppear {
-                            if state.selectedTab == .links {
-                                let isDoubleTap = tabTracker.recordSelection(.links)
-                                if isDoubleTap {
-                                    scrollToTopTrigger.toggle()
-                                    HapticFeedback.play(.medium, enabled: hapticFeedback)
+            Tab(useSidebarLayout ? "Home" : (hideTabBarLabels ? "" : "Home"), systemImage: "house", value: .links) {
+                Group {
+                    switch layoutMode {
+                    case .wide:
+                        NavigationStack(path: $state.linksNavigationPath) {
+                            LinkFeedThreeColumnView()
+                                .navigationDestination(for: NavigationDestination.self) { destination in
+                                    splitLayoutDestinationView(for: destination)
                                 }
-                            }
+                                .onAppear {
+                                    if state.selectedTab == .links {
+                                        let isDoubleTap = tabTracker.recordSelection(.links)
+                                        if isDoubleTap {
+                                            scrollToTopTrigger.toggle()
+                                            HapticFeedback.play(.medium, enabled: false)
+                                        }
+                                    }
+                                }
                         }
+                    case .medium:
+                        NavigationStack(path: $state.linksNavigationPath) {
+                            LinkFeedTwoColumnView()
+                                .navigationDestination(for: NavigationDestination.self) { destination in
+                                    splitLayoutDestinationView(for: destination)
+                                }
+                                .onAppear {
+                                    if state.selectedTab == .links {
+                                        let isDoubleTap = tabTracker.recordSelection(.links)
+                                        if isDoubleTap {
+                                            scrollToTopTrigger.toggle()
+                                            HapticFeedback.play(.medium, enabled: false)
+                                        }
+                                    }
+                                }
+                        }
+                    case .compact:
+                        NavigationStack(path: $state.linksNavigationPath) {
+                            LinkFeedView()
+                                .navigationDestination(for: NavigationDestination.self) { destination in
+                                    destinationView(for: destination)
+                                }
+                                .onAppear {
+                                    if state.selectedTab == .links {
+                                        let isDoubleTap = tabTracker.recordSelection(.links)
+                                        if isDoubleTap {
+                                            scrollToTopTrigger.toggle()
+                                            HapticFeedback.play(.medium, enabled: hapticFeedback)
+                                        }
+                                    }
+                                }
+                        }
+                    }
                 }
+                .id("links-layout-\(layoutMode.id)")
+                .animation(.none, value: layoutMode)
             }
 
-            Tab(hideTabBarLabels ? "" : "Explore", systemImage: "globe", value: .explore) {
+            Tab(useSidebarLayout ? "Explore" : (hideTabBarLabels ? "" : "Explore"), systemImage: "globe", value: .explore) {
                 NavigationStack {
                     ExploreFeedView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
@@ -46,17 +93,23 @@ struct MainTabView: View {
                 }
             }
 
-            Tab(hideTabBarLabels ? "" : "Messages", systemImage: "at", value: .mentions) {
-                NavigationStack {
-                    MentionsView()
-                        .navigationDestination(for: NavigationDestination.self) { destination in
-                            destinationView(for: destination)
+            Tab(useSidebarLayout ? "Messages" : (hideTabBarLabels ? "" : "Messages"), systemImage: "at", value: .mentions) {
+                Group {
+                    if useSidebarLayout {
+                        MentionsTwoColumnView()
+                    } else {
+                        NavigationStack {
+                            MentionsView()
+                                .navigationDestination(for: NavigationDestination.self) { destination in
+                                    destinationView(for: destination)
+                                }
                         }
+                    }
                 }
             }
             .badge(unreadMentionsCount)
 
-            Tab(hideTabBarLabels ? "" : "Profile", systemImage: "person", value: .profile) {
+            Tab(useSidebarLayout ? "Profile" : (hideTabBarLabels ? "" : "Profile"), systemImage: "person", value: .profile) {
                 NavigationStack(path: $state.profileNavigationPath) {
                     ProfileView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
@@ -65,9 +118,9 @@ struct MainTabView: View {
                 }
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
+        .modifier(ConditionalTabViewStyle(useSidebarLayout: useSidebarLayout))
         .onChange(of: state.selectedTab) { oldValue, newValue in
-            HapticFeedback.play(.selection, enabled: hapticFeedback)
+            HapticFeedback.play(.selection, enabled: hapticFeedback && !useSidebarLayout)
             if oldValue == .profile {
                 state.profileNavigationPath.removeAll()
             }
@@ -75,7 +128,7 @@ struct MainTabView: View {
                 let isDoubleTap = tabTracker.recordSelection(.links)
                 if isDoubleTap {
                     scrollToTopTrigger.toggle()
-                    HapticFeedback.play(.medium, enabled: hapticFeedback)
+                    HapticFeedback.play(.medium, enabled: hapticFeedback && !useSidebarLayout)
                 }
             } else if newValue == .mentions {
                 Task {
@@ -87,7 +140,22 @@ struct MainTabView: View {
                 tabTracker.reset()
             }
         }
+        .onChange(of: useSidebarLayout) { _, _ in
+            Task {
+                await ensureListsAvailableAfterLayoutTransition()
+            }
+        }
         .preference(key: ScrollToTopKey.self, value: scrollToTopTrigger)
+    }
+
+    @ViewBuilder
+    private func splitLayoutDestinationView(for destination: NavigationDestination) -> some View {
+        switch destination {
+        case .article:
+            EmptyView()
+        default:
+            destinationView(for: destination)
+        }
     }
 
     @ViewBuilder
@@ -117,8 +185,42 @@ struct MainTabView: View {
             FollowersListView(accountId: accountId, account: account)
         }
     }
+
+    @MainActor
+    private func ensureListsAvailableAfterLayoutTransition() async {
+        guard let service = timelineWrapper.service else { return }
+        guard service.lists.isEmpty else { return }
+
+        await service.loadLists(forceRefresh: true)
+        if !service.lists.isEmpty {
+            timelineWrapper.updateCachedLists(service.lists, for: appState.currentAccount?.id)
+        }
+    }
 }
 
-// MARK: - Profile Tab Label
+private extension LayoutMode {
+    var id: String {
+        switch self {
+        case .compact:
+            return "compact"
+        case .medium:
+            return "medium"
+        case .wide:
+            return "wide"
+        }
+    }
+}
 
+// MARK: - Conditional Tab View Style
 
+private struct ConditionalTabViewStyle: ViewModifier {
+    let useSidebarLayout: Bool
+
+    func body(content: Content) -> some View {
+        if useSidebarLayout {
+            content.tabViewStyle(.sidebarAdaptable)
+        } else {
+            content.tabViewStyle(.automatic)
+        }
+    }
+}

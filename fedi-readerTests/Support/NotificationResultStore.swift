@@ -2,7 +2,7 @@ import Foundation
 @testable import fedi_reader
 
 
-private final class NotificationResultStore: @unchecked Sendable {
+final class NotificationResultStore: @unchecked Sendable {
     private let lock = NSLock()
     private var result: ReadLaterSaveResult?
 
@@ -18,4 +18,3 @@ private final class NotificationResultStore: @unchecked Sendable {
         return result
     }
 }
-
