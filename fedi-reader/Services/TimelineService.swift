@@ -50,6 +50,7 @@ final class TimelineService {
     private var listAccountsMaxId: String?
     private var listsLastRefreshedAt: Date?
     private var listsLastRefreshedForAccountId: String?
+    private var listLoadWaiters: [CheckedContinuation<Void, Never>] = []
     
     /// Polling tasks for async refresh, keyed by status ID. Cancelled when starting a new refresh for same status or via cancelAsyncRefreshPolling.
     private var asyncRefreshPollingTasks: [String: Task<Void, Never>] = [:]
@@ -959,11 +960,39 @@ final class TimelineService {
     }
     
     // MARK: - Lists
+
+    private func waitForInFlightListLoad() async {
+        guard isLoadingLists else { return }
+
+        await withCheckedContinuation { continuation in
+            listLoadWaiters.append(continuation)
+        }
+    }
+
+    private func resumeListLoadWaiters() {
+        guard !listLoadWaiters.isEmpty else { return }
+        let waiters = listLoadWaiters
+        listLoadWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
     
     func loadLists(forceRefresh: Bool = false) async {
-        guard !isLoadingLists else {
-            Self.logger.debug("Lists load already in progress, skipping")
-            return
+        if isLoadingLists {
+            Self.logger.debug("Lists load already in progress, waiting")
+            await waitForInFlightListLoad()
+
+            if !forceRefresh,
+               let account = authService.currentAccount,
+               listsLastRefreshedForAccountId == account.id,
+               let lastRefresh = listsLastRefreshedAt {
+                let age = Date().timeIntervalSince(lastRefresh)
+                if age < Constants.Cache.listsRefreshInterval {
+                    Self.logger.debug("Using recently loaded lists after wait (age: \(Int(age), privacy: .public)s)")
+                    return
+                }
+            }
         }
 
         guard let account = authService.currentAccount else {
@@ -973,7 +1002,6 @@ final class TimelineService {
         }
 
         if !forceRefresh,
-           !lists.isEmpty,
            listsLastRefreshedForAccountId == account.id,
            let lastRefresh = listsLastRefreshedAt {
             let age = Date().timeIntervalSince(lastRefresh)
@@ -991,6 +1019,10 @@ final class TimelineService {
         
         Self.logger.info("Loading lists")
         isLoadingLists = true
+        defer {
+            isLoadingLists = false
+            resumeListLoadWaiters()
+        }
         error = nil
         
         do {
@@ -1011,8 +1043,6 @@ final class TimelineService {
             Self.logger.error("Error loading lists: \(error.localizedDescription)")
             self.error = error
         }
-        
-        isLoadingLists = false
     }
 
     func fetchListsContainingAccount(accountId: String) async -> [MastodonList] {

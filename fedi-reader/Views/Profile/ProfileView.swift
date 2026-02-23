@@ -11,6 +11,7 @@ import SwiftData
 struct ProfileView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.layoutMode) private var layoutMode
 
     @State private var profileFieldsByAccountID: [String: [Field]] = [:]
     @State private var fetchedProfileFieldAccounts: Set<String> = []
@@ -28,7 +29,7 @@ struct ProfileView: View {
     }
     
     private func profileContent(_ account: Account) -> some View {
-        List {
+        let content = List {
             ProfileSummaryView(account: account.mastodonAccount, fields: profileFields(for: account))
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -99,6 +100,17 @@ struct ProfileView: View {
         .ignoresSafeArea(edges: .top)
         .task(id: account.id) {
             await loadProfileFieldsIfNeeded(for: account)
+        }
+
+        return Group {
+            if layoutMode.useSidebarLayout {
+                content
+                    .frame(maxWidth: 600)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 24)
+            } else {
+                content
+            }
         }
     }
     

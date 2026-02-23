@@ -14,19 +14,48 @@ import UIKit
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("defaultListId") private var defaultListId = ""
     @State private var appState = AppState()
     @State private var timelineWrapper = TimelineServiceWrapper()
     @State private var linkFilterService = LinkFilterService()
     @State private var readLaterManager = ReadLaterManager()
     @State private var hasAppliedDefaultList = false
+    @State private var stabilizedLayoutMode: LayoutMode = .compact
 
     var body: some View {
-        Group {
-            if appState.hasAccount {
-                MainTabView()
-            } else {
-                WelcomeView()
+        GeometryReader { geometry in
+            let topChromePadding = resolvedTopChromePadding(for: geometry.safeAreaInsets.top)
+            Group {
+                if appState.hasAccount {
+                    MainTabView()
+                } else {
+                    WelcomeView()
+                }
+            }
+            .environment(\.layoutMode, stabilizedLayoutMode)
+            #if os(macOS)
+            .windowBackgroundColor(colorScheme: colorScheme)
+            #endif
+            .safeAreaPadding(.top, topChromePadding)
+            .modifier(LeadingSafeAreaForWindowChrome(geometry: geometry))
+            #if os(macOS)
+            .containerBackground(colorScheme == .dark ? Color(red: 0, green: 0, blue: 0) : Color.white, for: .window)
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+            #else
+            .background {
+                (colorScheme == .dark ? Color(red: 0, green: 0, blue: 0) : Color.white)
+                    .ignoresSafeArea()
+            }
+            #endif
+            .onAppear {
+                stabilizedLayoutMode = LayoutMode.mode(for: geometry.size.width)
+            }
+            .onChange(of: geometry.size.width) { _, newWidth in
+                stabilizedLayoutMode = LayoutMode.stabilizedMode(
+                    for: newWidth,
+                    previous: stabilizedLayoutMode
+                )
             }
         }
         .environment(appState)
@@ -67,11 +96,24 @@ struct ContentView: View {
     }
 
     private func setupServices() {
-        timelineWrapper.service = TimelineService(
-            client: appState.client,
-            authService: appState.authService
-        )
         appState.authService.loadAccounts(from: modelContext)
+
+        if timelineWrapper.service == nil {
+            timelineWrapper.service = TimelineService(
+                client: appState.client,
+                authService: appState.authService
+            )
+        }
+
+        if let accountId = appState.currentAccount?.id,
+           let service = timelineWrapper.service,
+           service.lists.isEmpty {
+            let cachedLists = timelineWrapper.cachedLists(for: accountId)
+            if !cachedLists.isEmpty {
+                service.lists = cachedLists
+            }
+        }
+
         readLaterManager.loadConfigurations(from: modelContext)
         
         // Fetch emoji for current account's instance
@@ -98,6 +140,9 @@ struct ContentView: View {
 
         if let service = timelineWrapper.service {
             await service.loadLists()
+            if !service.lists.isEmpty {
+                timelineWrapper.updateCachedLists(service.lists, for: appState.currentAccount?.id)
+            }
             if !defaultListId.isEmpty {
                 let listExists = service.lists.contains { $0.id == defaultListId }
                 if listExists {
@@ -142,6 +187,17 @@ struct ContentView: View {
         }
     }
 
+    private func resolvedTopChromePadding(for safeAreaTop: CGFloat) -> CGFloat {
+        #if os(iOS)
+        return WindowChromeLayoutMetrics.topPadding(
+            isPad: UIDevice.current.userInterfaceIdiom == .pad,
+            safeAreaTop: safeAreaTop
+        )
+        #else
+        return WindowChromeLayoutMetrics.defaultTopPadding
+        #endif
+    }
+
     @ViewBuilder
     private func sheetContent(for sheet: SheetDestination) -> some View {
         switch sheet {
@@ -165,6 +221,23 @@ struct ContentView: View {
             AccountSwitcherView()
                 .environment(appState)
         }
+    }
+}
+
+// MARK: - Leading Safe Area for Window Chrome
+
+private struct LeadingSafeAreaForWindowChrome: ViewModifier {
+    let geometry: GeometryProxy
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content.safeAreaPadding(.leading, WindowChromeLayoutMetrics.leadingPadding)
+        #else
+        content.safeAreaPadding(
+            .leading,
+            geometry.size.width >= 744 ? WindowChromeLayoutMetrics.leadingPadding : 0
+        )
+        #endif
     }
 }
 

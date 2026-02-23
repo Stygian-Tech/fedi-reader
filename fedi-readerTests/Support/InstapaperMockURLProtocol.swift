@@ -1,7 +1,7 @@
 import Foundation
 @testable import fedi_reader
 
-private final class InstapaperMockURLProtocol: URLProtocol {
+final class InstapaperMockURLProtocol: URLProtocol {
     static var responseData = Data()
     static var statusCode = 201
     static var lastRequest: URLRequest?
@@ -63,4 +63,3 @@ private final class InstapaperMockURLProtocol: URLProtocol {
         return data.isEmpty ? nil : data
     }
 }
-

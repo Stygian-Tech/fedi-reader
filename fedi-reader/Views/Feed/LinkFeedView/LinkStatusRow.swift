@@ -16,6 +16,8 @@ struct LinkStatusRow: View {
     let linkStatus: LinkStatus
     let deferPostNavigation: (@escaping () -> Void) -> Void
     let shouldIgnoreTap: () -> Bool
+    /// When provided, tapping the link card calls this instead of navigating. Used for 3-column layout.
+    var onArticleSelect: ((URL, Status) -> Void)?
 
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
@@ -42,11 +44,13 @@ struct LinkStatusRow: View {
     init(
         linkStatus: LinkStatus,
         deferPostNavigation: @escaping (@escaping () -> Void) -> Void = { action in action() },
-        shouldIgnoreTap: @escaping () -> Bool = { false }
+        shouldIgnoreTap: @escaping () -> Bool = { false },
+        onArticleSelect: ((URL, Status) -> Void)? = nil
     ) {
         self.linkStatus = linkStatus
         self.deferPostNavigation = deferPostNavigation
         self.shouldIgnoreTap = shouldIgnoreTap
+        self.onArticleSelect = onArticleSelect
     }
 
     var body: some View {
@@ -197,7 +201,11 @@ struct LinkStatusRow: View {
     private var linkCard: some View {
         Button {
             deferPostNavigation {
-                appState.navigate(to: .article(url: linkStatus.primaryURL, status: linkStatus.status))
+                if let onArticleSelect {
+                    onArticleSelect(linkStatus.primaryURL, linkStatus.status)
+                } else {
+                    appState.navigate(to: .article(url: linkStatus.primaryURL, status: linkStatus.status))
+                }
             }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
