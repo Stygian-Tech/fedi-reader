@@ -1,0 +1,6 @@
+---
+description: Always check for linked Linear issue and follow conventions
+alwaysApply: true
+---
+
+@.agents/rules/linear-workflow.md
