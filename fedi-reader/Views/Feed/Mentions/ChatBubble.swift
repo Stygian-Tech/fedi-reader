@@ -6,6 +6,7 @@ struct ChatBubble: View {
     let account: MastodonAccount
     let isSent: Bool
     @Environment(AppState.self) private var appState
+    @AppStorage("themeColor") private var themeColorName = "blue"
     
     var status: Status? {
         message.status
@@ -59,7 +60,7 @@ struct ChatBubble: View {
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 18)
-                        .fill(isSent ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground))
+                        .fill(isSent ? ThemeColor.resolved(from: themeColorName).color.opacity(0.2) : Color(.secondarySystemBackground))
                 )
                 .overlay(alignment: isSent ? .bottomLeading : .bottomTrailing) {
                     // Tapback-style favorite indicator

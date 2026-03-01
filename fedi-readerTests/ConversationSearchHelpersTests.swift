@@ -84,6 +84,23 @@ struct ConversationSearchHelpersTests {
         #expect(Set(matches[0].participants.map(\.id)) == Set(["alice", "bob"]))
     }
 
+    @Test("Same id but different acct produces separate grouped conversations")
+    func sameIdDifferentAcctProducesSeparateGroups() {
+        let me = makeAccount(id: "me", username: "me", acct: "me@local.social", host: "local.social")
+        let aliceAlpha = makeAccount(id: "123", username: "alice", acct: "alice@alpha.social", host: "alpha.social")
+        let aliceBeta = makeAccount(id: "123", username: "alice", acct: "alice@beta.social", host: "beta.social")
+
+        let conversations = [
+            makeConversation(id: "conv-alpha", accounts: [me, aliceAlpha]),
+            makeConversation(id: "conv-beta", accounts: [me, aliceBeta])
+        ]
+
+        let grouped = ConversationGroupingHelper.groupedConversations(from: conversations, currentAccountId: me.id)
+
+        #expect(grouped.count == 2)
+        #expect(Set(grouped.map { $0.participants.first?.acct ?? "" }) == Set(["alice@alpha.social", "alice@beta.social"]))
+    }
+
     @Test("Superset and subset participant sets do not match")
     func doesNotMatchSupersetOrSubset() {
         let me = makeAccount(id: "me", username: "me", acct: "me@local.social", host: "local.social")
