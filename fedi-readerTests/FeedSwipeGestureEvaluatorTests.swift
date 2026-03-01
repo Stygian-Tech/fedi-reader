@@ -39,6 +39,33 @@ struct FeedSwipeGestureEvaluatorTests {
         #expect(direction == .none)
     }
 
+    @Test("Does not commit from diagonal drag that mostly represents scrolling")
+    func doesNotCommitForNearDiagonalGesture() {
+        let direction = FeedSwipeGestureEvaluator.shouldCommit(
+            translation: CGSize(width: 64, height: 50),
+            predictedEndTranslation: CGSize(width: 70, height: 54)
+        )
+        #expect(direction == .none)
+    }
+
+    @Test("Predicted end does not override missing horizontal intent")
+    func predictedEndRequiresEstablishedHorizontalIntent() {
+        let direction = FeedSwipeGestureEvaluator.shouldCommit(
+            translation: CGSize(width: 18, height: 72),
+            predictedEndTranslation: CGSize(width: 96, height: 18)
+        )
+        #expect(direction == .none)
+    }
+
+    @Test("Predicted end requires matching horizontal direction")
+    func predictedEndRequiresMatchingDirection() {
+        let direction = FeedSwipeGestureEvaluator.shouldCommit(
+            translation: CGSize(width: 30, height: 4),
+            predictedEndTranslation: CGSize(width: -96, height: 6)
+        )
+        #expect(direction == .none)
+    }
+
     @Test("Visual offset uses resistance and clamp")
     func visualOffsetResistsAndClamps() {
         let resisted = FeedSwipeGestureEvaluator.visualOffset(translation: CGSize(width: 40, height: 0))
@@ -62,6 +89,7 @@ struct FeedSwipeGestureEvaluatorTests {
         #expect(FeedSwipeGestureEvaluator.isHorizontalIntent(translation: CGSize(width: 10, height: 0)))
         #expect(!FeedSwipeGestureEvaluator.isHorizontalIntent(translation: CGSize(width: 9.9, height: 0)))
         #expect(!FeedSwipeGestureEvaluator.isHorizontalIntent(translation: CGSize(width: 10, height: 10)))
+        #expect(!FeedSwipeGestureEvaluator.isHorizontalIntent(translation: CGSize(width: 30, height: 23)))
     }
 
     @Test("Suppression is enabled for swipe-like gestures")
