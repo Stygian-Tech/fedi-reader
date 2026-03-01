@@ -39,6 +39,15 @@ struct MentionsTwoColumnView: View {
             HStack(spacing: 0) {
                 // Column 1: Conversations list
                 VStack(spacing: 0) {
+                    HStack {
+                        Text("Messages")
+                            .font(.roundedTitle2.bold())
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                    .background(Color(.systemBackground))
+
                     if !conversations.isEmpty {
                         ConversationsListView(conversations: conversations, selection: $selectedConversation)
                     } else if timelineService?.isLoadingConversations == true {

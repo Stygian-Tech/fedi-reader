@@ -11,9 +11,11 @@ enum ConversationGroupingHelper {
         for conversation in conversations {
             let otherParticipants = conversation.accounts.filter { $0.id != currentAccountId }
 
+            guard !otherParticipants.isEmpty else { continue }
+
             if otherParticipants.count > 1 {
-                let participantIds = otherParticipants.map { $0.id }.sorted().joined(separator: "-")
-                let groupId = "group-\(participantIds)"
+                let participantKeys = Set(otherParticipants.map { canonicalParticipantKey(for: $0) }).sorted().joined(separator: "-")
+                let groupId = "group-\(participantKeys)"
 
                 if var existing = groupChats[groupId] {
                     existing.conversations.append(conversation)
@@ -21,12 +23,13 @@ enum ConversationGroupingHelper {
                 } else {
                     groupChats[groupId] = (participants: otherParticipants, conversations: [conversation])
                 }
-            } else if let otherAccount = otherParticipants.first ?? conversation.accounts.first {
-                if var existing = oneOnOneGrouped[otherAccount.id] {
+            } else if let otherAccount = otherParticipants.first {
+                let key = canonicalParticipantKey(for: otherAccount)
+                if var existing = oneOnOneGrouped[key] {
                     existing.conversations.append(conversation)
-                    oneOnOneGrouped[otherAccount.id] = existing
+                    oneOnOneGrouped[key] = existing
                 } else {
-                    oneOnOneGrouped[otherAccount.id] = (account: otherAccount, conversations: [conversation])
+                    oneOnOneGrouped[key] = (account: otherAccount, conversations: [conversation])
                 }
             }
         }
@@ -101,6 +104,10 @@ enum ConversationGroupingHelper {
         }
 
         return candidates.sorted().first
+    }
+
+    private static func canonicalParticipantKey(for account: MastodonAccount) -> String {
+        canonicalNormalizedHandle(for: account) ?? account.id
     }
 }
 

@@ -5,6 +5,7 @@ struct GroupedConversationDetailView: View {
     let groupedConversation: GroupedConversation
     @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
+    @Environment(\.layoutMode) private var layoutMode
     
     @State private var messageText = ""
     @State private var isSending = false
@@ -122,10 +123,12 @@ struct GroupedConversationDetailView: View {
             
             // Compose bar
             composeBar
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
         }
         .navigationTitle(currentGroupedConversation.displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .toolbar(layoutMode.isCompact ? .hidden : .visible, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 if isGroupChat {
