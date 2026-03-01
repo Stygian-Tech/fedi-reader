@@ -122,4 +122,45 @@ struct AppStateTests {
 
         #expect(state.exploreNavigationPath.isEmpty == true)
     }
+
+    @Test("resolved default link feed falls back to home when the configured list is unavailable")
+    func resolvedDefaultLinkFeedFallsBackToHome() async {
+        let state = AppState()
+
+        let feedID = state.resolvedDefaultLinkFeedID(
+            defaultListId: "missing-list",
+            availableListIDs: ["list-1", "list-2"]
+        )
+
+        #expect(feedID == AppState.homeFeedID)
+    }
+
+    @Test("apply default link feed selects the configured list when available")
+    func applyDefaultLinkFeedSelectsConfiguredList() async {
+        let state = AppState()
+
+        let feedID = state.applyDefaultLinkFeed(
+            defaultListId: "list-2",
+            availableListIDs: ["list-1", "list-2"]
+        )
+
+        #expect(feedID == "list-2")
+        #expect(state.selectedListId == "list-2")
+        #expect(state.selectedLinkFeedID == "list-2")
+    }
+
+    @Test("apply default link feed resets selection to home when no default list matches")
+    func applyDefaultLinkFeedResetsSelectionToHome() async {
+        let state = AppState()
+        state.selectedListId = "old-list"
+
+        let feedID = state.applyDefaultLinkFeed(
+            defaultListId: "missing-list",
+            availableListIDs: ["list-1", "list-2"]
+        )
+
+        #expect(feedID == AppState.homeFeedID)
+        #expect(state.selectedListId == nil)
+        #expect(state.selectedLinkFeedID == AppState.homeFeedID)
+    }
 }

@@ -173,6 +173,29 @@ final class TimelineService {
         homeMaxId = nil
         await loadHomeTimeline(refresh: true)
     }
+
+    func loadLinkFeedStatuses(feedId: String, forceRefreshHome: Bool = false) async -> [Status] {
+        if feedId == AppState.homeFeedID {
+            if forceRefreshHome || homeTimeline.isEmpty {
+                await refreshHomeTimeline()
+            }
+            return homeTimeline
+        }
+
+        await refreshListTimeline(listId: feedId)
+        return listTimeline
+    }
+
+    func prefetchLinkFeedStatuses(feedId: String) async -> [Status] {
+        if feedId == AppState.homeFeedID {
+            if homeTimeline.isEmpty {
+                await refreshHomeTimeline()
+            }
+            return homeTimeline
+        }
+
+        return await fetchListTimelineStatuses(listId: feedId)
+    }
     
     // MARK: - Explore / Trending
     

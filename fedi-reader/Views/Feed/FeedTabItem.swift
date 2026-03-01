@@ -11,9 +11,8 @@ struct FeedTabItem: Identifiable, Hashable {
         self.isHome = isHome
     }
     
-    static let home = FeedTabItem(id: "home", title: "Home", isHome: true)
+    static let home = FeedTabItem(id: AppState.homeFeedID, title: "Home", isHome: true)
 }
 
 // MARK: - Link Feed View
-
 

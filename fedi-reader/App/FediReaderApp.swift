@@ -16,6 +16,8 @@ private enum AppIntentsDependency {
 
 @main
 struct FediReaderApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Account.self,
@@ -37,19 +39,187 @@ struct FediReaderApp: App {
     }()
     
     @AppStorage("themeColor") private var themeColorName = "blue"
+    @AppStorage("defaultListId") private var defaultListId = ""
+    @State private var appState = AppState()
+    @State private var timelineWrapper = TimelineServiceWrapper()
+    @State private var linkFilterService = LinkFilterService()
+    @State private var readLaterManager = ReadLaterManager()
+
+    private var modelContext: ModelContext {
+        sharedModelContainer.mainContext
+    }
     
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(appState)
+                .environment(linkFilterService)
+                .environment(readLaterManager)
+                .environment(timelineWrapper)
                 .tint(ThemeColor.resolved(from: themeColorName).color)
+                .onAppear {
+                    setupServices()
+                    updateInboxAutoRefresh(for: scenePhase)
+                    startInitialLinkFeedLoadIfNeeded()
+                }
+                .task {
+                    await appState.authService.migrateOAuthClientSecretsToKeychain(modelContext: modelContext)
+                }
+                .onOpenURL { url in
+                    handleOpenURL(url)
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    updateInboxAutoRefresh(for: newPhase)
+                }
+                .onChange(of: appState.currentAccount?.id) { _, _ in
+                    updateInboxAutoRefresh(for: scenePhase)
+                    timelineWrapper.resetStartupLinkFeedLoad(for: appState.currentAccount?.id)
+                    startInitialLinkFeedLoadIfNeeded()
+                    Task {
+                        await appState.authService.refreshClientAuthenticationState()
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .readLaterDidSave)) { notification in
+                    guard let result = notification.object as? ReadLaterSaveResult else { return }
+                    handleReadLaterSaveResult(result)
+                }
         }
         .modelContainer(sharedModelContainer)
         
         #if os(macOS)
         Settings {
             SettingsView()
-                .environment(AppState())
+                .environment(appState)
+                .environment(timelineWrapper)
+                .environment(readLaterManager)
         }
         #endif
+    }
+
+    @MainActor
+    private func setupServices() {
+        appState.authService.loadAccounts(from: modelContext)
+        Task {
+            await appState.authService.refreshClientAuthenticationState()
+        }
+
+        if timelineWrapper.service == nil {
+            timelineWrapper.service = TimelineService(
+                client: appState.client,
+                authService: appState.authService
+            )
+        }
+
+        if let accountId = appState.currentAccount?.id,
+           let service = timelineWrapper.service,
+           service.lists.isEmpty {
+            let cachedLists = timelineWrapper.cachedLists(for: accountId)
+            if !cachedLists.isEmpty {
+                service.lists = cachedLists
+            }
+        }
+
+        readLaterManager.loadConfigurations(from: modelContext)
+
+        if let instance = appState.getCurrentInstance() {
+            Task {
+                await appState.emojiService.fetchCustomEmojis(for: instance)
+            }
+        }
+
+        updateInboxAutoRefresh(for: scenePhase)
+    }
+
+    @MainActor
+    private func updateInboxAutoRefresh(for phase: ScenePhase) {
+        guard let service = timelineWrapper.service else { return }
+        if appState.hasAccount, phase == .active {
+            service.startInboxAutoRefresh()
+        } else {
+            service.stopInboxAutoRefresh()
+        }
+    }
+
+    @MainActor
+    private func startInitialLinkFeedLoadIfNeeded() {
+        guard let accountId = appState.currentAccount?.id,
+              let service = timelineWrapper.service else { return }
+
+        timelineWrapper.beginStartupLinkFeedLoad(for: accountId) {
+            let initialFeedID = await loadListsAndApplyDefault(using: service)
+            guard self.appState.currentAccount?.id == accountId else { return }
+
+            self.linkFilterService.switchToFeed(initialFeedID)
+
+            if !self.linkFilterService.hasCachedContent(for: initialFeedID) {
+                let statuses = await service.loadLinkFeedStatuses(
+                    feedId: initialFeedID,
+                    forceRefreshHome: true
+                )
+                _ = await self.linkFilterService.processStatuses(statuses, for: initialFeedID)
+            }
+
+            Task {
+                await self.linkFilterService.enrichWithAttributions()
+            }
+
+            let allFeedIDs = [AppState.homeFeedID] + service.lists.map(\.id)
+            await self.linkFilterService.prefetchAdjacentFeeds(
+                currentFeedId: initialFeedID,
+                allFeedIds: allFeedIDs
+            ) { feedId in
+                await service.prefetchLinkFeedStatuses(feedId: feedId)
+            }
+        }
+    }
+
+    @MainActor
+    private func loadListsAndApplyDefault(using service: TimelineService) async -> String {
+        guard appState.hasAccount else { return AppState.homeFeedID }
+
+        await service.loadLists()
+        if !service.lists.isEmpty {
+            timelineWrapper.updateCachedLists(service.lists, for: appState.currentAccount?.id)
+        }
+
+        return appState.applyDefaultLinkFeed(
+            defaultListId: defaultListId,
+            availableListIDs: service.lists.map(\.id)
+        )
+    }
+
+    @MainActor
+    private func handleOpenURL(_ url: URL) {
+        if appState.authService.isValidCallback(url: url) {
+            Task {
+                do {
+                    let account = try await appState.authService.handleCallback(url: url, modelContext: modelContext)
+                    await appState.emojiService.fetchCustomEmojis(for: account.instance)
+                } catch {
+                    appState.handleError(error)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func handleReadLaterSaveResult(_ result: ReadLaterSaveResult) {
+        if result.success {
+            let message = result.url.host ?? result.url.absoluteString
+            appState.presentedAlert = AlertItem(
+                title: "Saved to \(result.serviceType.displayName)",
+                message: message
+            )
+            return
+        }
+
+        if let error = result.error {
+            appState.handleError(error)
+        } else {
+            appState.presentedAlert = AlertItem(
+                title: "Save Failed",
+                message: "Could not save to \(result.serviceType.displayName)"
+            )
+        }
     }
 }
