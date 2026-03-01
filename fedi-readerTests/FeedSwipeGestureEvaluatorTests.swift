@@ -97,4 +97,16 @@ struct FeedSwipeGestureEvaluatorTests {
         #expect(FeedSwipeGestureEvaluator.shouldSuppressTapAfterGesture(translation: CGSize(width: 12, height: 2)))
         #expect(!FeedSwipeGestureEvaluator.shouldSuppressTapAfterGesture(translation: CGSize(width: 2, height: 1)))
     }
+
+    @Test("Horizontal list picker blocks vertical-dominant pans")
+    func horizontalListPickerBlocksVerticalDominantPans() {
+        #expect(HorizontalListPickerGestureFilter.shouldBlockVerticalPan(velocity: CGPoint(x: 80, y: 220)))
+        #expect(HorizontalListPickerGestureFilter.shouldBlockVerticalPan(velocity: CGPoint(x: 0, y: -160)))
+    }
+
+    @Test("Horizontal list picker allows horizontal and tied pans")
+    func horizontalListPickerAllowsHorizontalAndTiedPans() {
+        #expect(!HorizontalListPickerGestureFilter.shouldBlockVerticalPan(velocity: CGPoint(x: 220, y: 80)))
+        #expect(!HorizontalListPickerGestureFilter.shouldBlockVerticalPan(velocity: CGPoint(x: 120, y: 120)))
+    }
 }

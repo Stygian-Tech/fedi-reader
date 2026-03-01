@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 private struct TabFramePreferenceKey: PreferenceKey {
     static var defaultValue: [Int: CGRect] { [:] }
@@ -13,6 +16,90 @@ private struct TabFramePreferenceKey: PreferenceKey {
         value.merge(nextValue()) { _, new in new }
     }
 }
+
+enum HorizontalListPickerGestureFilter {
+    static func shouldBlockVerticalPan(velocity: CGPoint) -> Bool {
+        abs(velocity.y) > abs(velocity.x)
+    }
+}
+
+#if os(iOS)
+private struct HorizontalListPickerScrollProtector: UIViewRepresentable {
+    typealias UIViewType = UIView
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: UIViewRepresentableContext<HorizontalListPickerScrollProtector>) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: UIViewRepresentableContext<HorizontalListPickerScrollProtector>) {
+        DispatchQueue.main.async {
+            context.coordinator.attachIfNeeded(from: uiView)
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        private weak var scrollView: UIScrollView?
+        private weak var blockerRecognizer: UIPanGestureRecognizer?
+
+        func attachIfNeeded(from view: UIView) {
+            guard let scrollView = enclosingScrollView(from: view) else {
+                return
+            }
+
+            configure(scrollView)
+        }
+
+        private func enclosingScrollView(from view: UIView) -> UIScrollView? {
+            var candidate = view.superview
+            while let currentView = candidate {
+                if let scrollView = currentView as? UIScrollView {
+                    return scrollView
+                }
+                candidate = currentView.superview
+            }
+            return nil
+        }
+
+        private func configure(_ scrollView: UIScrollView) {
+            scrollView.alwaysBounceVertical = false
+            scrollView.showsVerticalScrollIndicator = false
+
+            guard self.scrollView !== scrollView else { return }
+
+            if let blockerRecognizer, let previousScrollView = self.scrollView {
+                previousScrollView.removeGestureRecognizer(blockerRecognizer)
+            }
+
+            let blockerRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handleVerticalPan))
+            blockerRecognizer.cancelsTouchesInView = true
+            blockerRecognizer.delegate = self
+            scrollView.addGestureRecognizer(blockerRecognizer)
+            scrollView.panGestureRecognizer.require(toFail: blockerRecognizer)
+
+            self.scrollView = scrollView
+            self.blockerRecognizer = blockerRecognizer
+        }
+
+        @objc
+        private func handleVerticalPan(_ gestureRecognizer: UIPanGestureRecognizer) {}
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let panGestureRecognizer = gestureRecognizer as? UIPanGestureRecognizer else {
+                return false
+            }
+
+            let velocity = panGestureRecognizer.velocity(in: panGestureRecognizer.view)
+            return HorizontalListPickerGestureFilter.shouldBlockVerticalPan(velocity: velocity)
+        }
+    }
+}
+#endif
 
 /// Reusable pills and feed content. When `onArticleSelect` is non-nil, articles open inline (two-column).
 /// When nil, articles push via parent's NavigationStack (single column).
@@ -290,8 +377,11 @@ struct LinkFeedContentView: View {
                 .onPreferenceChange(TabFramePreferenceKey.self) { frames in
                     tabFrames = frames
                 }
+                #if os(iOS)
+                .background(HorizontalListPickerScrollProtector())
+                #endif
             }
-            .scrollBounceBehavior(.basedOnSize)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .onAppear {
                 if selectedTabIndex < feedTabs.count {
                     proxy.scrollTo(feedTabs[selectedTabIndex].id, anchor: .center)
