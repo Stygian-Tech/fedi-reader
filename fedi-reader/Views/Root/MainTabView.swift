@@ -61,7 +61,7 @@ struct MainTabView: View {
             }
 
             Tab(useSidebarLayout ? "Explore" : (hideTabBarLabels ? "" : "Explore"), systemImage: "globe", value: .explore) {
-                NavigationStack {
+                NavigationStack(path: $state.exploreNavigationPath) {
                     ExploreFeedView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
                             destinationView(for: destination)
