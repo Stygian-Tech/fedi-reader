@@ -109,7 +109,7 @@ struct Status: Codable, Identifiable, Hashable, Sendable {
         self.inReplyToAccountId = inReplyToAccountId
     }
     
-    init(from decoder: Decoder) throws {
+    nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
         id = try container.decode(String.self, forKey: .id)
@@ -146,7 +146,7 @@ struct Status: Codable, Identifiable, Hashable, Sendable {
         inReplyToAccountId = try container.decodeIfPresent(String.self, forKey: .inReplyToAccountId)
     }
     
-    func encode(to encoder: Encoder) throws {
+    nonisolated func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         
         try container.encode(id, forKey: .id)
@@ -212,5 +212,4 @@ struct Status: Codable, Identifiable, Hashable, Sendable {
 }
 
 // MARK: - IndirectStatus wrapper for recursive Status references
-
 

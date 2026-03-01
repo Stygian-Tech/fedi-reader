@@ -40,7 +40,7 @@ enum Constants {
         static let conversationRead = "/api/v1/conversations" // Use with /:id/read
         
         static let statuses = "/api/v1/statuses"
-        static let asyncRefreshes = "/api/v1_alpha/async_refreshes"
+        nonisolated static let asyncRefreshes = "/api/v1_alpha/async_refreshes"
         static let accounts = "/api/v1/accounts"
         static let search = "/api/v2/search"
         
@@ -155,17 +155,16 @@ enum Constants {
     // MARK: - Remote Replies
     
     enum RemoteReplies {
-        static let asyncRefreshHeader = "Mastodon-Async-Refresh"
-        static let fetchTimeout: TimeInterval = 10
-        static let maxConcurrentFetches = 5
-        static let maxRetries = 2
+        static nonisolated let asyncRefreshHeader = "Mastodon-Async-Refresh"
+        static nonisolated let fetchTimeout: TimeInterval = 10
+        static nonisolated let maxConcurrentFetches = 5
+        static nonisolated let maxRetries = 2
+        static nonisolated let contextRefetchDelaySeconds: TimeInterval = 2
         /// Fallback retry interval when server provides only async_refresh_id without header metadata.
-        static let asyncRefreshFallbackRetrySeconds = 5
+        static nonisolated let asyncRefreshFallbackRetrySeconds = 5
         /// Max polling attempts for async refresh before giving up (~2 min at typical retry=5–10s).
-        static let asyncRefreshMaxPollAttempts = 15
+        static nonisolated let asyncRefreshMaxPollAttempts = 15
     }
 }
 
 // MARK: - Notification Names
-
-

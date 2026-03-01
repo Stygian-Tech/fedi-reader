@@ -75,6 +75,57 @@ struct MastodonTypesTests {
 
         #expect(context.parentStatus(for: current) == nil)
     }
+
+    @Test("StatusContext requests more replies when server reports more replies are available")
+    func statusContextRequestsMoreRepliesWhenHasMoreRepliesIsTrue() {
+        let status = MockStatusFactory.makeStatus(id: "root", repliesCount: 1)
+        let reply = MockStatusFactory.makeStatus(id: "reply-1", inReplyToId: status.id)
+        let context = StatusContext(
+            ancestors: [],
+            descendants: [reply],
+            hasMoreReplies: true
+        )
+
+        #expect(context.needsRemoteReplyFetch(for: status) == true)
+    }
+
+    @Test("StatusContext requests remote fetch when async refresh is pending")
+    func statusContextRequestsRemoteFetchWhenAsyncRefreshIsPending() {
+        let status = MockStatusFactory.makeStatus(id: "root", repliesCount: 1)
+        let reply = MockStatusFactory.makeStatus(id: "reply-1", inReplyToId: status.id, repliesCount: 0)
+        let context = StatusContext(
+            ancestors: [],
+            descendants: [reply],
+            asyncRefreshId: "refresh-123"
+        )
+
+        #expect(context.needsRemoteReplyFetch(for: status) == true)
+    }
+
+    @Test("StatusContext resolvedReplyCount prefers discovered replies when context is complete")
+    func statusContextResolvedReplyCountUsesDiscoveredRepliesWhenComplete() {
+        let status = MockStatusFactory.makeStatus(id: "root", repliesCount: 1)
+        let replies = [
+            MockStatusFactory.makeStatus(id: "reply-1", inReplyToId: status.id, repliesCount: 0),
+            MockStatusFactory.makeStatus(id: "reply-2", inReplyToId: status.id, repliesCount: 0),
+            MockStatusFactory.makeStatus(id: "reply-3", inReplyToId: status.id, repliesCount: 0)
+        ]
+        let context = StatusContext(ancestors: [], descendants: replies, hasMoreReplies: false)
+
+        #expect(context.resolvedReplyCount(for: status) == 3)
+    }
+
+    @Test("StatusContext resolvedReplyCount preserves higher server count while replies are still pending")
+    func statusContextResolvedReplyCountPreservesHigherServerCountWhenPending() {
+        let status = MockStatusFactory.makeStatus(id: "root", repliesCount: 5)
+        let replies = [
+            MockStatusFactory.makeStatus(id: "reply-1", inReplyToId: status.id, repliesCount: 0),
+            MockStatusFactory.makeStatus(id: "reply-2", inReplyToId: status.id, repliesCount: 0)
+        ]
+        let context = StatusContext(ancestors: [], descendants: replies, hasMoreReplies: true)
+
+        #expect(context.resolvedReplyCount(for: status) == 5)
+    }
     
     // MARK: - Visibility Tests
     

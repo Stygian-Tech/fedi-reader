@@ -114,6 +114,18 @@ final class AuthService {
             return nil
         }
     }
+
+    func activeSessionSnapshot() async -> AuthSessionSnapshot? {
+        guard let currentAccount,
+              let accessToken = await getAccessToken(for: currentAccount) else {
+            return nil
+        }
+
+        return AuthSessionSnapshot(
+            instance: currentAccount.instance,
+            accessToken: accessToken
+        )
+    }
     
     // MARK: - OAuth Flow
     
@@ -402,6 +414,11 @@ final class AuthService {
         return components.scheme == Constants.OAuth.redirectScheme &&
                components.host == Constants.OAuth.redirectHost
     }
+}
+
+struct AuthSessionSnapshot: Sendable {
+    let instance: String
+    let accessToken: String
 }
 
 // MARK: - ASWebAuthenticationSession Support

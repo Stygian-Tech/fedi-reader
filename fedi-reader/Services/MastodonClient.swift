@@ -148,6 +148,43 @@ private actor MastodonBackgroundRequestExecutor {
         return (account, response)
     }
 
+    func getStatusContextWithRefresh(
+        instance: String,
+        accessToken: String,
+        id: String
+    ) async throws -> MastodonClient.StatusContextWithRefresh {
+        let url = try buildMastodonURL(instance: instance, path: "/api/v1/statuses/\(id)/context")
+        let request = buildMastodonRequest(url: url, accessToken: accessToken)
+        let (data, httpResponse) = try await performRequest(request)
+        let context = try decoder.decode(StatusContext.self, from: data)
+
+        let rawHeader = httpResponse.value(forHTTPHeaderField: Constants.RemoteReplies.asyncRefreshHeader)
+        let asyncRefreshHeader = AsyncRefreshHeader.parse(headerValue: rawHeader)
+        let enhancedContext = StatusContext(
+            ancestors: context.ancestors,
+            descendants: context.descendants,
+            hasMoreReplies: context.hasMoreReplies,
+            asyncRefreshId: asyncRefreshHeader?.id ?? context.asyncRefreshId
+        )
+
+        return MastodonClient.StatusContextWithRefresh(
+            context: enhancedContext,
+            asyncRefreshHeader: asyncRefreshHeader
+        )
+    }
+
+    func getAsyncRefresh(
+        instance: String,
+        accessToken: String,
+        id: String
+    ) async throws -> AsyncRefresh {
+        let url = try buildMastodonURL(instance: instance, path: "\(Constants.API.asyncRefreshes)/\(id)")
+        let request = buildMastodonRequest(url: url, accessToken: accessToken)
+        let (data, _) = try await performRequest(request)
+        let wrapper = try decoder.decode(AsyncRefreshResponse.self, from: data)
+        return wrapper.asyncRefresh
+    }
+
     private func performRequest(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let method = request.httpMethod ?? "GET"
         let url = request.url?.absoluteString ?? "unknown"
@@ -804,6 +841,18 @@ final class MastodonClient {
         }
         return try await getStatusContextWithRefresh(instance: instance, accessToken: token, id: id)
     }
+
+    nonisolated func getStatusContextWithRefreshInBackground(
+        instance: String,
+        accessToken: String,
+        id: String
+    ) async throws -> StatusContextWithRefresh {
+        try await backgroundRequestExecutor.getStatusContextWithRefresh(
+            instance: instance,
+            accessToken: accessToken,
+            id: id
+        )
+    }
     
     // MARK: - Async Refreshes (Mastodon 4.5+)
     
@@ -819,6 +868,18 @@ final class MastodonClient {
             throw FediReaderError.noActiveAccount
         }
         return try await getAsyncRefresh(instance: instance, accessToken: token, id: id)
+    }
+
+    nonisolated func getAsyncRefreshInBackground(
+        instance: String,
+        accessToken: String,
+        id: String
+    ) async throws -> AsyncRefresh {
+        try await backgroundRequestExecutor.getAsyncRefresh(
+            instance: instance,
+            accessToken: accessToken,
+            id: id
+        )
     }
     
     // MARK: - Remote Status Resolution

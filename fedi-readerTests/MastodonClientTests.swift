@@ -2,50 +2,60 @@ import Testing
 import Foundation
 @testable import fedi_reader
 
-@Suite("Mastodon Client Tests")
+@Suite("Mastodon Client Tests", .serialized)
 @MainActor
 struct MastodonClientTests {
     @Test("lookupAccount uses configured session and auth snapshot")
     func lookupAccountUsesConfiguredSession() async throws {
-        let account = makeAccount(acct: "alice-lookup@example.com", username: "alice")
-        MockURLProtocol.setMockResponse(
-            for: lookupAccountURL(instance: "mastodon.social", acct: "alice-lookup@example.com"),
-            data: try makeEncoder().encode(account)
-        )
+        try await SharedTestResourceGate.withExclusiveAccess {
+            MockURLProtocol.reset()
+            defer { MockURLProtocol.reset() }
 
-        let client = makeClient()
-        client.currentInstance = "mastodon.social"
-        client.currentAccessToken = "secret-token"
+            let account = makeAccount(acct: "alice-lookup@example.com", username: "alice")
+            MockURLProtocol.setMockResponse(
+                for: lookupAccountURL(instance: "mastodon.social", acct: "alice-lookup@example.com"),
+                data: try makeEncoder().encode(account)
+            )
 
-        let resolved = try await client.lookupAccount(acct: "alice-lookup@example.com")
+            let client = makeClient()
+            client.currentInstance = "mastodon.social"
+            client.currentAccessToken = "secret-token"
 
-        #expect(resolved.acct == "alice-lookup@example.com")
-        #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer secret-token")
+            let resolved = try await client.lookupAccount(acct: "alice-lookup@example.com")
+
+            #expect(resolved.acct == "alice-lookup@example.com")
+            #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer secret-token")
+        }
     }
 
     @Test("resolveProfileAccount falls back to search when lookup fails")
     func resolveProfileAccountFallsBackToSearch() async throws {
-        let account = makeAccount(acct: "alice-resolve@example.com", username: "alice")
-        MockURLProtocol.setMockResponse(
-            for: lookupAccountURL(instance: "mastodon.social", acct: "alice-resolve@example.com"),
-            data: Data("not found".utf8),
-            statusCode: 404
-        )
+        try await SharedTestResourceGate.withExclusiveAccess {
+            MockURLProtocol.reset()
+            defer { MockURLProtocol.reset() }
 
-        let searchResults = SearchResults(accounts: [account], statuses: [], hashtags: [])
-        MockURLProtocol.setMockResponse(
-            for: searchURL(instance: "mastodon.social", query: "alice-resolve@example.com", type: "accounts", limit: 5),
-            data: try makeEncoder().encode(searchResults)
-        )
+            let account = makeAccount(acct: "alice-resolve@example.com", username: "alice")
+            MockURLProtocol.setMockResponse(
+                for: lookupAccountURL(instance: "mastodon.social", acct: "alice-resolve@example.com"),
+                data: Data("not found".utf8),
+                statusCode: 404
+            )
 
-        let client = makeClient()
-        client.currentInstance = "mastodon.social"
-        client.currentAccessToken = "secret-token"
+            let searchResults = SearchResults(accounts: [account], statuses: [], hashtags: [])
+            MockURLProtocol.setMockResponse(
+                for: searchURL(instance: "mastodon.social", query: "alice-resolve@example.com", type: "accounts", limit: 5),
+                data: try makeEncoder().encode(searchResults)
+            )
 
-        let resolved = await client.resolveProfileAccount(handle: "@alice-resolve@example.com")
+            let client = makeClient()
+            client.currentInstance = "mastodon.social"
+            client.currentAccessToken = "secret-token"
 
-        #expect(resolved?.id == account.id)
-        #expect(resolved?.preferredDisplayName == account.displayName)
+            let resolved = await client.resolveProfileAccount(handle: "@alice-resolve@example.com")
+
+            #expect(resolved?.id == account.id)
+            #expect(resolved?.preferredDisplayName == account.displayName)
+        }
     }
 
     private func makeClient() -> MastodonClient {
