@@ -80,4 +80,46 @@ struct AppStateTests {
 
         #expect(state.linksScrollToTopRequestID == initialRequestID + 1)
     }
+
+    @Test("navigate routes explore destinations to the explore navigation path")
+    func navigateRoutesExploreDestinationsToExplorePath() async {
+        let state = AppState()
+        let destination = NavigationDestination.article(
+            url: URL(string: "https://example.com")!,
+            status: nil
+        )
+
+        state.selectedTab = .explore
+        state.navigate(to: destination)
+
+        #expect(state.exploreNavigationPath == [destination])
+        #expect(state.linksNavigationPath.isEmpty == true)
+        #expect(state.profileNavigationPath.isEmpty == true)
+    }
+
+    @Test("navigateBack removes the last explore destination")
+    func navigateBackRemovesLastExploreDestination() async {
+        let state = AppState()
+
+        state.selectedTab = .explore
+        state.navigate(to: .settings)
+        state.navigate(to: .readLaterSettings)
+
+        state.navigateBack()
+
+        #expect(state.exploreNavigationPath == [.settings])
+    }
+
+    @Test("navigateToRoot clears the explore navigation path")
+    func navigateToRootClearsExploreNavigationPath() async {
+        let state = AppState()
+
+        state.selectedTab = .explore
+        state.navigate(to: .settings)
+        state.navigate(to: .readLaterSettings)
+
+        state.navigateToRoot()
+
+        #expect(state.exploreNavigationPath.isEmpty == true)
+    }
 }

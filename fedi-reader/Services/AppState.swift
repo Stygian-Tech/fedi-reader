@@ -32,6 +32,7 @@ final class AppState {
     
     // Navigation state (per-tab so switching tabs shows correct root)
     var linksNavigationPath: [NavigationDestination] = []
+    var exploreNavigationPath: [NavigationDestination] = []
     var profileNavigationPath: [NavigationDestination] = []
     var presentedSheet: SheetDestination?
     var presentedAlert: AlertItem?
@@ -109,9 +110,11 @@ final class AppState {
         switch selectedTab {
         case .links:
             linksNavigationPath.append(destination)
+        case .explore:
+            exploreNavigationPath.append(destination)
         case .profile:
             profileNavigationPath.append(destination)
-        case .explore, .mentions:
+        case .mentions:
             break
         }
     }
@@ -126,6 +129,14 @@ final class AppState {
             } else {
                 Self.logger.debug("Navigate back called but navigation path is empty")
             }
+        case .explore:
+            if !exploreNavigationPath.isEmpty {
+                let previous = exploreNavigationPath.last
+                exploreNavigationPath.removeLast()
+                Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
+            } else {
+                Self.logger.debug("Navigate back called but navigation path is empty")
+            }
         case .profile:
             if !profileNavigationPath.isEmpty {
                 let previous = profileNavigationPath.last
@@ -134,7 +145,7 @@ final class AppState {
             } else {
                 Self.logger.debug("Navigate back called but navigation path is empty")
             }
-        case .explore, .mentions:
+        case .mentions:
             break
         }
     }
@@ -145,11 +156,15 @@ final class AppState {
             let count = linksNavigationPath.count
             linksNavigationPath.removeAll()
             Self.logger.info("Navigating to root, cleared \(count) destinations")
+        case .explore:
+            let count = exploreNavigationPath.count
+            exploreNavigationPath.removeAll()
+            Self.logger.info("Navigating to root, cleared \(count) destinations")
         case .profile:
             let count = profileNavigationPath.count
             profileNavigationPath.removeAll()
             Self.logger.info("Navigating to root, cleared \(count) destinations")
-        case .explore, .mentions:
+        case .mentions:
             break
         }
     }
@@ -205,7 +220,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 enum NavigationDestination: Hashable {
     case status(Status)
     case profile(MastodonAccount)
-    case article(url: URL, status: Status)
+    case article(url: URL, status: Status?)
     case thread(statusId: String)
     case hashtag(String)
     case settings

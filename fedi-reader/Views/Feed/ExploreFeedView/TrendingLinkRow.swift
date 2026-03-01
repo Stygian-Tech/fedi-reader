@@ -20,11 +20,7 @@ struct TrendingLinkRow: View {
     var body: some View {
         Button {
             if let url = link.linkURL {
-                #if os(iOS)
-                UIApplication.shared.open(url)
-                #elseif os(macOS)
-                NSWorkspace.shared.open(url)
-                #endif
+                appState.navigate(to: .article(url: url, status: nil))
             }
         } label: {
             LinkCardContent(link: link)

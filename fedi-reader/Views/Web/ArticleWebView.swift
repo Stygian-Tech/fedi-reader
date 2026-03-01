@@ -10,7 +10,7 @@ import WebKit
 
 struct ArticleWebView: View {
     let url: URL
-    let status: Status
+    let status: Status?
     
     @Environment(AppState.self) private var appState
     @Environment(ReadLaterManager.self) private var readLaterManager
@@ -124,11 +124,14 @@ struct ArticleWebView: View {
         }
     }
 
+    @ViewBuilder
     private var actionToolbar: some View {
-        StatusActionsToolbar(status: status)
-            .glassEffect(.regular)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 6)
+        if let status {
+            StatusActionsToolbar(status: status)
+                .glassEffect(.regular)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 6)
+        }
     }
 }
 
