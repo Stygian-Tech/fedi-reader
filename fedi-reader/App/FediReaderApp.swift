@@ -8,6 +8,9 @@
 import SwiftUI
 import SwiftData
 import AppIntents
+#if os(iOS)
+import UIKit
+#endif
 
 @available(iOS 16.0, *)
 private enum AppIntentsDependency {
@@ -61,6 +64,14 @@ struct FediReaderApp: App {
                     setupServices()
                     updateInboxAutoRefresh(for: scenePhase)
                     startInitialLinkFeedLoadIfNeeded()
+                    #if os(iOS)
+                    configureTabBarBadgeColor(themeColorName)
+                    #endif
+                }
+                .onChange(of: themeColorName) { _, newValue in
+                    #if os(iOS)
+                    configureTabBarBadgeColor(newValue)
+                    #endif
                 }
                 .task {
                     await appState.authService.migrateOAuthClientSecretsToKeychain(modelContext: modelContext)
@@ -95,6 +106,18 @@ struct FediReaderApp: App {
         }
         #endif
     }
+
+    #if os(iOS)
+    private func configureTabBarBadgeColor(_ themeColorName: String) {
+        let color = ThemeColor.resolved(from: themeColorName).color
+        let tabBarAppearance = UITabBarAppearance()
+        let itemAppearance = UITabBarItemAppearance()
+        itemAppearance.normal.badgeBackgroundColor = UIColor(color)
+        tabBarAppearance.stackedLayoutAppearance = itemAppearance
+        UITabBar.appearance().standardAppearance = tabBarAppearance
+        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+    }
+    #endif
 
     @MainActor
     private func setupServices() {
