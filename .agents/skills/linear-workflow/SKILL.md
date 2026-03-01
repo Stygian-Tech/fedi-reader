@@ -21,9 +21,11 @@ description: ALWAYS check for linked Linear issue and follow conventions before 
 
 3. **Set In Progress** via `save_issue` with `state: "In Progress"` before making code changes.
 
-4. **Add comments as you work** via `create_comment`—implementations, decisions, blockers.
+4. **Include the full plan** via `create_comment`—when implementing from a `.plan.md` file, paste the **entire plan content** as a Linear comment so reviewers have full context.
 
-5. **Do not mark Done**—let Linear–GitHub integration set Done when the PR is merged.
+5. **Add comments as you work** via `create_comment`—implementations, decisions, blockers.
+
+6. **Do not mark Done**—let Linear–GitHub integration set Done when the PR is merged.
 
 If no Linear issue exists (e.g. branch is `main` or doesn’t match patterns), proceed without Linear updates—but **always check first**.
 

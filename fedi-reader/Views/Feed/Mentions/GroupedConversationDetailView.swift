@@ -10,6 +10,7 @@ struct GroupedConversationDetailView: View {
     @State private var messageText = ""
     @State private var isSending = false
     @FocusState private var isTextFieldFocused: Bool
+    @AppStorage("themeColor") private var themeColorName = "blue"
     
     private var timelineService: TimelineService? {
         timelineWrapper.service
@@ -124,7 +125,7 @@ struct GroupedConversationDetailView: View {
             // Compose bar
             composeBar
                 .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                .padding(.bottom, 20)
         }
         .navigationTitle(currentGroupedConversation.displayName)
         .navigationBarTitleDisplayMode(.inline)
@@ -236,7 +237,7 @@ struct GroupedConversationDetailView: View {
                 } else {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title2)
-                        .foregroundStyle(canSend ? .blue : .gray)
+                        .foregroundStyle(canSend ? ThemeColor.resolved(from: themeColorName).color : .gray)
                 }
             }
             .disabled(!canSend)
@@ -248,7 +249,10 @@ struct GroupedConversationDetailView: View {
     
     private func sendMessage() async {
         guard canSend else { return }
+        let textToSend = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !textToSend.isEmpty else { return }
         
+        messageText = ""
         isSending = true
         defer { isSending = false }
         
@@ -260,17 +264,15 @@ struct GroupedConversationDetailView: View {
             
             // Build mentions for all participants
             let mentions = participants.map { "@\($0.acct)" }.joined(separator: " ")
-            let contentWithMentions = messageText.hasPrefix("@") ? messageText : "\(mentions) \(messageText)"
+            let contentWithMentions = textToSend.hasPrefix("@") ? textToSend : "\(mentions) \(textToSend)"
             
             // Reply to the last message in the conversation
             _ = try await service.reply(to: lastMessage, content: contentWithMentions)
             
-            // Clear input
-            messageText = ""
-            
             await loadAllConversationThreads()
         } catch {
             Logger(subsystem: "app.fedi-reader", category: "Mentions").error("Failed to send message: \(error.localizedDescription)")
+            messageText = textToSend
         }
     }
     

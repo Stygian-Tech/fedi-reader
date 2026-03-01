@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import os
 
@@ -7,6 +8,7 @@ struct ChatBubble: View {
     let isSent: Bool
     @Environment(AppState.self) private var appState
     @AppStorage("themeColor") private var themeColorName = "blue"
+    @AppStorage("autoPlayGifs") private var autoPlayGifs = false
     
     var status: Status? {
         message.status
@@ -101,6 +103,37 @@ struct ChatBubble: View {
     private var chatMediaAttachments: some View {
         VStack(alignment: isSent ? .trailing : .leading, spacing: 6) {
             ForEach(mediaAttachments) { attachment in
+                ChatMediaAttachmentView(
+                    attachment: attachment,
+                    isSent: isSent,
+                    autoPlayGifs: autoPlayGifs
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Chat Media Attachment View
+
+private struct ChatMediaAttachmentView: View {
+    let attachment: MediaAttachment
+    let isSent: Bool
+    let autoPlayGifs: Bool
+
+    var body: some View {
+        Group {
+            if (attachment.type == .gifv || attachment.type == .video), autoPlayGifs, let url = URL(string: attachment.url) {
+                ChatGifvPlayerView(url: url)
+                    .frame(maxWidth: 220, maxHeight: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(alignment: .bottomTrailing) {
+                        Image(systemName: attachment.type == .gifv ? "play.circle" : "video")
+                            .font(.roundedCaption)
+                            .padding(4)
+                            .glassEffect(.clear, in: Circle())
+                            .padding(6)
+                    }
+            } else {
                 AsyncImage(url: URL(string: attachment.previewUrl ?? attachment.url)) { image in
                     image
                         .resizable()
@@ -121,6 +154,37 @@ struct ChatBubble: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Chat GIFV Player View
+
+private struct ChatGifvPlayerView: View {
+    let url: URL
+    @State private var player: AVQueuePlayer?
+    @State private var looper: AVPlayerLooper?
+
+    var body: some View {
+        Group {
+            if let player {
+                VideoPlayer(player: player)
+                    .onAppear {
+                        player.isMuted = true
+                        player.play()
+                    }
+            } else {
+                Rectangle()
+                    .fill(.tertiary)
+            }
+        }
+        .onAppear {
+            guard player == nil else { return }
+            let item = AVPlayerItem(url: url)
+            let queuePlayer = AVQueuePlayer(playerItem: item)
+            let loop = AVPlayerLooper(player: queuePlayer, templateItem: item)
+            player = queuePlayer
+            looper = loop
         }
     }
 }
