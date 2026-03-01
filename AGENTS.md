@@ -6,12 +6,14 @@ Link-focused Mastodon news reader for iOS and macOS. SwiftUI + SwiftData, `@Obse
 
 Project context lives under [.agents/](.agents/):
 
-| Task | Read |
-|------|------|
+
+| Task              | Read                                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
 | **Starting work** | [.agents/rules/linear-workflow.md](.agents/rules/linear-workflow.md) — **MANDATORY first step** |
-| **Architecture** | [.agents/context/architecture.md](.agents/context/architecture.md) |
-| **Code style** | [.agents/context/conventions.md](.agents/context/conventions.md) |
-| **Build & test** | [.agents/context/build-commands.md](.agents/context/build-commands.md) or [WARP.md](WARP.md) |
+| **Architecture**  | [.agents/context/architecture.md](.agents/context/architecture.md)                              |
+| **Code style**    | [.agents/context/conventions.md](.agents/context/conventions.md)                                |
+| **Build & test**  | [.agents/context/build-commands.md](.agents/context/build-commands.md) or [WARP.md](WARP.md)    |
+
 
 ## Dev environment
 
@@ -23,3 +25,4 @@ Project context lives under [.agents/](.agents/):
 
 - **URL scheme**: `fedi-reader://` for OAuth callbacks
 - **Read-later**: Configure in-app (Profile → Read Later Services). Credentials in Keychain; no analytics; HTTPS-only.
+

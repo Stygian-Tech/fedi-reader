@@ -6,5 +6,6 @@
     },
     "lldb.library": "/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/LLDB",
     "swift.swiftEnvironmentVariables": {},
-    "sweetpad.build.args": []
+    "sweetpad.build.args": [],
+    "debug.console.wordWrap": false
 }
