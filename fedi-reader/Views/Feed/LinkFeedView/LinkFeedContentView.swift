@@ -24,6 +24,7 @@ struct LinkFeedContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
+    @AppStorage("hapticFeedback") private var hapticFeedback = true
 
     @State private var selectedTabIndex: Int = 0
     @State private var scrollProxy: ScrollViewProxy?
@@ -31,6 +32,7 @@ struct LinkFeedContentView: View {
     @State private var isHorizontalSwipeIntentActive = false
     @State private var postSwipeTapSuppressionDeadline: TimeInterval = 0
     @State private var retainedLists: [MastodonList] = []
+    @State private var feedTabSelectionTracker = SelectionDoubleTapTracker<String>()
     @State private var tabFrames: [Int: CGRect] = [:]
     // Scroll position preservation per feed id
     @State private var lastVisibleStatusIdPerFeed: [String: String] = [:]
@@ -104,10 +106,8 @@ struct LinkFeedContentView: View {
         feedStack(statuses: statuses)
         .background(Color(.systemBackground))
         .navigationBarTitleDisplayMode(.inline)
-        .onPreferenceChange(ScrollToTopKey.self) { shouldScroll in
-            if shouldScroll {
-                scrollToTop()
-            }
+        .onChange(of: appState.linksScrollToTopRequestID) { _, _ in
+            scrollToTop()
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -265,7 +265,7 @@ struct LinkFeedContentView: View {
                                 isSelected: selectedTabIndex == index,
                                 pillNamespace: nil
                             ) {
-                                selectTab(at: index)
+                                handleTabTap(at: index)
                             }
                             .background {
                                 GeometryReader { geo in
@@ -334,6 +334,22 @@ struct LinkFeedContentView: View {
         withAnimation(.easeInOut(duration: 0.25)) {
             selectedTabIndex = index
         }
+    }
+
+    private func handleTabTap(at index: Int) {
+        guard index >= 0, index < feedTabs.count else { return }
+
+        let tab = feedTabs[index]
+        let isSelected = index == selectedTabIndex
+        let isDoubleTap = feedTabSelectionTracker.recordSelection(tab.id)
+
+        if isSelected, isDoubleTap {
+            HapticFeedback.play(.medium, enabled: hapticFeedback)
+            appState.requestLinksScrollToTop()
+            return
+        }
+
+        selectTab(at: index)
     }
 
     private func handleTabChange(to newIndex: Int) {

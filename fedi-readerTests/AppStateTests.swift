@@ -70,4 +70,14 @@ struct AppStateTests {
         #expect(state.presentedAlert?.title == "Error")
         #expect(state.presentedAlert?.message == "Something went wrong")
     }
+
+    @Test("requestLinksScrollToTop increments the request id")
+    func requestLinksScrollToTopIncrementsRequestId() async {
+        let state = AppState()
+        let initialRequestID = state.linksScrollToTopRequestID
+
+        state.requestLinksScrollToTop()
+
+        #expect(state.linksScrollToTopRequestID == initialRequestID + 1)
+    }
 }

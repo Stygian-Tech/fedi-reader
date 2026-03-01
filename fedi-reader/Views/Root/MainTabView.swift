@@ -6,12 +6,10 @@ import UIKit
 
 struct MainTabView: View {
     @Environment(AppState.self) private var appState
-    @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @Environment(\.layoutMode) private var layoutMode
 
     @State private var tabTracker = TabSelectionTracker()
-    @State private var scrollToTopTrigger = false
     @AppStorage("hapticFeedback") private var hapticFeedback = true
     @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
     
@@ -26,7 +24,12 @@ struct MainTabView: View {
     var body: some View {
         @Bindable var state = appState
 
-        TabView(selection: $state.selectedTab) {
+        TabView(
+            selection: Binding(
+                get: { state.selectedTab },
+                set: { handleTabSelection($0) }
+            )
+        ) {
             Tab(useSidebarLayout ? "Home" : (hideTabBarLabels ? "" : "Home"), systemImage: "house", value: .links) {
                 Group {
                     switch layoutMode {
@@ -36,15 +39,6 @@ struct MainTabView: View {
                                 .navigationDestination(for: NavigationDestination.self) { destination in
                                     splitLayoutDestinationView(for: destination)
                                 }
-                                .onAppear {
-                                    if state.selectedTab == .links {
-                                        let isDoubleTap = tabTracker.recordSelection(.links)
-                                        if isDoubleTap {
-                                            scrollToTopTrigger.toggle()
-                                            HapticFeedback.play(.medium, enabled: false)
-                                        }
-                                    }
-                                }
                         }
                     case .medium:
                         NavigationStack(path: $state.linksNavigationPath) {
@@ -52,30 +46,12 @@ struct MainTabView: View {
                                 .navigationDestination(for: NavigationDestination.self) { destination in
                                     splitLayoutDestinationView(for: destination)
                                 }
-                                .onAppear {
-                                    if state.selectedTab == .links {
-                                        let isDoubleTap = tabTracker.recordSelection(.links)
-                                        if isDoubleTap {
-                                            scrollToTopTrigger.toggle()
-                                            HapticFeedback.play(.medium, enabled: false)
-                                        }
-                                    }
-                                }
                         }
                     case .compact:
                         NavigationStack(path: $state.linksNavigationPath) {
                             LinkFeedView()
                                 .navigationDestination(for: NavigationDestination.self) { destination in
                                     destinationView(for: destination)
-                                }
-                                .onAppear {
-                                    if state.selectedTab == .links {
-                                        let isDoubleTap = tabTracker.recordSelection(.links)
-                                        if isDoubleTap {
-                                            scrollToTopTrigger.toggle()
-                                            HapticFeedback.play(.medium, enabled: hapticFeedback)
-                                        }
-                                    }
                                 }
                         }
                     }
@@ -124,19 +100,13 @@ struct MainTabView: View {
             if oldValue == .profile {
                 state.profileNavigationPath.removeAll()
             }
-            if newValue == .links {
-                let isDoubleTap = tabTracker.recordSelection(.links)
-                if isDoubleTap {
-                    scrollToTopTrigger.toggle()
-                    HapticFeedback.play(.medium, enabled: hapticFeedback && !useSidebarLayout)
-                }
-            } else if newValue == .mentions {
+            if newValue == .mentions {
                 Task {
                     await timelineWrapper.service?.refreshMentions()
                     await timelineWrapper.service?.refreshConversations()
                 }
                 tabTracker.reset()
-            } else {
+            } else if newValue != .links {
                 tabTracker.reset()
             }
         }
@@ -145,7 +115,27 @@ struct MainTabView: View {
                 await ensureListsAvailableAfterLayoutTransition()
             }
         }
-        .preference(key: ScrollToTopKey.self, value: scrollToTopTrigger)
+    }
+
+    private func handleTabSelection(_ newValue: AppTab) {
+        let currentValue = appState.selectedTab
+
+        if newValue == .links {
+            if currentValue == .links {
+                let isDoubleTap = tabTracker.recordSelection(.links)
+                if isDoubleTap {
+                    appState.requestLinksScrollToTop()
+                    HapticFeedback.play(.medium, enabled: hapticFeedback && !useSidebarLayout)
+                }
+            } else {
+                tabTracker.reset()
+            }
+        } else {
+            tabTracker.reset()
+        }
+
+        guard newValue != currentValue else { return }
+        appState.selectedTab = newValue
     }
 
     @ViewBuilder
