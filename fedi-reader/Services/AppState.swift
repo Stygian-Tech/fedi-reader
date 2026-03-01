@@ -23,6 +23,7 @@ final class AppState {
     var isLoading = false
     var error: Error?
     var selectedTab: AppTab = .links
+    var linksScrollToTopRequestID: UInt = 0
     
     // List and filter state
     var selectedListId: String? = nil  // nil = Home timeline
@@ -163,6 +164,10 @@ final class AppState {
             Self.logger.info("Dismissing sheet: \(sheet.id, privacy: .public)")
         }
         presentedSheet = nil
+    }
+
+    func requestLinksScrollToTop() {
+        linksScrollToTopRequestID &+= 1
     }
 }
 

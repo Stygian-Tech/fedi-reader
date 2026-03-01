@@ -7,38 +7,45 @@
 
 import Foundation
 
-@Observable
 @MainActor
-final class TabSelectionTracker {
+final class SelectionDoubleTapTracker<Selection: Equatable> {
     private var lastSelectionTime: Date?
-    private var lastSelectedTab: AppTab?
-    private let doubleTapWindow: TimeInterval = 0.4 // Native iOS double-tap timing
-    
-    func recordSelection(_ tab: AppTab) -> Bool {
-        let now = Date()
+    private var lastSelection: Selection?
+    private let doubleTapWindow: TimeInterval
+    private let now: () -> Date
+
+    init(
+        doubleTapWindow: TimeInterval = 0.4,
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.doubleTapWindow = doubleTapWindow
+        self.now = now
+    }
+
+    func recordSelection(_ selection: Selection) -> Bool {
+        let now = now()
         let isDoubleTap: Bool
-        
+
         if let lastTime = lastSelectionTime,
-           let lastTab = lastSelectedTab,
-           lastTab == tab,
+           let lastSelection,
+           lastSelection == selection,
            now.timeIntervalSince(lastTime) < doubleTapWindow {
-            // Double-tap detected
             isDoubleTap = true
-            // Reset to prevent triple-tap from triggering again
             lastSelectionTime = nil
-            lastSelectedTab = nil
+            self.lastSelection = nil
         } else {
-            // First tap or different tab
             isDoubleTap = false
             lastSelectionTime = now
-            lastSelectedTab = tab
+            lastSelection = selection
         }
-        
+
         return isDoubleTap
     }
-    
+
     func reset() {
         lastSelectionTime = nil
-        lastSelectedTab = nil
+        lastSelection = nil
     }
 }
+
+typealias TabSelectionTracker = SelectionDoubleTapTracker<AppTab>
