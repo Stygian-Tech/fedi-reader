@@ -32,6 +32,9 @@ struct LinkFeedContentView: View {
     @State private var postSwipeTapSuppressionDeadline: TimeInterval = 0
     @State private var retainedLists: [MastodonList] = []
     @State private var tabFrames: [Int: CGRect] = [:]
+    // Scroll position preservation per feed id
+    @State private var lastVisibleStatusIdPerFeed: [String: String] = [:]
+    @State private var hasRestoredScrollForCurrentTab: Bool = false
 
     private var timelineService: TimelineService? {
         timelineWrapper.service
@@ -174,8 +177,11 @@ struct LinkFeedContentView: View {
                 retainedLists = cachedLists
             }
             syncRetainedLists(with: liveLists, allowEmpty: false)
+            // Attempt to restore scroll to last seen item when returning
+            attemptRestoreScrollIfNeeded()
         }
         .onDisappear {
+            hasRestoredScrollForCurrentTab = false
             isHorizontalSwipeIntentActive = false
             postSwipeTapSuppressionDeadline = 0
         }
@@ -236,7 +242,15 @@ struct LinkFeedContentView: View {
                 checkLoadMore(at: index, totalCount: totalCount)
             },
             onArticleSelect: onArticleSelect,
-            scrollProxy: $scrollProxy
+            scrollProxy: $scrollProxy,
+            onFirstVisibleChange: { statusId in
+                // Persist the last visible status id for the current feed tab
+                lastVisibleStatusIdPerFeed[currentTab.id] = statusId
+            },
+            onListAppear: {
+                // When the list appears (e.g., popped back from article), try to restore once
+                attemptRestoreScrollIfNeeded()
+            }
         )
     }
 
@@ -323,6 +337,7 @@ struct LinkFeedContentView: View {
     }
 
     private func handleTabChange(to newIndex: Int) {
+        hasRestoredScrollForCurrentTab = false
         guard newIndex >= 0, newIndex < feedTabs.count else { return }
 
         let tab = feedTabs[newIndex]
@@ -480,6 +495,22 @@ struct LinkFeedContentView: View {
             let newStatuses = await service.loadMoreListTimeline(listId: tab.id)
             guard !newStatuses.isEmpty else { return }
             _ = await linkFilterService.appendStatuses(newStatuses, for: tab.id)
+        }
+    }
+
+    // MARK: - Scroll Position Preservation
+
+    private func attemptRestoreScrollIfNeeded() {
+        guard let proxy = scrollProxy else { return }
+        guard !hasRestoredScrollForCurrentTab else { return }
+        let feedId = currentTab.id
+        guard let statusId = lastVisibleStatusIdPerFeed[feedId] else { return }
+        // Avoid animating to reduce visual jump
+        DispatchQueue.main.async {
+            withAnimation(nil) {
+                proxy.scrollTo(statusId, anchor: .top)
+            }
+            hasRestoredScrollForCurrentTab = true
         }
     }
 }

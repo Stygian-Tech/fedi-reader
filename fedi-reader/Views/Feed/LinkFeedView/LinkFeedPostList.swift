@@ -15,8 +15,39 @@ struct LinkFeedPostList: View {
     let shouldBlockPostTaps: () -> Bool
     let onItemAppear: (Int, Int) -> Void
     let onArticleSelect: ((URL, Status) -> Void)?
+    
+    // New: scroll position reporting
+    let onFirstVisibleChange: ((String) -> Void)?
+    let onListAppear: (() -> Void)?
+    
+    @State private var rowTopOffsets: [String: CGFloat] = [:]
+    @State private var currentFirstVisibleId: String?
 
     @Binding var scrollProxy: ScrollViewProxy?
+
+    init(
+        statuses: [LinkStatus],
+        isLoading: Bool,
+        shouldShowPaginationLoading: Bool,
+        deferPostNavigation: @escaping ((@escaping () -> Void) -> Void),
+        shouldBlockPostTaps: @escaping (() -> Bool),
+        onItemAppear: @escaping (Int, Int) -> Void,
+        onArticleSelect: ((URL, Status) -> Void)? = nil,
+        scrollProxy: Binding<ScrollViewProxy?>,
+        onFirstVisibleChange: ((String) -> Void)? = nil,
+        onListAppear: (() -> Void)? = nil
+    ) {
+        self.statuses = statuses
+        self.isLoading = isLoading
+        self.shouldShowPaginationLoading = shouldShowPaginationLoading
+        self.deferPostNavigation = deferPostNavigation
+        self.shouldBlockPostTaps = shouldBlockPostTaps
+        self.onItemAppear = onItemAppear
+        self.onArticleSelect = onArticleSelect
+        self._scrollProxy = scrollProxy
+        self.onFirstVisibleChange = onFirstVisibleChange
+        self.onListAppear = onListAppear
+    }
 
     var body: some View {
         GlassEffectContainer {
@@ -31,6 +62,15 @@ struct LinkFeedPostList: View {
                                 onArticleSelect: onArticleSelect
                             )
                             .id(linkStatus.id)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear
+                                        .onChange(of: geo.frame(in: .named("feedScroll")).minY) { _, newMinY in
+                                            rowTopOffsets[linkStatus.id] = newMinY
+                                            reportFirstVisibleIfNeeded()
+                                        }
+                                }
+                            )
                             .onAppear {
                                 onItemAppear(index, statuses.count)
                             }
@@ -52,8 +92,11 @@ struct LinkFeedPostList: View {
                     transaction.animation = nil
                 }
                 .background(Color(.systemBackground))
+                .coordinateSpace(name: "feedScroll")
                 .onAppear {
                     scrollProxy = proxy
+                    onListAppear?()
+                    reportFirstVisibleIfNeeded()
                 }
             }
         }
@@ -79,5 +122,20 @@ struct LinkFeedPostList: View {
             Spacer()
         }
         .padding(.vertical, 8)
+    }
+    
+    private func reportFirstVisibleIfNeeded() {
+        guard !rowTopOffsets.isEmpty else { return }
+        // Consider the smallest positive or closest to zero minY as top-most
+        let candidate = rowTopOffsets.min(by: { lhs, rhs in
+            let a = abs(lhs.value)
+            let b = abs(rhs.value)
+            return a < b
+        })
+        guard let (id, _) = candidate else { return }
+        if currentFirstVisibleId != id {
+            currentFirstVisibleId = id
+            onFirstVisibleChange?(id)
+        }
     }
 }
