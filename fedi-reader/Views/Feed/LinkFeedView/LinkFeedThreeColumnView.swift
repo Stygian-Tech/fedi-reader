@@ -241,7 +241,7 @@ struct LinkFeedThreeColumnView: View {
             handleTabChange(to: newIndex)
         }
         .onChange(of: appState.selectedListId) { _, newListId in
-            let targetId = newListId ?? "home"
+            let targetId = newListId ?? AppState.homeFeedID
             if let index = feedTabs.firstIndex(where: { $0.id == targetId }), selectedTabIndex != index {
                 selectedTabIndex = index
             }
@@ -419,8 +419,9 @@ struct LinkFeedThreeColumnView: View {
 
         Task {
             await loadContentForTabIfNeeded(tab)
-            Task.detached(priority: .background) { [feedTabs] in
-                await prefetchAdjacentFeeds(currentIndex: newIndex, tabs: feedTabs)
+            let allFeedIDs = feedTabs.map(\.id)
+            Task(priority: .background) {
+                await prefetchAdjacentFeeds(currentFeedId: tab.id, allFeedIds: allFeedIDs)
             }
         }
     }
@@ -471,13 +472,13 @@ struct LinkFeedThreeColumnView: View {
     // MARK: - Data Loading
 
     private func loadInitialContent() async {
+        await timelineWrapper.waitForStartupLinkFeedLoad()
         guard let service = timelineService else { return }
 
         await service.loadLists(forceRefresh: liveLists.isEmpty)
         syncRetainedLists(with: service.lists, allowEmpty: service.error == nil)
 
-        if let listId = appState.selectedListId,
-           let index = feedTabs.firstIndex(where: { $0.id == listId }) {
+        if let index = feedTabs.firstIndex(where: { $0.id == appState.selectedLinkFeedID }) {
             selectedTabIndex = index
         }
 
@@ -491,8 +492,10 @@ struct LinkFeedThreeColumnView: View {
             await loadContentForTab(currentTab, forceRefresh: true)
         }
 
-        Task.detached(priority: .background) { [feedTabs, selectedTabIndex] in
-            await prefetchAdjacentFeeds(currentIndex: selectedTabIndex, tabs: feedTabs)
+        let currentFeedID = currentTab.id
+        let allFeedIDs = feedTabs.map(\.id)
+        Task(priority: .background) {
+            await prefetchAdjacentFeeds(currentFeedId: currentFeedID, allFeedIds: allFeedIDs)
         }
     }
 
@@ -500,16 +503,8 @@ struct LinkFeedThreeColumnView: View {
         guard let service = timelineService else { return }
 
         linkFilterService.switchToFeed(tab.id)
-
-        if tab.isHome {
-            if forceRefresh || service.homeTimeline.isEmpty {
-                await service.refreshHomeTimeline()
-            }
-            _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
-        } else {
-            await service.refreshListTimeline(listId: tab.id)
-            _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
-        }
+        let statuses = await service.loadLinkFeedStatuses(feedId: tab.id, forceRefreshHome: forceRefresh)
+        _ = await linkFilterService.processStatuses(statuses, for: tab.id)
         Task {
             await linkFilterService.enrichWithAttributions()
         }
@@ -536,29 +531,13 @@ struct LinkFeedThreeColumnView: View {
         }
     }
 
-    private func prefetchAdjacentFeeds(currentIndex: Int, tabs: [FeedTabItem]) async {
+    private func prefetchAdjacentFeeds(currentFeedId: String, allFeedIds: [String]) async {
         guard let service = timelineWrapper.service else { return }
-
-        var indicesToPrefetch: [Int] = []
-        if currentIndex > 0 { indicesToPrefetch.append(currentIndex - 1) }
-        if currentIndex < tabs.count - 1 { indicesToPrefetch.append(currentIndex + 1) }
-
-        for index in indicesToPrefetch {
-            let tab = tabs[index]
-            guard !linkFilterService.hasCachedContent(for: tab.id),
-                  !linkFilterService.isLoadingFeed(tab.id) else { continue }
-
-            if tab.isHome {
-                if service.homeTimeline.isEmpty {
-                    await service.refreshHomeTimeline()
-                }
-                _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
-            } else {
-                let statuses = await service.fetchListTimelineStatuses(listId: tab.id)
-                if !statuses.isEmpty {
-                    _ = await linkFilterService.processStatuses(statuses, for: tab.id)
-                }
-            }
+        await linkFilterService.prefetchAdjacentFeeds(
+            currentFeedId: currentFeedId,
+            allFeedIds: allFeedIds
+        ) { feedId in
+            await service.prefetchLinkFeedStatuses(feedId: feedId)
         }
     }
 

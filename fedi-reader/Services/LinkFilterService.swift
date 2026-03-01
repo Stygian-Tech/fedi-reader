@@ -26,7 +26,7 @@ final class LinkFilterService {
     private var feedCache: [String: [LinkStatus]] = [:]
     
     // Currently active feed ID
-    var activeFeedId: String = "home"
+    var activeFeedId: String = AppState.homeFeedID
     
     // Filtered statuses with link content for the active feed
     var linkStatuses: [LinkStatus] {

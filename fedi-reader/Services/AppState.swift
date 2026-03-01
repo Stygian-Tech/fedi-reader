@@ -13,6 +13,7 @@ import os
 @MainActor
 final class AppState {
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "AppState")
+    static let homeFeedID = "home"
     
     // Services
     let client: MastodonClient
@@ -53,6 +54,10 @@ final class AppState {
     
     var hasAccount: Bool {
         currentAccount != nil
+    }
+
+    var selectedLinkFeedID: String {
+        selectedListId ?? Self.homeFeedID
     }
     
     func getAccessToken() async -> String? {
@@ -184,6 +189,24 @@ final class AppState {
 
     func requestLinksScrollToTop() {
         linksScrollToTopRequestID &+= 1
+    }
+
+    func resolvedDefaultLinkFeedID(defaultListId: String, availableListIDs: [String]) -> String {
+        guard !defaultListId.isEmpty, availableListIDs.contains(defaultListId) else {
+            return Self.homeFeedID
+        }
+
+        return defaultListId
+    }
+
+    @discardableResult
+    func applyDefaultLinkFeed(defaultListId: String, availableListIDs: [String]) -> String {
+        let feedID = resolvedDefaultLinkFeedID(
+            defaultListId: defaultListId,
+            availableListIDs: availableListIDs
+        )
+        selectedListId = feedID == Self.homeFeedID ? nil : feedID
+        return feedID
     }
 }
 
