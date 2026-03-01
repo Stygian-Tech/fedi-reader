@@ -58,6 +58,11 @@ fedi-reader/
 └── Utilities/              # HTMLParser, KeychainHelper, etc.
 ```
 
+## Linear workflow
+
+- **When starting work on an issue**: Mark it **In Progress** in Linear (use Linear MCP `save_issue` with `state: "In Progress"`).
+- **Do not mark issues Done**: Let the Linear–GitHub integration set Done when the PR is merged. Manually setting Done bypasses that flow.
+
 ## Configuration
 
 - **URL scheme**: `fedi-reader://` for OAuth callbacks

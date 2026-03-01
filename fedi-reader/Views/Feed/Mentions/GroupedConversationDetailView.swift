@@ -103,6 +103,7 @@ struct GroupedConversationDetailView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                 }
+                .scrollDismissesKeyboard(.interactively)
                 .onAppear {
                     // Scroll to bottom (newest messages) when view appears
                     if let lastGroup = groupedMessages.last {
@@ -119,13 +120,12 @@ struct GroupedConversationDetailView: View {
                 }
             }
             
-            Divider()
-            
             // Compose bar
             composeBar
         }
         .navigationTitle(currentGroupedConversation.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 if isGroupChat {
