@@ -34,8 +34,6 @@ struct LinkFeedContentView: View {
     @State private var retainedLists: [MastodonList] = []
     @State private var feedTabSelectionTracker = SelectionDoubleTapTracker<String>()
     @State private var tabFrames: [Int: CGRect] = [:]
-    // Scroll position preservation per feed id
-    @State private var lastVisibleStatusIdPerFeed: [String: String] = [:]
     @State private var hasRestoredScrollForCurrentTab: Bool = false
 
     private var timelineService: TimelineService? {
@@ -244,8 +242,7 @@ struct LinkFeedContentView: View {
             onArticleSelect: onArticleSelect,
             scrollProxy: $scrollProxy,
             onFirstVisibleChange: { statusId in
-                // Persist the last visible status id for the current feed tab
-                lastVisibleStatusIdPerFeed[currentTab.id] = statusId
+                appState.linksLastVisibleStatusIdPerFeed[currentTab.id] = statusId
             },
             onListAppear: {
                 // When the list appears (e.g., popped back from article), try to restore once
@@ -426,7 +423,15 @@ struct LinkFeedContentView: View {
             selectedTabIndex = index
         }
 
-        await loadContentForTab(currentTab, forceRefresh: true)
+        linkFilterService.switchToFeed(currentTab.id)
+
+        if linkFilterService.hasCachedContent(for: currentTab.id) {
+            Task {
+                await linkFilterService.enrichWithAttributions()
+            }
+        } else {
+            await loadContentForTab(currentTab, forceRefresh: true)
+        }
 
         Task.detached(priority: .background) { [feedTabs, selectedTabIndex] in
             await prefetchAdjacentFeeds(currentIndex: selectedTabIndex, tabs: feedTabs)
@@ -520,7 +525,7 @@ struct LinkFeedContentView: View {
         guard let proxy = scrollProxy else { return }
         guard !hasRestoredScrollForCurrentTab else { return }
         let feedId = currentTab.id
-        guard let statusId = lastVisibleStatusIdPerFeed[feedId] else { return }
+        guard let statusId = appState.linksLastVisibleStatusIdPerFeed[feedId] else { return }
         // Avoid animating to reduce visual jump
         DispatchQueue.main.async {
             withAnimation(nil) {

@@ -211,24 +211,6 @@ actor LinkPreviewService {
             )
         }
 
-        func metaContent(name: String) -> String? {
-            let pattern = #"<meta[^>]+name\s*=\s*[\"']\#(NSRegularExpression.escapedPattern(for: name))[\"'][^>]+content\s*=\s*[\"']([^\"']+)[\"']"#
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
-            let range = NSRange(html.startIndex..., in: html)
-            guard let match = regex.firstMatch(in: html, options: [], range: range),
-                  let contentRange = Range(match.range(at: 1), in: html) else { return nil }
-            return HTMLParser.decodeHTMLEntities(String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-
-        func metaProperty(_ property: String) -> String? {
-            let pattern = #"<meta[^>]+property\s*=\s*[\"']\#(NSRegularExpression.escapedPattern(for: property))[\"'][^>]+content\s*=\s*[\"']([^\"']+)[\"']"#
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
-            let range = NSRange(html.startIndex..., in: html)
-            guard let match = regex.firstMatch(in: html, options: [], range: range),
-                  let contentRange = Range(match.range(at: 1), in: html) else { return nil }
-            return HTMLParser.decodeHTMLEntities(String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-
         func titleTag() -> String? {
             let pattern = #"<title[^>]*>(.*?)</title>"#
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else { return nil }
@@ -239,13 +221,19 @@ actor LinkPreviewService {
         }
 
         // Prefer Open Graph, then Twitter, then standard meta, then <title>
-        let title = metaProperty("og:title") ?? metaContent(name: "twitter:title") ?? metaContent(name: "title") ?? titleTag()
-        let description = metaProperty("og:description") ?? metaContent(name: "twitter:description") ?? metaContent(name: "description")
-        let siteName = metaProperty("og:site_name")
-        let fediverseCreator = metaContent(name: "fediverse:creator")
+        let title = HTMLParser.metaProperty(in: html, property: "og:title")
+            ?? HTMLParser.metaContent(in: html, name: "twitter:title")
+            ?? HTMLParser.metaContent(in: html, name: "title")
+            ?? titleTag()
+        let description = HTMLParser.metaProperty(in: html, property: "og:description")
+            ?? HTMLParser.metaContent(in: html, name: "twitter:description")
+            ?? HTMLParser.metaContent(in: html, name: "description")
+        let siteName = HTMLParser.metaProperty(in: html, property: "og:site_name")
+        let fediverseCreator = HTMLParser.metaContent(in: html, name: "fediverse:creator")
 
         // Image URL resolution
-        let imageString = metaProperty("og:image") ?? metaContent(name: "twitter:image")
+        let imageString = HTMLParser.metaProperty(in: html, property: "og:image")
+            ?? HTMLParser.metaContent(in: html, name: "twitter:image")
         let imageURL: URL? = {
             guard let imageString else { return nil }
             let decoded = HTMLParser.decodeHTMLEntities(imageString)

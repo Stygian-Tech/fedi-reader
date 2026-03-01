@@ -126,12 +126,13 @@ struct LinkFeedPostList: View {
     
     private func reportFirstVisibleIfNeeded() {
         guard !rowTopOffsets.isEmpty else { return }
-        // Consider the smallest positive or closest to zero minY as top-most
-        let candidate = rowTopOffsets.min(by: { lhs, rhs in
-            let a = abs(lhs.value)
-            let b = abs(rhs.value)
-            return a < b
-        })
+        let visibleCandidate = rowTopOffsets
+            .filter { $0.value >= 0 }
+            .min(by: { $0.value < $1.value })
+        let candidate = visibleCandidate
+            ?? rowTopOffsets
+                .filter { $0.value < 0 }
+                .max(by: { $0.value < $1.value })
         guard let (id, _) = candidate else { return }
         if currentFirstVisibleId != id {
             currentFirstVisibleId = id

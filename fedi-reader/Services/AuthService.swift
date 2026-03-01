@@ -42,6 +42,9 @@ final class AuthService {
             accounts = try modelContext.fetch(descriptor)
             currentAccount = accounts.first(where: { $0.isActive }) ?? accounts.first
             Self.logger.info("Loaded \(self.accounts.count) accounts, current: \(self.currentAccount?.username ?? "none", privacy: .public)@\(self.currentAccount?.instance ?? "none", privacy: .public)")
+            Task {
+                await refreshClientAuthenticationState()
+            }
         } catch {
             Self.logger.error("Failed to load accounts: \(error.localizedDescription)")
         }
@@ -93,6 +96,10 @@ final class AuthService {
         currentAccount = account
         
         try? modelContext.save()
+
+        Task {
+            await refreshClientAuthenticationState()
+        }
         
         NotificationCenter.default.post(name: .accountDidChange, object: account)
     }
@@ -212,6 +219,7 @@ final class AuthService {
             // Update state
             accounts.append(account)
             currentAccount = account
+            await refreshClientAuthenticationState()
             
             // Clear pending state
             pendingInstance = nil
@@ -264,6 +272,8 @@ final class AuthService {
             currentAccount?.isActive = true
             Self.logger.info("Switched to account: \(self.currentAccount?.username ?? "none", privacy: .public)")
         }
+
+        await refreshClientAuthenticationState()
         
         Self.logger.notice("Logout complete for account: \(account.id.prefix(8), privacy: .public)")
         NotificationCenter.default.post(name: .accountDidLogout, object: account)
@@ -336,6 +346,18 @@ final class AuthService {
             // Token is invalid or expired
             return false
         }
+    }
+
+    func refreshClientAuthenticationState() async {
+        guard let account = currentAccount,
+              let token = await getAccessToken(for: account) else {
+            client.currentInstance = nil
+            client.currentAccessToken = nil
+            return
+        }
+
+        client.currentInstance = account.instance
+        client.currentAccessToken = token
     }
     
     /// Handles authentication errors by verifying token and prompting re-auth if needed

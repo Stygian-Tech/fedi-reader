@@ -64,4 +64,29 @@ struct AuthServiceTests {
             Issue.record("Expected FediReaderError.unauthorized, got \(error)")
         }
     }
+
+    @Test("refreshClientAuthenticationState updates the client snapshot")
+    func refreshClientAuthenticationStateUpdatesClientSnapshot() async throws {
+        let client = MastodonClient()
+        let auth = AuthService(client: client, keychain: .shared)
+        let accountID = "mastodon.social:\(UUID().uuidString)"
+        let account = Account(
+            id: accountID,
+            instance: "mastodon.social",
+            username: "tester",
+            displayName: "Tester",
+            acct: "tester@mastodon.social",
+            isActive: true
+        )
+
+        try await KeychainHelper.shared.saveToken("secret-token", forAccount: accountID)
+
+        auth.currentAccount = account
+        await auth.refreshClientAuthenticationState()
+
+        #expect(client.currentInstance == "mastodon.social")
+        #expect(client.currentAccessToken == "secret-token")
+
+        try? await KeychainHelper.shared.deleteToken(forAccount: accountID)
+    }
 }

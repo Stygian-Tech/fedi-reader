@@ -42,7 +42,7 @@ final class LinkFilterService {
     var isLoadingAttributions = false
     
     init(attributionChecker: AttributionChecker? = nil) {
-        self.attributionChecker = attributionChecker ?? AttributionChecker()
+        self.attributionChecker = attributionChecker ?? AttributionChecker.shared
     }
     
     // MARK: - Feed Management
@@ -102,13 +102,15 @@ final class LinkFilterService {
         loadingFeeds.insert(feedId)
         defer { loadingFeeds.remove(feedId) }
 
+        let existingStatuses = feedCache[feedId] ?? []
         let processed = await Task.detached(priority: .userInitiated) {
             Self.buildLinkStatuses(from: statuses)
         }.value
 
-        feedCache[feedId] = processed.linkStatuses
-        Self.logger.info("Processed feed '\(feedId, privacy: .public)': \(processed.linkStatuses.count) link statuses (\(processed.cardCount) from cards, \(processed.contentLinkCount) from content)")
-        return processed.linkStatuses
+        let mergedStatuses = Self.mergeExistingMetadata(from: existingStatuses, into: processed.linkStatuses)
+        feedCache[feedId] = mergedStatuses
+        Self.logger.info("Processed feed '\(feedId, privacy: .public)': \(mergedStatuses.count) link statuses (\(processed.cardCount) from cards, \(processed.contentLinkCount) from content)")
+        return mergedStatuses
     }
     
     /// Processes statuses into LinkStatus objects (uses active feed)
@@ -198,26 +200,7 @@ final class LinkFilterService {
                     if let attribution,
                        var cached = feedCache[currentFeedId],
                        originalIndex < cached.count {
-                        // Create updated LinkStatus with all attribution fields
-                        let existing = cached[originalIndex]
-                        let updated = LinkStatus(
-                            status: existing.status,
-                            primaryURL: existing.primaryURL,
-                            tags: existing.tags,
-                            title: existing.title,
-                            description: existing.description,
-                            imageURL: existing.imageURL,
-                            providerName: existing.providerName,
-                            // Preserve existing authorAttribution if it exists, otherwise use new one
-                            authorAttribution: existing.authorAttribution ?? attribution.name,
-                            // Update URL if we got a better one
-                            authorURL: attribution.url ?? existing.authorURL,
-                            authorProfilePictureURL: attribution.profilePictureURL ?? existing.authorProfilePictureURL,
-                            // Always update Mastodon fields if found
-                            mastodonHandle: attribution.mastodonHandle ?? existing.mastodonHandle,
-                            mastodonProfileURL: attribution.mastodonProfileURL ?? existing.mastodonProfileURL
-                        )
-                        cached[originalIndex] = updated
+                        cached[originalIndex] = Self.merging(cached[originalIndex], with: attribution)
                         feedCache[currentFeedId] = cached
                         attributionCount += 1
                     }
@@ -427,6 +410,29 @@ final class LinkFilterService {
     func filterWithImages() -> [LinkStatus] {
         linkStatuses.filter { $0.imageURL != nil }
     }
+
+    func applyAttribution(_ attribution: AuthorAttribution, toLinkStatusID linkStatusID: String) {
+        var updatedFeedIds: [String] = []
+
+        for (feedId, statuses) in feedCache {
+            var updatedStatuses = statuses
+            var didUpdateFeed = false
+
+            for index in updatedStatuses.indices where updatedStatuses[index].id == linkStatusID {
+                updatedStatuses[index] = Self.merging(updatedStatuses[index], with: attribution)
+                didUpdateFeed = true
+            }
+
+            if didUpdateFeed {
+                feedCache[feedId] = updatedStatuses
+                updatedFeedIds.append(feedId)
+            }
+        }
+
+        if !updatedFeedIds.isEmpty {
+            Self.logger.debug("Applied attribution to link status \(linkStatusID, privacy: .public) across \(updatedFeedIds.count) feeds")
+        }
+    }
     
     // MARK: - Clear
     
@@ -434,6 +440,54 @@ final class LinkFilterService {
         let count = linkStatuses.count
         linkStatuses = []
         Self.logger.info("Cleared link statuses: \(count) items removed")
+    }
+
+    private nonisolated static func mergeExistingMetadata(
+        from existingStatuses: [LinkStatus],
+        into newStatuses: [LinkStatus]
+    ) -> [LinkStatus] {
+        guard !existingStatuses.isEmpty, !newStatuses.isEmpty else { return newStatuses }
+
+        let existingByID = Dictionary(uniqueKeysWithValues: existingStatuses.map { ($0.id, $0) })
+        return newStatuses.map { newStatus in
+            guard let existing = existingByID[newStatus.id] else { return newStatus }
+            return merging(newStatus, with: existing)
+        }
+    }
+
+    private nonisolated static func merging(_ base: LinkStatus, with existing: LinkStatus) -> LinkStatus {
+        LinkStatus(
+            status: base.status,
+            primaryURL: base.primaryURL,
+            tags: base.tags,
+            title: base.title ?? existing.title,
+            description: base.description ?? existing.description,
+            imageURL: base.imageURL ?? existing.imageURL,
+            providerName: base.providerName ?? existing.providerName,
+            authorAttribution: existing.authorAttribution ?? base.authorAttribution,
+            authorURL: existing.authorURL ?? base.authorURL,
+            authorProfilePictureURL: existing.authorProfilePictureURL ?? base.authorProfilePictureURL,
+            mastodonHandle: existing.mastodonHandle ?? base.mastodonHandle,
+            mastodonProfileURL: existing.mastodonProfileURL ?? base.mastodonProfileURL
+        )
+    }
+
+    private nonisolated static func merging(_ linkStatus: LinkStatus, with attribution: AuthorAttribution) -> LinkStatus {
+        let preferredAuthorName = attribution.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return LinkStatus(
+            status: linkStatus.status,
+            primaryURL: linkStatus.primaryURL,
+            tags: linkStatus.tags,
+            title: linkStatus.title,
+            description: linkStatus.description,
+            imageURL: linkStatus.imageURL,
+            providerName: linkStatus.providerName,
+            authorAttribution: (preferredAuthorName?.isEmpty == false ? preferredAuthorName : nil) ?? linkStatus.authorAttribution,
+            authorURL: attribution.url ?? linkStatus.authorURL,
+            authorProfilePictureURL: attribution.profilePictureURL ?? linkStatus.authorProfilePictureURL,
+            mastodonHandle: attribution.mastodonHandle ?? linkStatus.mastodonHandle,
+            mastodonProfileURL: attribution.mastodonProfileURL ?? linkStatus.mastodonProfileURL
+        )
     }
 }
 

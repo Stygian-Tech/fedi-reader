@@ -8,12 +8,186 @@
 import Foundation
 import os
 
+nonisolated private func makeMastodonSessionConfiguration(from configuration: URLSessionConfiguration) -> URLSessionConfiguration {
+    let config = (configuration.copy() as? URLSessionConfiguration) ?? URLSessionConfiguration.default
+    config.timeoutIntervalForRequest = 30
+
+    var headers = config.httpAdditionalHeaders ?? [:]
+    headers["User-Agent"] = Constants.userAgent
+    config.httpAdditionalHeaders = headers
+
+    return config
+}
+
+nonisolated private func makeMastodonDecoder() -> JSONDecoder {
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .custom { decoder in
+        let container = try decoder.singleValueContainer()
+        let dateString = try container.decode(String.self)
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: dateString) {
+            return date
+        }
+
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: dateString) {
+            return date
+        }
+
+        throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format: \(dateString)")
+    }
+    return decoder
+}
+
+nonisolated private func buildMastodonURL(instance: String, path: String, queryItems: [URLQueryItem]? = nil) throws -> URL {
+    guard !instance.isEmpty,
+          !instance.contains("://"),
+          !instance.contains("/"),
+          !instance.contains("?"),
+          !instance.contains("#"),
+          instance.range(of: #"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"#, options: .regularExpression) != nil else {
+        throw FediReaderError.invalidURL
+    }
+
+    var components = URLComponents()
+    components.scheme = "https"
+    components.host = instance
+    components.path = path
+    components.queryItems = queryItems?.isEmpty == false ? queryItems : nil
+
+    guard let url = components.url else {
+        throw FediReaderError.invalidURL
+    }
+    return url
+}
+
+nonisolated private func buildMastodonRequest(
+    url: URL,
+    method: String = "GET",
+    accessToken: String? = nil,
+    body: Data? = nil,
+    contentType: String = "application/json"
+) -> URLRequest {
+    var request = URLRequest(url: url)
+    request.httpMethod = method
+    request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+    if let token = accessToken {
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+
+    if let body {
+        request.httpBody = body
+    }
+
+    return request
+}
+
+nonisolated private struct MastodonAuthSnapshot: Sendable {
+    let instance: String
+    let accessToken: String
+}
+
+private actor MastodonBackgroundRequestExecutor {
+    private static let logger = Logger(subsystem: "app.fedi-reader", category: "MastodonBackgroundRequestExecutor")
+
+    private let session: URLSession
+    private let decoder: JSONDecoder
+
+    init(configuration: URLSessionConfiguration = .default) {
+        let config = makeMastodonSessionConfiguration(from: configuration)
+        self.session = URLSession(configuration: config)
+        self.decoder = makeMastodonDecoder()
+    }
+
+    func searchAccounts(
+        instance: String,
+        accessToken: String,
+        query: String,
+        limit: Int = 20
+    ) async throws -> ([MastodonAccount], HTTPURLResponse) {
+        let url = try buildMastodonURL(
+            instance: instance,
+            path: "/api/v2/search",
+            queryItems: [
+            URLQueryItem(name: "q", value: query),
+                URLQueryItem(name: "resolve", value: String(true)),
+                URLQueryItem(name: "limit", value: String(limit)),
+                URLQueryItem(name: "type", value: "accounts")
+            ]
+        )
+        let request = buildMastodonRequest(url: url, accessToken: accessToken)
+        let (data, response) = try await performRequest(request)
+
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let accountsObject = object["accounts"] else {
+            throw FediReaderError.decodingError(NSError(domain: "MastodonBackgroundRequestExecutor", code: 1))
+        }
+
+        let accountsData = try JSONSerialization.data(withJSONObject: accountsObject)
+        let accounts = try decoder.decode([MastodonAccount].self, from: accountsData)
+        return (accounts, response)
+    }
+
+    func lookupAccount(
+        instance: String,
+        accessToken: String,
+        acct: String
+    ) async throws -> (MastodonAccount, HTTPURLResponse) {
+        let url = try buildMastodonURL(
+            instance: instance,
+            path: "/api/v1/accounts/lookup",
+            queryItems: [URLQueryItem(name: "acct", value: acct)]
+        )
+        let request = buildMastodonRequest(url: url, accessToken: accessToken)
+        let (data, response) = try await performRequest(request)
+        let account = try decoder.decode(MastodonAccount.self, from: data)
+        return (account, response)
+    }
+
+    private func performRequest(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let method = request.httpMethod ?? "GET"
+        let url = request.url?.absoluteString ?? "unknown"
+
+        do {
+            let (data, response) = try await session.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw FediReaderError.invalidResponse
+            }
+
+            switch httpResponse.statusCode {
+            case 200..<300:
+                return (data, httpResponse)
+            case 401:
+                throw FediReaderError.unauthorized
+            case 429:
+                let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After")
+                    .flatMap { Double($0) }
+                throw FediReaderError.rateLimited(retryAfter: retryAfter)
+            default:
+                let message = String(data: data, encoding: .utf8)
+                throw FediReaderError.serverError(statusCode: httpResponse.statusCode, message: message)
+            }
+        } catch let error as FediReaderError {
+            throw error
+        } catch {
+            Self.logger.debug("Background request failed for \(method, privacy: .public) \(url, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+}
+
 @Observable
 @MainActor
 final class MastodonClient {
-    private static let logger = Logger(subsystem: "app.fedi-reader", category: "MastodonClient")
+    nonisolated private static let logger = Logger(subsystem: "app.fedi-reader", category: "MastodonClient")
     
     private let session: URLSession
+    nonisolated private let backgroundRequestExecutor: MastodonBackgroundRequestExecutor
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     
@@ -25,34 +199,12 @@ final class MastodonClient {
     var currentInstance: String?
     var currentAccessToken: String?
     
-    init() {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = Constants.API.defaultTimeout
-        config.httpAdditionalHeaders = [
-            "User-Agent": Constants.userAgent
-        ]
+    init(configuration: URLSessionConfiguration = .default) {
+        let config = makeMastodonSessionConfiguration(from: configuration)
         self.session = URLSession(configuration: config)
+        self.backgroundRequestExecutor = MastodonBackgroundRequestExecutor(configuration: config)
 
-        self.decoder = JSONDecoder()
-        self.decoder.dateDecodingStrategy = .custom { decoder in
-            let container = try decoder.singleValueContainer()
-            let dateString = try container.decode(String.self)
-
-            // Try ISO8601 with fractional seconds
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = formatter.date(from: dateString) {
-                return date
-            }
-
-            // Try without fractional seconds
-            formatter.formatOptions = [.withInternetDateTime]
-            if let date = formatter.date(from: dateString) {
-                return date
-            }
-
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format: \(dateString)")
-        }
+        self.decoder = makeMastodonDecoder()
 
         self.encoder = JSONEncoder()
         self.encoder.dateEncodingStrategy = .iso8601
@@ -61,28 +213,12 @@ final class MastodonClient {
     // MARK: - Request Building
     
     private func buildURL(instance: String, path: String, queryItems: [URLQueryItem]? = nil) throws -> URL {
-        // Security: Validate instance format to prevent SSRF attacks
-        // Instance should be a valid hostname without protocol
-        guard !instance.isEmpty,
-              !instance.contains("://"),
-              !instance.contains("/"),
-              !instance.contains("?"),
-              !instance.contains("#"),
-              instance.range(of: #"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"#, options: .regularExpression) != nil else {
+        do {
+            return try buildMastodonURL(instance: instance, path: path, queryItems: queryItems)
+        } catch {
             Self.logger.error("Invalid instance format: \(instance, privacy: .public)")
-            throw FediReaderError.invalidURL
+            throw error
         }
-        
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = instance
-        components.path = path
-        components.queryItems = queryItems?.isEmpty == false ? queryItems : nil
-        
-        guard let url = components.url else {
-            throw FediReaderError.invalidURL
-        }
-        return url
     }
     
     private func buildRequest(
@@ -92,20 +228,13 @@ final class MastodonClient {
         body: Data? = nil,
         contentType: String = "application/json"
     ) -> URLRequest {
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        
-        if let body {
-            request.httpBody = body
-        }
-        
-        return request
+        buildMastodonRequest(
+            url: url,
+            method: method,
+            accessToken: accessToken,
+            body: body,
+            contentType: contentType
+        )
     }
 
     private func formEncodedBody(_ items: [URLQueryItem]) -> Data? {
@@ -238,6 +367,22 @@ final class MastodonClient {
            let resetTime = ISO8601DateFormatter().date(from: reset) {
             rateLimitReset = resetTime
             Self.logger.debug("Rate limit resets at: \(resetTime.formatted())")
+        }
+    }
+
+    nonisolated private func currentAuthSnapshot() async throws -> MastodonAuthSnapshot {
+        try await MainActor.run {
+            guard let instance = self.currentInstance, let accessToken = self.currentAccessToken else {
+                throw FediReaderError.noActiveAccount
+            }
+
+            return MastodonAuthSnapshot(instance: instance, accessToken: accessToken)
+        }
+    }
+
+    nonisolated private func publishRateLimits(from response: HTTPURLResponse) async {
+        await MainActor.run {
+            self.updateRateLimits(from: response)
         }
     }
     
@@ -808,19 +953,56 @@ final class MastodonClient {
         return try await getHashtagTimeline(instance: instance, accessToken: token, tag: tag, limit: limit)
     }
     
-    func searchAccounts(query: String, limit: Int = 10) async throws -> [MastodonAccount] {
-        guard let instance = currentInstance, let token = currentAccessToken else {
-            throw FediReaderError.noActiveAccount
-        }
-        let results = try await search(instance: instance, accessToken: token, query: query, type: "accounts", limit: limit)
-        return results.accounts
+    nonisolated func searchAccounts(query: String, limit: Int = 10) async throws -> [MastodonAccount] {
+        let auth = try await currentAuthSnapshot()
+        let (accounts, response) = try await backgroundRequestExecutor.searchAccounts(
+            instance: auth.instance,
+            accessToken: auth.accessToken,
+            query: query,
+            limit: limit
+        )
+        await publishRateLimits(from: response)
+        return accounts
     }
 
-    func lookupAccount(acct: String) async throws -> MastodonAccount {
-        guard let instance = currentInstance, let token = currentAccessToken else {
-            throw FediReaderError.noActiveAccount
+    nonisolated func lookupAccount(acct: String) async throws -> MastodonAccount {
+        let auth = try await currentAuthSnapshot()
+        return try await lookupAccount(instance: auth.instance, accessToken: auth.accessToken, acct: acct)
+    }
+
+    nonisolated func resolveProfileAccount(handle: String? = nil, profileURL: URL? = nil) async -> MastodonAccount? {
+        guard let acct = MastodonProfileReference.acct(handle: handle, profileURL: profileURL) else {
+            return nil
         }
-        return try await lookupAccount(instance: instance, accessToken: token, acct: acct)
+
+        let normalizedAcct = acct.lowercased()
+
+        do {
+            return try await lookupAccount(acct: acct)
+        } catch {
+            Self.logger.debug("Account lookup failed for \(acct, privacy: .public); falling back to search")
+        }
+
+        do {
+            let accounts = try await searchAccounts(query: acct, limit: 5)
+            return accounts.first { account in
+                if let resolvedAcct = MastodonProfileReference.normalizedAcct(from: account.acct),
+                   resolvedAcct.lowercased() == normalizedAcct {
+                    return true
+                }
+
+                if let accountURL = URL(string: account.url),
+                   let resolvedAcct = MastodonProfileReference.acct(from: accountURL),
+                   resolvedAcct.lowercased() == normalizedAcct {
+                    return true
+                }
+
+                return false
+            }
+        } catch {
+            Self.logger.debug("Account search failed for \(acct, privacy: .public): \(error.localizedDescription)")
+            return nil
+        }
     }
     
     func getHashtagTimeline(instance: String, accessToken: String, tag: String, limit: Int = Constants.Pagination.defaultLimit) async throws -> [Status] {
@@ -935,30 +1117,41 @@ final class MastodonClient {
         resolve: Bool = true,
         limit: Int = 20
     ) async throws -> SearchResults {
+        if type == "accounts", resolve {
+            let (accounts, response) = try await backgroundRequestExecutor.searchAccounts(
+                instance: instance,
+                accessToken: accessToken,
+                query: query,
+                limit: limit
+            )
+            updateRateLimits(from: response)
+            return SearchResults(accounts: accounts, statuses: [], hashtags: [])
+        }
+
         var queryItems = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "resolve", value: String(resolve)),
             URLQueryItem(name: "limit", value: String(limit))
         ]
         if let type { queryItems.append(URLQueryItem(name: "type", value: type)) }
-        
+
         let url = try buildURL(instance: instance, path: Constants.API.search, queryItems: queryItems)
         let request = buildRequest(url: url, accessToken: accessToken)
         return try await execute(request)
     }
 
-    func lookupAccount(
+    nonisolated func lookupAccount(
         instance: String,
         accessToken: String,
         acct: String
     ) async throws -> MastodonAccount {
-        let url = try buildURL(
+        let (account, response) = try await backgroundRequestExecutor.lookupAccount(
             instance: instance,
-            path: "\(Constants.API.accounts)/lookup",
-            queryItems: [URLQueryItem(name: "acct", value: acct)]
+            accessToken: accessToken,
+            acct: acct
         )
-        let request = buildRequest(url: url, accessToken: accessToken)
-        return try await execute(request)
+        await publishRateLimits(from: response)
+        return account
     }
     
     // MARK: - Instance

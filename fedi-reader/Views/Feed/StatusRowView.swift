@@ -3,6 +3,7 @@ import SwiftUI
 struct StatusRowView: View {
     let status: Status
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
@@ -10,8 +11,8 @@ struct StatusRowView: View {
     
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
-    @State private var fediverseCreatorName: String?
-    @State private var fediverseCreatorURL: URL?
+    @State private var authorAttribution: AuthorAttribution?
+    @State private var resolvedAuthorAccount: MastodonAccount?
     @State private var isProcessing = false
     @State private var localBookmarked: Bool?
     @State private var isManagingLists = false
@@ -383,15 +384,20 @@ struct StatusRowView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-                        
-                        if let authorName = fediverseCreatorName,
-                           let authorURL = fediverseCreatorURL {
+
+                        let authorLink = authorAttribution?.preferredURL ?? card.authorUrl.flatMap { URL(string: $0) }
+                        let authorDisplayName = resolvedAuthorAccount?.preferredDisplayName
+                            ?? authorAttribution?.preferredName
+                            ?? card.authorName
+                            ?? (authorLink != nil ? "Author" : nil)
+
+                        if let authorURL = authorLink {
                             Link(destination: authorURL) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "person.crop.circle")
                                         .font(.roundedCaption)
                                     
-                                    Text(authorName)
+                                    Text(authorDisplayName ?? "Author")
                                         .font(.roundedCaption)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.8)
@@ -401,31 +407,9 @@ struct StatusRowView: View {
                                 .background(Color(.tertiarySystemBackground), in: Capsule())
                             }
                             .buttonStyle(.plain)
-                        } else if let authorName = fediverseCreatorName {
-                            Text(authorName)
-                                .font(.roundedCaption)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        } else if let authorName = card.authorName,
-                                  let authorUrlString = card.authorUrl,
-                                  let authorURL = URL(string: authorUrlString) {
-                            Link(destination: authorURL) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "person.crop.circle")
-                                        .font(.roundedCaption)
-                                    
-                                    Text(authorName)
-                                        .font(.roundedCaption)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.8)
-                                }
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color(.tertiarySystemBackground), in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        } else if let author = card.authorName {
-                            Text(author)
+                            .environment(\.openURL, authorLinkOpenURLAction)
+                        } else if let authorDisplayName {
+                            Text(authorDisplayName)
                                 .font(.roundedCaption)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
@@ -451,10 +435,17 @@ struct StatusRowView: View {
             blueskyDescription = await LinkPreviewService.shared.fetchDescription(for: url)
         }
         .task(id: cardURL?.absoluteString) {
-            guard let url = cardURL else { return }
-            let creator = await LinkPreviewService.shared.fetchFediverseCreator(for: url)
-            fediverseCreatorName = creator?.name
-            fediverseCreatorURL = creator?.url
+            guard let url = cardURL else {
+                authorAttribution = nil
+                resolvedAuthorAccount = nil
+                return
+            }
+
+            authorAttribution = await AttributionChecker.shared.checkAttribution(for: url)
+            resolvedAuthorAccount = await appState.client.resolveProfileAccount(
+                handle: authorAttribution?.mastodonHandle,
+                profileURL: currentAuthorURL(for: card)
+            )
         }
     }
     
@@ -619,6 +610,41 @@ struct StatusRowView: View {
             }
         }
     }
+
+    private func currentAuthorURL(for card: PreviewCard) -> URL? {
+        authorAttribution?.preferredURL ?? card.authorUrl.flatMap { URL(string: $0) }
+    }
+
+    private var authorLinkOpenURLAction: OpenURLAction {
+        OpenURLAction { url in
+            guard MastodonProfileReference.acct(handle: authorAttribution?.mastodonHandle, profileURL: url) != nil else {
+                return .systemAction(url)
+            }
+
+            Task {
+                let account = if let resolvedAuthorAccount {
+                    resolvedAuthorAccount
+                } else {
+                    await appState.client.resolveProfileAccount(
+                        handle: authorAttribution?.mastodonHandle,
+                        profileURL: url
+                    )
+                }
+
+                if let account {
+                    await MainActor.run {
+                        resolvedAuthorAccount = account
+                        appState.navigate(to: .profile(account))
+                    }
+                } else {
+                    await MainActor.run {
+                        openURL(url)
+                    }
+                }
+            }
+            return .handled
+        }
+    }
     
     private func toggleBookmark() async {
         guard let service = timelineWrapper.service else { return }
@@ -640,5 +666,3 @@ struct StatusRowView: View {
 }
 
 // MARK: - Compact Status Row
-
-

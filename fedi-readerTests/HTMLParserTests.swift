@@ -48,6 +48,43 @@ struct HTMLParserTests {
         #expect(links.count == 1)
         #expect(links.first?.absoluteString == "https://example.com/article?foo=1&bar=2")
     }
+
+    @Test("Extracts meta name content regardless of attribute order")
+    func extractsMetaNameContentRegardlessOfAttributeOrder() {
+        let html = #"<meta content="Jane Doe" name="author" data-test="true">"#
+
+        let content = HTMLParser.metaContent(in: html, name: "author")
+
+        #expect(content == "Jane Doe")
+    }
+
+    @Test("Extracts meta property content regardless of attribute order")
+    func extractsMetaPropertyContentRegardlessOfAttributeOrder() {
+        let html = #"<meta content="https://example.com/cover.jpg" property="og:image" data-size="large">"#
+
+        let content = HTMLParser.metaProperty(in: html, property: "og:image")
+
+        #expect(content == "https://example.com/cover.jpg")
+    }
+
+    @Test("Extracts link href when rel attribute includes author token")
+    func extractsLinkHrefForAuthorRelation() {
+        let html = #"<link href="https://example.com/authors/jane" rel="alternate author" type="text/html">"#
+
+        let href = HTMLParser.linkHref(in: html, rel: "author")
+
+        #expect(href == "https://example.com/authors/jane")
+    }
+
+    @Test("Extracts author relation from anchor tags")
+    func extractsAuthorRelationFromAnchorTags() {
+        let html = #"<a class="byline" href="/authors/jane" rel="author me"><span>Jane Doe</span></a>"#
+
+        let relation = HTMLParser.authorRelation(in: html)
+
+        #expect(relation?.href == "/authors/jane")
+        #expect(relation?.text == "Jane Doe")
+    }
     
     @Test("Excludes non-HTTP URLs")
     func excludesNonHTTPURLs() {
