@@ -20,7 +20,8 @@ struct FeedSwipeGestureEvaluator {
     static let visualFollowFactor: CGFloat = 0.35
     static let maxVisualOffset: CGFloat = 72
     static let postSwipeSuppressionNanoseconds: UInt64 = 120_000_000
-    private static let horizontalDominanceRatio: CGFloat = 1.05
+    private static let projectedIntentDistance: CGFloat = 24
+    private static let horizontalDominanceRatio: CGFloat = 1.35
 
     static func visualOffset(translation: CGSize) -> CGFloat {
         guard isHorizontalIntent(translation: translation) else {
@@ -40,7 +41,12 @@ struct FeedSwipeGestureEvaluator {
             return direction(forHorizontalDistance: translation.width)
         }
 
+        // Predicted translation is useful for confident flicks, but only after the
+        // active drag has already established clear horizontal intent in one direction.
         if isHorizontalIntent(translation: predictedEndTranslation),
+           isHorizontalIntent(translation: translation),
+           abs(translation.width) >= projectedIntentDistance,
+           translation.width * predictedEndTranslation.width > 0,
            abs(predictedEndTranslation.width) >= predictedCommitDistance {
             return direction(forHorizontalDistance: predictedEndTranslation.width)
         }
