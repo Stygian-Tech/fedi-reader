@@ -3,7 +3,8 @@ import os
 
 struct GroupedConversationRow: View {
     let groupedConversation: GroupedConversation
-    
+    @AppStorage("themeColor") private var themeColorName = "blue"
+
     var body: some View {
         HStack(spacing: 12) {
             // Avatar(s)
@@ -57,7 +58,7 @@ struct GroupedConversationRow: View {
     private var unreadIndicator: some View {
         if groupedConversation.unread {
             Circle()
-                .fill(.blue)
+                .fill(ThemeColor.resolved(from: themeColorName).color)
                 .frame(width: 12, height: 12)
                 .overlay(
                     Circle()

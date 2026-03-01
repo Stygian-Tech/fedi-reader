@@ -108,8 +108,15 @@ fedi-reader/
 
 ## Linear workflow
 
-- **When starting work on an issue**: Mark it **In Progress** in Linear (use Linear MCP `save_issue` with `state: "In Progress"`).
-- **Do not mark issues Done**: Let the Linear–GitHub integration set Done when the PR is merged. Manually setting Done bypasses that flow.
+Branches are linked to Linear issues via the branch name (e.g. `FED-123-feature-name`, `sam/FED-456-fix`). Follow this workflow:
+
+1. **Check for linked issue**: When starting work, parse the current branch name for a Linear issue ID (e.g. `FED-123`, `PROJ-456`). Use Linear MCP `get_issue` or `list_issues` to confirm the issue exists.
+
+2. **Set In Progress**: If the issue exists, update it to **In Progress** via `save_issue` with `state: "In Progress"` (or equivalent state name in your workspace).
+
+3. **Add comments as you work**: Use `create_comment` to describe the work being done—what was implemented, key decisions, or blockers. This keeps the issue history useful for PR review and future reference.
+
+4. **Do not mark Done**: Let the Linear–GitHub integration set Done when the PR is merged. Manually setting Done bypasses that flow. PRs opened in GitHub will drive status updates from here.
 
 ## Configuration
 
