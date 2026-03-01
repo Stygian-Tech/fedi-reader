@@ -225,6 +225,50 @@ struct LinkFilterServiceTests {
         #expect(linkStatuses.first?.tags.contains("swiftui") == false)
         #expect(linkStatuses.first?.tags.contains("openai") == false)
     }
+
+    @Test("Ignores linked page sections when extracting content tags")
+    func ignoresLinkedPageSectionsWhenExtractingContentTags() async {
+        let status = MockStatusFactory.makeStatus(
+            id: "1",
+            content: """
+            <p>
+            Read <a href="https://example.com/article#overview">#Overview</a>
+            and follow #Swift
+            </p>
+            """,
+            hasCard: true,
+            cardURL: "https://example.com/article"
+        )
+
+        let linkStatuses = await service.processStatuses([status])
+
+        #expect(linkStatuses.count == 1)
+        #expect(linkStatuses.first?.tags == ["Swift"])
+    }
+
+    @Test("Preserves hashtags from Mastodon hashtag links in post content")
+    func preservesHashtagsFromMastodonHashtagLinksInPostContent() async {
+        let status = MockStatusFactory.makeStatus(
+            id: "1",
+            content: """
+            <p>
+            <a href="https://mastodon.social/tags/SwiftUI" class="mention hashtag" rel="tag">
+            #<span>SwiftUI</span>
+            </a>
+            </p>
+            """,
+            hasCard: true,
+            cardURL: "https://example.com/article",
+            tags: [
+                Tag(name: "swiftui", url: "https://mastodon.social/tags/swiftui", history: nil)
+            ]
+        )
+
+        let linkStatuses = await service.processStatuses([status])
+
+        #expect(linkStatuses.count == 1)
+        #expect(linkStatuses.first?.tags == ["SwiftUI"])
+    }
     
     // MARK: - Threads/Instagram Exclusion
     

@@ -7,12 +7,9 @@ import Foundation
 struct MastodonClientTests {
     @Test("lookupAccount uses configured session and auth snapshot")
     func lookupAccountUsesConfiguredSession() async throws {
-        MockURLProtocol.reset()
-        defer { MockURLProtocol.reset() }
-
-        let account = makeAccount(acct: "alice@example.com", username: "alice")
+        let account = makeAccount(acct: "alice-lookup@example.com", username: "alice")
         MockURLProtocol.setMockResponse(
-            for: lookupAccountURL(instance: "mastodon.social", acct: "alice@example.com"),
+            for: lookupAccountURL(instance: "mastodon.social", acct: "alice-lookup@example.com"),
             data: try makeEncoder().encode(account)
         )
 
@@ -20,27 +17,24 @@ struct MastodonClientTests {
         client.currentInstance = "mastodon.social"
         client.currentAccessToken = "secret-token"
 
-        let resolved = try await client.lookupAccount(acct: "alice@example.com")
+        let resolved = try await client.lookupAccount(acct: "alice-lookup@example.com")
 
-        #expect(resolved.acct == "alice@example.com")
+        #expect(resolved.acct == "alice-lookup@example.com")
         #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer secret-token")
     }
 
     @Test("resolveProfileAccount falls back to search when lookup fails")
     func resolveProfileAccountFallsBackToSearch() async throws {
-        MockURLProtocol.reset()
-        defer { MockURLProtocol.reset() }
-
-        let account = makeAccount(acct: "alice@example.com", username: "alice")
+        let account = makeAccount(acct: "alice-resolve@example.com", username: "alice")
         MockURLProtocol.setMockResponse(
-            for: lookupAccountURL(instance: "mastodon.social", acct: "alice@example.com"),
+            for: lookupAccountURL(instance: "mastodon.social", acct: "alice-resolve@example.com"),
             data: Data("not found".utf8),
             statusCode: 404
         )
 
         let searchResults = SearchResults(accounts: [account], statuses: [], hashtags: [])
         MockURLProtocol.setMockResponse(
-            for: searchURL(instance: "mastodon.social", query: "alice@example.com", type: "accounts", limit: 5),
+            for: searchURL(instance: "mastodon.social", query: "alice-resolve@example.com", type: "accounts", limit: 5),
             data: try makeEncoder().encode(searchResults)
         )
 
@@ -48,7 +42,7 @@ struct MastodonClientTests {
         client.currentInstance = "mastodon.social"
         client.currentAccessToken = "secret-token"
 
-        let resolved = await client.resolveProfileAccount(handle: "@alice@example.com")
+        let resolved = await client.resolveProfileAccount(handle: "@alice-resolve@example.com")
 
         #expect(resolved?.id == account.id)
         #expect(resolved?.preferredDisplayName == account.displayName)
