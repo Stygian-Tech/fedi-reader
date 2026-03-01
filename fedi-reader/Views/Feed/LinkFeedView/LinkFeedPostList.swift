@@ -11,6 +11,7 @@ struct LinkFeedPostList: View {
     let statuses: [LinkStatus]
     let isLoading: Bool
     let shouldShowPaginationLoading: Bool
+    let canLoadMore: Bool
     let deferPostNavigation: (@escaping () -> Void) -> Void
     let shouldBlockPostTaps: () -> Bool
     let onItemAppear: (Int, Int) -> Void
@@ -19,6 +20,7 @@ struct LinkFeedPostList: View {
     // New: scroll position reporting
     let onFirstVisibleChange: ((String) -> Void)?
     let onListAppear: (() -> Void)?
+    let onLoadMoreAtBottom: (() -> Void)?
     
     @State private var rowTopOffsets: [String: CGFloat] = [:]
     @State private var currentFirstVisibleId: String?
@@ -29,17 +31,20 @@ struct LinkFeedPostList: View {
         statuses: [LinkStatus],
         isLoading: Bool,
         shouldShowPaginationLoading: Bool,
+        canLoadMore: Bool = false,
         deferPostNavigation: @escaping ((@escaping () -> Void) -> Void),
         shouldBlockPostTaps: @escaping (() -> Bool),
         onItemAppear: @escaping (Int, Int) -> Void,
         onArticleSelect: ((URL, Status) -> Void)? = nil,
         scrollProxy: Binding<ScrollViewProxy?>,
         onFirstVisibleChange: ((String) -> Void)? = nil,
-        onListAppear: (() -> Void)? = nil
+        onListAppear: (() -> Void)? = nil,
+        onLoadMoreAtBottom: (() -> Void)? = nil
     ) {
         self.statuses = statuses
         self.isLoading = isLoading
         self.shouldShowPaginationLoading = shouldShowPaginationLoading
+        self.canLoadMore = canLoadMore
         self.deferPostNavigation = deferPostNavigation
         self.shouldBlockPostTaps = shouldBlockPostTaps
         self.onItemAppear = onItemAppear
@@ -47,6 +52,7 @@ struct LinkFeedPostList: View {
         self._scrollProxy = scrollProxy
         self.onFirstVisibleChange = onFirstVisibleChange
         self.onListAppear = onListAppear
+        self.onLoadMoreAtBottom = onLoadMoreAtBottom
     }
 
     var body: some View {
@@ -82,6 +88,13 @@ struct LinkFeedPostList: View {
 
                         if shouldShowPaginationLoading {
                             paginationLoadingRow
+                        }
+
+                        // Sentinel at bottom: when visible, trigger load more. Ensures we fetch when user scrolls to the end.
+                        if canLoadMore, !statuses.isEmpty, !isLoading, !shouldShowPaginationLoading {
+                            Color.clear
+                                .frame(height: 1)
+                                .onAppear { onLoadMoreAtBottom?() }
                         }
                     }
                     .padding(.horizontal, 12)
