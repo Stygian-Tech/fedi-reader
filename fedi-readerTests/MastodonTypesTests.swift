@@ -47,6 +47,34 @@ struct MastodonTypesTests {
         // For non-reblog, displayStatus should return self
         #expect(status.displayStatus.id == status.id)
     }
+
+    @Test("StatusContext returns immediate parent for replies")
+    func statusContextReturnsImmediateParent() {
+        let root = MockStatusFactory.makeStatus(id: "root")
+        let parent = MockStatusFactory.makeStatus(id: "parent", inReplyToId: root.id)
+        let current = MockStatusFactory.makeStatus(id: "current", inReplyToId: parent.id)
+        let context = StatusContext(ancestors: [root, parent], descendants: [])
+
+        #expect(context.parentStatus(for: current)?.id == parent.id)
+    }
+
+    @Test("StatusContext falls back to latest ancestor when direct parent is missing")
+    func statusContextFallsBackToLatestAncestor() {
+        let root = MockStatusFactory.makeStatus(id: "root")
+        let parent = MockStatusFactory.makeStatus(id: "parent", inReplyToId: root.id)
+        let current = MockStatusFactory.makeStatus(id: "current", inReplyToId: "missing-parent")
+        let context = StatusContext(ancestors: [root, parent], descendants: [])
+
+        #expect(context.parentStatus(for: current)?.id == parent.id)
+    }
+
+    @Test("StatusContext does not return a parent for top-level posts")
+    func statusContextReturnsNilForTopLevelPost() {
+        let current = MockStatusFactory.makeStatus(id: "current")
+        let context = StatusContext(ancestors: [MockStatusFactory.makeStatus(id: "root")], descendants: [])
+
+        #expect(context.parentStatus(for: current) == nil)
+    }
     
     // MARK: - Visibility Tests
     

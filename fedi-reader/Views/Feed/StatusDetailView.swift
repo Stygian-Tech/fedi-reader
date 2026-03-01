@@ -11,10 +11,29 @@ struct StatusDetailView: View {
     
     private let threadingService = ThreadingService()
 
+    private var threadStatus: Status {
+        status.displayStatus
+    }
+
+    private var parentStatus: Status? {
+        context?.parentStatus(for: status)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // Parent post as its own card at the top
+                if let parentStatus {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("In Reply To", systemImage: "arrow.turn.down.right")
+                            .font(.roundedCaption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        StatusDetailRowView(status: parentStatus)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 5)
+                }
+
                 StatusDetailRowView(status: status)
                     .padding(.horizontal)
                     .padding(.vertical, 5)
@@ -46,14 +65,14 @@ struct StatusDetailView: View {
                                 Spacer()
                                 
                                 // Show expected count if we have more replies
-                                if status.repliesCount > context.descendants.count {
-                                    Text("\(context.descendants.count) of \(status.repliesCount)")
+                                if threadStatus.repliesCount > context.descendants.count {
+                                    Text("\(context.descendants.count) of \(threadStatus.repliesCount)")
                                         .font(.roundedCaption)
                                         .foregroundStyle(.secondary)
                                 }
                                 
                                 // Button to fetch remote replies
-                                if status.repliesCount > context.descendants.count && !isLoadingRemoteReplies {
+                                if threadStatus.repliesCount > context.descendants.count && !isLoadingRemoteReplies {
                                     Button {
                                         Task {
                                             await refreshReplies()
@@ -78,7 +97,7 @@ struct StatusDetailView: View {
                         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
                         .padding(.horizontal)
                         .padding(.vertical, 5)
-                    } else if status.repliesCount > 0 {
+                    } else if threadStatus.repliesCount > 0 {
                         // Show message if we expect replies but don't have any yet
                         VStack(alignment: .leading, spacing: 0) {
                             HStack {
@@ -135,12 +154,12 @@ struct StatusDetailView: View {
             await refreshReplies()
         }
         .onDisappear {
-            timelineWrapper.service?.cancelAsyncRefreshPolling(forStatusId: status.id)
+            timelineWrapper.service?.cancelAsyncRefreshPolling(forStatusId: threadStatus.id)
         }
         .onReceive(NotificationCenter.default.publisher(for: .statusContextDidUpdate)) { notification in
             // Update context when remote replies are fetched
             if let payload = notification.object as? StatusContextUpdatePayload,
-               payload.statusId == status.id {
+               payload.statusId == threadStatus.id {
                 // Replace context with updated one (it already contains all replies)
                 context = payload.context
                 isLoadingRemoteReplies = false
@@ -155,7 +174,7 @@ struct StatusDetailView: View {
         }
 
         do {
-            let loadedContext = try await service.getStatusContext(for: status)
+            let loadedContext = try await service.getStatusContext(for: threadStatus)
             context = loadedContext
             isLoading = false
             
@@ -173,7 +192,7 @@ struct StatusDetailView: View {
     
     private func shouldFetchRemoteReplies(context: StatusContext) -> Bool {
         // Fetch if we have fewer descendants than expected
-        if status.repliesCount > context.descendants.count {
+        if threadStatus.repliesCount > context.descendants.count {
             return true
         }
         
@@ -191,11 +210,10 @@ struct StatusDetailView: View {
         isLoadingRemoteReplies = true
         
         do {
-            try await service.refreshContextForStatus(status)
+            try await service.refreshContextForStatus(threadStatus)
             // Context updated via notification (immediate if no async refresh, else when polling finishes)
         } catch {
             isLoadingRemoteReplies = false
         }
     }
 }
-
