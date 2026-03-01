@@ -20,6 +20,17 @@ struct StatusContext: Codable, Sendable {
     }
 }
 
-// MARK: - Author Attribution
+extension StatusContext {
+    nonisolated func parentStatus(for status: Status) -> Status? {
+        let targetStatus = status.displayStatus
 
+        guard let replyToId = targetStatus.inReplyToId else {
+            return nil
+        }
+
+        return ancestors.last(where: { $0.id == replyToId }) ?? ancestors.last
+    }
+}
+
+// MARK: - Author Attribution
 
