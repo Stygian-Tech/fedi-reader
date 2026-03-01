@@ -21,12 +21,11 @@ struct TagExtractor {
 
     /// Extract tags from status content (hashtags)
     nonisolated static func extractTags(from content: String) -> [String] {
-        // Strip HTML first to avoid matching HTML entities like &#39; as #39
-        let plainText = HTMLParser.stripHTML(content)
+        let plainText = plainTextForTagExtraction(from: content)
         
         // Extract hashtags from plain text
-        // Pattern requires at least one letter to avoid pure number tags
-        let pattern = #"#([a-zA-Z][\w]*)"#
+        // Pattern requires at least one letter and avoids matching URL fragments like /story#section.
+        let pattern = #"(?<![\w/])#([a-zA-Z][\w]*)"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
             return []
         }
@@ -48,6 +47,81 @@ struct TagExtractor {
         }
         
         return tags
+    }
+
+    private nonisolated static func plainTextForTagExtraction(from html: String) -> String {
+        let linkPattern = #"<a\b[^>]*>(.*?)</a\s*>"#
+        guard let regex = try? NSRegularExpression(
+            pattern: linkPattern,
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        ) else {
+            return HTMLParser.stripHTML(html)
+        }
+
+        var sanitizedHTML = html
+        let range = NSRange(sanitizedHTML.startIndex..., in: sanitizedHTML)
+        let matches = regex.matches(in: sanitizedHTML, options: [], range: range)
+
+        for match in matches.reversed() {
+            guard let elementRange = Range(match.range, in: sanitizedHTML),
+                  let innerRange = Range(match.range(at: 1), in: sanitizedHTML) else {
+                continue
+            }
+
+            let anchorHTML = String(sanitizedHTML[elementRange])
+            let innerHTML = String(sanitizedHTML[innerRange])
+            let replacement = shouldPreserveLinkedHashtag(anchorHTML) ? innerHTML : " "
+
+            sanitizedHTML.replaceSubrange(elementRange, with: replacement)
+        }
+
+        return HTMLParser.stripHTML(sanitizedHTML)
+    }
+
+    private nonisolated static func shouldPreserveLinkedHashtag(_ anchorHTML: String) -> Bool {
+        guard let tagEnd = anchorHTML.firstIndex(of: ">") else {
+            return false
+        }
+
+        let openingTag = String(anchorHTML[...tagEnd])
+        let classNames = attribute(named: "class", in: openingTag)?
+            .split(whereSeparator: \.isWhitespace)
+            .map { $0.lowercased() } ?? []
+
+        if classNames.contains("hashtag") {
+            return true
+        }
+
+        guard let rawHref = attribute(named: "href", in: openingTag)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return false
+        }
+
+        let href = HTMLParser.decodeHTMLEntities(rawHref)
+        guard let url = URL(string: href) else {
+            return href.lowercased().hasPrefix("/tags/") || href.lowercased().hasPrefix("/tagged/")
+        }
+
+        let path = url.path.lowercased()
+        return path.hasPrefix("/tags/") || path.hasPrefix("/tagged/")
+    }
+
+    private nonisolated static func attribute(named name: String, in tag: String) -> String? {
+        let escapedName = NSRegularExpression.escapedPattern(for: name)
+        let pattern = #"\b\#(escapedName)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: tag, options: [], range: NSRange(tag.startIndex..., in: tag)) else {
+            return nil
+        }
+
+        for captureIndex in 1...3 {
+            if let valueRange = Range(match.range(at: captureIndex), in: tag) {
+                return String(tag[valueRange])
+            }
+        }
+
+        return nil
     }
     
     /// Extract tags from status, checking multiple sources

@@ -181,6 +181,7 @@ class MockURLProtocol: URLProtocol {
     static var mockResponses: [String: (Data, HTTPURLResponse)] = [:]
     static var mockErrors: [String: Error] = [:]
     static var lastRequest: URLRequest?
+    private static let lock = NSLock()
     
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -191,19 +192,23 @@ class MockURLProtocol: URLProtocol {
     }
     
     override func startLoading() {
+        Self.lock.lock()
         Self.lastRequest = request
+        let mockErrors = Self.mockErrors
+        let mockResponses = Self.mockResponses
+        Self.lock.unlock()
         
         guard let url = request.url?.absoluteString else {
             client?.urlProtocolDidFinishLoading(self)
             return
         }
         
-        if let error = Self.mockErrors[url] {
+        if let error = mockErrors[url] {
             client?.urlProtocol(self, didFailWithError: error)
             return
         }
         
-        if let (data, response) = Self.mockResponses[url] {
+        if let (data, response) = mockResponses[url] {
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
         }
@@ -214,6 +219,8 @@ class MockURLProtocol: URLProtocol {
     override func stopLoading() {}
     
     static func reset() {
+        lock.lock()
+        defer { lock.unlock() }
         mockResponses.removeAll()
         mockErrors.removeAll()
         lastRequest = nil
@@ -226,14 +233,17 @@ class MockURLProtocol: URLProtocol {
             httpVersion: nil,
             headerFields: nil
         )!
+        lock.lock()
+        defer { lock.unlock() }
         mockResponses[url] = (data, response)
     }
     
     static func setMockError(for url: String, error: Error) {
+        lock.lock()
+        defer { lock.unlock() }
         mockErrors[url] = error
     }
 }
 
 // MARK: - Mock Keychain Helper
-
 

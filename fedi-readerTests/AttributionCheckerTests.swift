@@ -76,16 +76,13 @@ struct AttributionCheckerTests {
 
     @Test("Extracts rel author from anchor tags and resolves relative URLs")
     func extractsRelAuthorFromAnchorTags() async {
-        AttributionCheckerMockURLProtocol.reset()
-        defer { AttributionCheckerMockURLProtocol.reset() }
-
-        let articleURL = "https://example.com/articles/story"
-        let authorURL = "https://example.com/authors/jane"
+        let articleURL = "https://example.com/articles/story-rel-author"
+        let authorURL = "https://example.com/authors/jane-rel-author"
         let html = """
         <html>
             <body>
                 <p class="byline">
-                    <a href="/authors/jane" rel="author">Jane Doe</a>
+                    <a href="/authors/jane-rel-author" rel="author">Jane Doe</a>
                 </p>
             </body>
         </html>
@@ -114,11 +111,8 @@ struct AttributionCheckerTests {
 
     @Test("Merges Link header URLs with meta author names")
     func mergesLinkHeaderURLsWithMetaNames() async {
-        AttributionCheckerMockURLProtocol.reset()
-        defer { AttributionCheckerMockURLProtocol.reset() }
-
-        let articleURL = "https://example.com/articles/story"
-        let authorURL = "https://example.com/authors/jane"
+        let articleURL = "https://example.com/articles/story-link-header"
+        let authorURL = "https://example.com/authors/jane-link-header"
         let html = """
         <html>
             <head>
@@ -154,11 +148,8 @@ struct AttributionCheckerTests {
 
     @Test("Extracts authors from JSON-LD graphs")
     func extractsAuthorsFromJSONLDGraphs() async {
-        AttributionCheckerMockURLProtocol.reset()
-        defer { AttributionCheckerMockURLProtocol.reset() }
-
-        let articleURL = "https://example.com/articles/story"
-        let authorURL = "https://example.com/authors/jane"
+        let articleURL = "https://example.com/articles/story-jsonld"
+        let authorURL = "https://example.com/authors/jane-jsonld"
         let html = """
         <html>
             <head>
@@ -174,7 +165,7 @@ struct AttributionCheckerTests {
                       "@id": "#author-jane",
                       "@type": "Person",
                       "name": "Jane Doe",
-                      "url": "/authors/jane"
+                      "url": "/authors/jane-jsonld"
                     }
                   ]
                 }
