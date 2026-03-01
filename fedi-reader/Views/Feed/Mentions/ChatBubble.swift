@@ -120,39 +120,46 @@ private struct ChatMediaAttachmentView: View {
     let isSent: Bool
     let autoPlayGifs: Bool
 
+    private var imageURL: URL? {
+        URL(string: attachment.previewUrl ?? attachment.url)
+    }
+
+    private var videoURL: URL? {
+        (attachment.type == .gifv || attachment.type == .video) ? URL(string: attachment.url) : nil
+    }
+
+    private var shouldAutoplayVideo: Bool {
+        autoPlayGifs && videoURL != nil
+    }
+
     var body: some View {
-        Group {
-            if (attachment.type == .gifv || attachment.type == .video), autoPlayGifs, let url = URL(string: attachment.url) {
+        ZStack {
+            // Base layer: always show preview/image
+            AsyncImage(url: imageURL) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Rectangle()
+                    .fill(.tertiary)
+            }
+            .frame(maxWidth: 220, maxHeight: 220)
+
+            // Overlay: video player when autoplay is on
+            if shouldAutoplayVideo, let url = videoURL {
                 ChatGifvPlayerView(url: url)
                     .frame(maxWidth: 220, maxHeight: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(alignment: .bottomTrailing) {
-                        Image(systemName: attachment.type == .gifv ? "play.circle" : "video")
-                            .font(.roundedCaption)
-                            .padding(4)
-                            .glassEffect(.clear, in: Circle())
-                            .padding(6)
-                    }
-            } else {
-                AsyncImage(url: URL(string: attachment.previewUrl ?? attachment.url)) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Rectangle()
-                        .fill(.tertiary)
-                }
-                .frame(maxWidth: 220, maxHeight: 220)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(alignment: .bottomTrailing) {
-                    if attachment.type == .video || attachment.type == .gifv {
-                        Image(systemName: attachment.type == .gifv ? "play.circle" : "video")
-                            .font(.roundedCaption)
-                            .padding(4)
-                            .glassEffect(.clear, in: Circle())
-                            .padding(6)
-                    }
-                }
+            }
+        }
+        .frame(maxWidth: 220, maxHeight: 220)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .bottomTrailing) {
+            if attachment.type == .video || attachment.type == .gifv {
+                Image(systemName: attachment.type == .gifv ? "play.circle" : "video")
+                    .font(.roundedCaption)
+                    .padding(4)
+                    .glassEffect(.clear, in: Circle())
+                    .padding(6)
             }
         }
     }
@@ -174,10 +181,11 @@ private struct ChatGifvPlayerView: View {
                         player.play()
                     }
             } else {
-                Rectangle()
-                    .fill(.tertiary)
+                // Transparent until video loads so base AsyncImage preview shows through
+                Color.clear
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             guard player == nil else { return }
             let item = AVPlayerItem(url: url)
