@@ -308,6 +308,70 @@ struct LinkFilterServiceTests {
         #expect(linkStatuses.first?.primaryURL.absoluteString == "https://example.com/article")
     }
     
+    @Test("Includes replies that have article links in content")
+    func includesRepliesWithArticleLinks() async {
+        let statuses = [
+            MockStatusFactory.makeStatus(
+                id: "reply-with-article",
+                content: "<p>Great point! Here's more: <a href=\"https://example.com/deep-dive\">read this</a></p>",
+                inReplyToId: "parent-status-id"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "reply-with-article-card",
+                hasCard: true,
+                cardURL: "https://news.site/article",
+                inReplyToId: "bridged-bluesky-parent"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "reply-mixed-links",
+                content: """
+                <p>Replying to <a href="https://bsky.app/post/abc">thread</a> —
+                also see <a href="https://example.com/related">this article</a></p>
+                """,
+                inReplyToId: "bluesky-parent"
+            )
+        ]
+
+        let linkStatuses = await service.processStatuses(statuses)
+
+        #expect(linkStatuses.count == 3)
+        #expect(linkStatuses.contains { $0.id == "reply-with-article" && $0.primaryURL.absoluteString == "https://example.com/deep-dive" })
+        #expect(linkStatuses.contains { $0.id == "reply-with-article-card" && $0.primaryURL.absoluteString == "https://news.site/article" })
+        #expect(linkStatuses.contains { $0.id == "reply-mixed-links" && $0.primaryURL.absoluteString == "https://example.com/related" })
+    }
+
+    @Test("Excludes Bluesky and BridgyFed links from processed results")
+    func excludesBlueskyLinks() async {
+        let statuses = [
+            MockStatusFactory.makeStatus(
+                id: "bluesky-card",
+                hasCard: true,
+                cardURL: "https://bsky.app/profile/user.bsky.social/post/abc123"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "bluesky-content",
+                content: "<p>Reply <a href=\"https://bsky.app/post/xyz\">to thread</a></p>"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "bridgy-reply",
+                hasCard: true,
+                cardURL: "https://bsky.social/xrpc/app.bsky.feed.getPost",
+                inReplyToId: "parent-id"
+            ),
+            MockStatusFactory.makeStatus(
+                id: "article",
+                hasCard: true,
+                cardURL: "https://example.com/article"
+            )
+        ]
+
+        let linkStatuses = await service.processStatuses(statuses)
+
+        #expect(linkStatuses.count == 1)
+        #expect(linkStatuses.first?.id == "article")
+        #expect(linkStatuses.first?.primaryURL.absoluteString == "https://example.com/article")
+    }
+
     @Test("Excludes Threads and Instagram subdomains and bare domains")
     func excludesThreadsAndInstagramSubdomainsAndBareDomains() async {
         let statuses = [

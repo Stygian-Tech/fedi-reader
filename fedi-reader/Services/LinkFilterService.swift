@@ -83,14 +83,17 @@ final class LinkFilterService {
                 return false
             }
             
-            // Check for link card
-            if targetStatus.hasLinkCard {
+            // Check for link card (exclude social post URLs: Threads, Instagram, Bluesky)
+            if targetStatus.hasLinkCard,
+               let cardURL = targetStatus.card?.linkURL,
+               !Self.isSocialPostURL(cardURL) {
                 return true
             }
             
-            // Check for links in content
+            // Check for links in content (exclude social post URLs)
             let links = Self.extractExternalLinks(from: targetStatus)
-            return !links.isEmpty
+            let validLinks = links.filter { !Self.isSocialPostURL($0) }
+            return !validLinks.isEmpty
         }
         Self.logger.debug("Filtered to \(filtered.count) link statuses (\(filtered.count * 100 / max(statuses.count, 1))%)")
         return filtered
@@ -247,17 +250,20 @@ final class LinkFilterService {
     
     // MARK: - Link Extraction
     
-    /// Returns true if the URL points to Threads or Instagram (social posts, not articles).
-    private func isThreadsOrInstagramURL(_ url: URL) -> Bool {
-        Self.isThreadsOrInstagramURL(url)
+    /// Returns true if the URL points to Threads, Instagram, or Bluesky (social posts, not articles).
+    private func isSocialPostURL(_ url: URL) -> Bool {
+        Self.isSocialPostURL(url)
     }
     
-    /// Returns true if the URL points to Threads or Instagram (social posts, not articles).
-    private nonisolated static func isThreadsOrInstagramURL(_ url: URL) -> Bool {
+    /// Returns true if the URL points to Threads, Instagram, or Bluesky (social posts, not articles).
+    private nonisolated static func isSocialPostURL(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
+        // Threads / Instagram
         if host == "threads.net" || host == "www.threads.net" || host.hasSuffix(".threads.net") { return true }
         if host == "threads.com" || host == "www.threads.com" || host.hasSuffix(".threads.com") { return true }
         if host == "instagram.com" || host == "www.instagram.com" || host.hasSuffix(".instagram.com") { return true }
+        // Bluesky / BridgyFed – replies to bridged posts often have cards/links pointing to bsky.app
+        if host.contains("bsky.app") || host.contains("bsky.social") { return true }
         return false
     }
     
@@ -332,7 +338,7 @@ final class LinkFilterService {
             if let card = targetStatus.card,
                card.type == .link,
                let cardURL = card.linkURL {
-                guard !isThreadsOrInstagramURL(cardURL) else { continue }
+                guard !isSocialPostURL(cardURL) else { continue }
                 
                 linkStatuses.append(
                     LinkStatus(
@@ -352,8 +358,7 @@ final class LinkFilterService {
             }
             
             let links = extractExternalLinks(from: targetStatus)
-            guard let primaryURL = links.first else { continue }
-            guard !isThreadsOrInstagramURL(primaryURL) else { continue }
+            guard let primaryURL = links.first(where: { !isSocialPostURL($0) }) else { continue }
             
             linkStatuses.append(
                 LinkStatus(
