@@ -104,9 +104,9 @@ struct SettingsView: View {
             // Posting
             Section("Posting") {
                 Picker("Default Visibility", selection: $defaultVisibility) {
-                    Label("Public", systemImage: "globe").tag("public")
-                    Label("Unlisted", systemImage: "lock.open").tag("unlisted")
-                    Label("Followers Only", systemImage: "lock").tag("private")
+                    VisibilityPickerOption(icon: "globe", title: "Public").tag("public")
+                    VisibilityPickerOption(icon: "lock.open", title: "Unlisted").tag("unlisted")
+                    VisibilityPickerOption(icon: "lock", title: "Followers Only").tag("private")
                 }
                 
                 Toggle("Show Quote Boost Option", isOn: $showQuoteBoost)
@@ -160,6 +160,11 @@ struct SettingsView: View {
             }
             #endif
         }
+        .listStyle(.insetGrouped)
+        .contentMargins(.vertical, 16, for: .scrollContent)
+        .contentMargins(.horizontal, 20, for: .scrollContent)
+        .frame(maxWidth: 780)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
@@ -260,8 +265,8 @@ private struct SettingsTwoColumnView: View {
                                     .font(.roundedBody)
                                 Spacer(minLength: 0)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 14)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(selectedSection == section ? selectedThemeColor.opacity(0.12) : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -269,10 +274,11 @@ private struct SettingsTwoColumnView: View {
                         .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
+                        .listRowInsets(Self.sidebarRowInsets)
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    .contentMargins(.horizontal, 6, for: .scrollContent)
                 }
                 .frame(width: resolvedSectionsWidth)
 
@@ -285,12 +291,10 @@ private struct SettingsTwoColumnView: View {
                 }
 
                 // Column 2: Section content
-                ScrollView {
-                    sectionContent
-                        .padding()
-                }
-                .frame(minWidth: Self.minDetailWidth, maxWidth: .infinity)
-                .background(Color(.systemBackground))
+                sectionContent
+                    .frame(minWidth: Self.minDetailWidth, maxWidth: Self.detailPaneMaxWidth)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .background(Color(.systemBackground))
             }
         }
         .onAppear {
@@ -298,154 +302,177 @@ private struct SettingsTwoColumnView: View {
         }
     }
 
+    private static let detailPaneMaxWidth: CGFloat = 780
+    private static let detailPanePadding: CGFloat = 24
+    private static let detailPaneHorizontalPadding: CGFloat = 32
+    private static let detailRowInsets = EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20)
+    private static let sidebarRowInsets = EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10)
+
     @ViewBuilder
     private var sectionContent: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        List {
             switch selectedSection {
             case .display:
-                displaySection
-            case .timeline:
-                timelineSection
-            case .posting:
-                postingSection
-            case .accessibility:
-                accessibilitySection
-            case .about:
-                aboutSection
-            case .debug:
-                debugSection
-            }
-        }
-    }
-
-    private var displaySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Display").font(.headline)
-            VStack(spacing: 0) {
-                settingsToggleRow("Show Images", isOn: $showImages)
-                settingsToggleRow("Auto-play GIFs", isOn: $autoPlayGifs)
-                settingsToggleRow("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
-                settingsToggleRow("Show Handle in Feed", isOn: $showHandleInFeed)
-                NavigationLink {
-                    ThemeColorSelectionView(selection: $themeColorName)
-                } label: {
-                    HStack {
-                        Text("Theme Color")
-                        Spacer()
-                        ThemeColorPreviewCircle(themeColor: ThemeColor.resolved(from: themeColorName))
-                        Text(ThemeColor.resolved(from: themeColorName).displayName)
-                            .foregroundStyle(.secondary)
+                Section {
+                    settingsToggleRow("Show Images", isOn: $showImages)
+                    settingsToggleRow("Auto-play GIFs", isOn: $autoPlayGifs)
+                    settingsToggleRow("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
+                    settingsToggleRow("Show Handle in Feed", isOn: $showHandleInFeed)
+                    NavigationLink {
+                        ThemeColorSelectionView(selection: $themeColorName)
+                    } label: {
+                        HStack {
+                            Text("Theme Color")
+                                .font(.roundedBody)
+                            Spacer()
+                            ThemeColorPreviewCircle(themeColor: ThemeColor.resolved(from: themeColorName))
+                            Text(ThemeColor.resolved(from: themeColorName).displayName)
+                                .font(.roundedBody)
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .listRowInsets(Self.detailRowInsets)
+                } header: {
+                    Text("Display").font(.roundedTitle3)
                 }
-            }
-        }
-    }
 
-    private var timelineSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Timeline").font(.headline)
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Default Feed").font(.subheadline)
-                    Picker("Default Feed", selection: $defaultListId) {
+            case .timeline:
+                Section {
+                    Picker(selection: $defaultListId) {
                         Text("Home").tag("")
                         ForEach(lists) { list in
                             Text(list.title).tag(list.id)
                         }
+                    } label: {
+                        Text("Default Feed").font(.roundedBody)
                     }
                     .pickerStyle(.menu)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Refresh Interval").font(.subheadline)
-                    Picker("Refresh Interval", selection: $refreshInterval) {
+                    .listRowInsets(Self.detailRowInsets)
+
+                    Picker(selection: $refreshInterval) {
                         Text("Manual").tag(0)
                         Text("1 minute").tag(1)
                         Text("5 minutes").tag(5)
                         Text("15 minutes").tag(15)
                         Text("30 minutes").tag(30)
+                    } label: {
+                        Text("Refresh Interval").font(.roundedBody)
                     }
                     .pickerStyle(.menu)
+                    .listRowInsets(Self.detailRowInsets)
+                } header: {
+                    Text("Timeline").font(.roundedTitle3)
                 }
-            }
-        }
-    }
 
-    private var postingSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Posting").font(.headline)
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Default Visibility").font(.subheadline)
-                    Picker("Default Visibility", selection: $defaultVisibility) {
-                        Label("Public", systemImage: "globe").tag("public")
-                        Label("Unlisted", systemImage: "lock.open").tag("unlisted")
-                        Label("Followers Only", systemImage: "lock").tag("private")
+            case .posting:
+                Section {
+                    Picker(selection: $defaultVisibility) {
+                        VisibilityPickerOption(icon: "globe", title: "Public").tag("public")
+                        VisibilityPickerOption(icon: "lock.open", title: "Unlisted").tag("unlisted")
+                        VisibilityPickerOption(icon: "lock", title: "Followers Only").tag("private")
+                    } label: {
+                        Text("Default Visibility").font(.roundedBody)
                     }
                     .pickerStyle(.menu)
-                }
-                settingsToggleRow("Show Quote Boost Option", isOn: $showQuoteBoost)
-            }
-        }
-    }
+                    .listRowInsets(Self.detailRowInsets)
 
-    private var accessibilitySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Accessibility").font(.headline)
-            settingsToggleRow("Haptic Feedback", isOn: $hapticFeedback)
-        }
-    }
-
-    private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("About").font(.headline)
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Version")
-                    Spacer()
-                    Text("\(Constants.appVersion) (\(Constants.appBuild))")
-                        .foregroundStyle(.secondary)
+                    settingsToggleRow("Show Quote Boost Option", isOn: $showQuoteBoost)
+                } header: {
+                    Text("Posting").font(.roundedTitle3)
                 }
-                Link(destination: URL(string: Constants.OAuth.appWebsite)!) {
+
+            case .accessibility:
+                Section {
+                    settingsToggleRow("Haptic Feedback", isOn: $hapticFeedback)
+                } header: {
+                    Text("Accessibility").font(.roundedTitle3)
+                }
+
+            case .about:
+                Section {
                     HStack {
-                        Text("GitHub")
+                        Text("Version")
+                            .font(.roundedBody)
                         Spacer()
-                        Image(systemName: "arrow.up.right.square")
+                        Text("\(Constants.appVersion) (\(Constants.appBuild))")
+                            .font(.roundedBody)
                             .foregroundStyle(.secondary)
                     }
-                }
-                Link(destination: URL(string: "\(Constants.OAuth.appWebsite)/issues")!) {
-                    HStack {
-                        Text("Report an Issue")
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .foregroundStyle(.secondary)
+                    .listRowInsets(Self.detailRowInsets)
+                    Link(destination: URL(string: Constants.OAuth.appWebsite)!) {
+                        HStack {
+                            Text("GitHub")
+                                .font(.roundedBody)
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .listRowInsets(Self.detailRowInsets)
+                    Link(destination: URL(string: "\(Constants.OAuth.appWebsite)/issues")!) {
+                        HStack {
+                            Text("Report an Issue")
+                                .font(.roundedBody)
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .listRowInsets(Self.detailRowInsets)
+                } header: {
+                    Text("About").font(.roundedTitle3)
                 }
-            }
-        }
-    }
 
-    @ViewBuilder
-    private var debugSection: some View {
-        #if DEBUG
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Debug").font(.headline)
-            VStack(spacing: 12) {
-                Button("Clear Cache") {
-                    // Clear caches
+            case .debug:
+                #if DEBUG
+                Section {
+                    Button("Clear Cache") {
+                        // Clear caches
+                    }
+                    .font(.roundedBody)
+                    .listRowInsets(Self.detailRowInsets)
+
+                    Button("Reset All Settings", role: .destructive) {
+                        UserDefaults.standard.removePersistentDomain(forName: Bundle.main.bundleIdentifier!)
+                    }
+                    .font(.roundedBody)
+                    .listRowInsets(Self.detailRowInsets)
+                } header: {
+                    Text("Debug").font(.roundedTitle3)
                 }
-                Button("Reset All Settings", role: .destructive) {
-                    UserDefaults.standard.removePersistentDomain(forName: Bundle.main.bundleIdentifier!)
-                }
+                #else
+                EmptyView()
+                #endif
             }
         }
+        .contentMargins(.vertical, Self.detailPanePadding, for: .scrollContent)
+        .contentMargins(.horizontal, Self.detailPaneHorizontalPadding, for: .scrollContent)
+        #if os(macOS)
+        .listStyle(.grouped)
         #else
-        EmptyView()
+        .listStyle(.insetGrouped)
         #endif
     }
 
     private func settingsToggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
         Toggle(title, isOn: isOn)
+            .font(.roundedBody)
+            .listRowInsets(Self.detailRowInsets)
+    }
+}
+
+// MARK: - Visibility Picker Option
+
+private struct VisibilityPickerOption: View {
+    let icon: String
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: icon)
+            Text(title)
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
