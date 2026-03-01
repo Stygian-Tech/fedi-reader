@@ -28,6 +28,7 @@ struct LinkFeedThreeColumnView: View {
     @State private var isPaginating = false
     @State private var retainedLists: [MastodonList] = []
     @State private var feedTabSelectionTracker = SelectionDoubleTapTracker<String>()
+    @State private var hasRestoredScrollForCurrentTab = false
 
     private static let minListsWidth: CGFloat = 150
     private static let minPostsWidth: CGFloat = 200
@@ -263,6 +264,10 @@ struct LinkFeedThreeColumnView: View {
                 retainedLists = cachedLists
             }
             syncRetainedLists(with: liveLists, allowEmpty: false)
+            attemptRestoreScrollIfNeeded()
+        }
+        .onDisappear {
+            hasRestoredScrollForCurrentTab = false
         }
     }
 
@@ -321,7 +326,13 @@ struct LinkFeedThreeColumnView: View {
                     onArticleSelect: { url, status in
                         selectedArticle = (url: url, status: status)
                     },
-                    scrollProxy: $scrollProxy
+                    scrollProxy: $scrollProxy,
+                    onFirstVisibleChange: { statusId in
+                        appState.linksLastVisibleStatusIdPerFeed[currentTab.id] = statusId
+                    },
+                    onListAppear: {
+                        attemptRestoreScrollIfNeeded()
+                    }
                 )
             }
         }
@@ -395,6 +406,7 @@ struct LinkFeedThreeColumnView: View {
     }
 
     private func handleTabChange(to newIndex: Int) {
+        hasRestoredScrollForCurrentTab = false
         guard newIndex >= 0, newIndex < feedTabs.count else { return }
 
         let tab = feedTabs[newIndex]
@@ -469,7 +481,15 @@ struct LinkFeedThreeColumnView: View {
             selectedTabIndex = index
         }
 
-        await loadContentForTab(currentTab, forceRefresh: true)
+        linkFilterService.switchToFeed(currentTab.id)
+
+        if linkFilterService.hasCachedContent(for: currentTab.id) {
+            Task {
+                await linkFilterService.enrichWithAttributions()
+            }
+        } else {
+            await loadContentForTab(currentTab, forceRefresh: true)
+        }
 
         Task.detached(priority: .background) { [feedTabs, selectedTabIndex] in
             await prefetchAdjacentFeeds(currentIndex: selectedTabIndex, tabs: feedTabs)
@@ -554,6 +574,19 @@ struct LinkFeedThreeColumnView: View {
             let newStatuses = await service.loadMoreListTimeline(listId: tab.id)
             guard !newStatuses.isEmpty else { return }
             _ = await linkFilterService.appendStatuses(newStatuses, for: tab.id)
+        }
+    }
+
+    private func attemptRestoreScrollIfNeeded() {
+        guard let proxy = scrollProxy else { return }
+        guard !hasRestoredScrollForCurrentTab else { return }
+        guard let statusId = appState.linksLastVisibleStatusIdPerFeed[currentTab.id] else { return }
+
+        DispatchQueue.main.async {
+            withAnimation(nil) {
+                proxy.scrollTo(statusId, anchor: .top)
+            }
+            hasRestoredScrollForCurrentTab = true
         }
     }
 }

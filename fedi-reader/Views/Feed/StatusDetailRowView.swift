@@ -3,10 +3,11 @@ import SwiftUI
 struct StatusDetailRowView: View {
     let status: Status
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
 
-    @State private var fediverseCreatorName: String?
-    @State private var fediverseCreatorURL: URL?
+    @State private var authorAttribution: AuthorAttribution?
+    @State private var resolvedAuthorAccount: MastodonAccount?
 
     var displayStatus: Status {
         status.displayStatus
@@ -103,19 +104,27 @@ struct StatusDetailRowView: View {
                 } label: {
                     LinkCardContent(
                         card: card,
-                        fediverseCreatorName: fediverseCreatorName,
-                        fediverseCreatorURL: fediverseCreatorURL
+                        authorAttribution: authorAttribution,
+                        authorDisplayName: resolvedAuthorAccount?.preferredDisplayName
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 10))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .environment(\.openURL, authorLinkOpenURLAction)
                 }
                 .buttonStyle(.plain)
                 .task(id: cardURL?.absoluteString) {
-                    guard let url = cardURL else { return }
-                    let creator = await LinkPreviewService.shared.fetchFediverseCreator(for: url)
-                    fediverseCreatorName = creator?.name
-                    fediverseCreatorURL = creator?.url
+                    guard let url = cardURL else {
+                        authorAttribution = nil
+                        resolvedAuthorAccount = nil
+                        return
+                    }
+
+                    authorAttribution = await AttributionChecker.shared.checkAttribution(for: url)
+                    resolvedAuthorAccount = await appState.client.resolveProfileAccount(
+                        handle: authorAttribution?.mastodonHandle,
+                        profileURL: currentAuthorURL(for: card)
+                    )
                 }
             }
 
@@ -155,6 +164,39 @@ struct StatusDetailRowView: View {
         }
         .buttonStyle(.plain)
     }
+
+    private func currentAuthorURL(for card: PreviewCard) -> URL? {
+        authorAttribution?.preferredURL ?? card.authorUrl.flatMap { URL(string: $0) }
+    }
+
+    private var authorLinkOpenURLAction: OpenURLAction {
+        OpenURLAction { url in
+            guard MastodonProfileReference.acct(handle: authorAttribution?.mastodonHandle, profileURL: url) != nil else {
+                return .systemAction(url)
+            }
+
+            Task {
+                let account = if let resolvedAuthorAccount {
+                    resolvedAuthorAccount
+                } else {
+                    await appState.client.resolveProfileAccount(
+                        handle: authorAttribution?.mastodonHandle,
+                        profileURL: url
+                    )
+                }
+
+                if let account {
+                    await MainActor.run {
+                        resolvedAuthorAccount = account
+                        appState.navigate(to: .profile(account))
+                    }
+                } else {
+                    await MainActor.run {
+                        openURL(url)
+                    }
+                }
+            }
+            return .handled
+        }
+    }
 }
-
-

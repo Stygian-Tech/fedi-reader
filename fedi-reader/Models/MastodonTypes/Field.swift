@@ -16,7 +16,7 @@ struct Field: Codable, Hashable, Sendable {
         self.verifiedAt = verifiedAt
     }
 
-    init(from decoder: Decoder) throws {
+    nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         name = try container.decode(String.self, forKey: .name)
@@ -46,5 +46,4 @@ struct Field: Codable, Hashable, Sendable {
 }
 
 // MARK: - Media Attachment
-
 

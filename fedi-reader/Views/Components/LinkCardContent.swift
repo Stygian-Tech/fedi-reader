@@ -113,17 +113,21 @@ extension LinkCardContent {
         showLinkIcon = false
     }
 
-    init(card: PreviewCard, fediverseCreatorName: String?, fediverseCreatorURL: URL?) {
+    init(card: PreviewCard, authorAttribution: AuthorAttribution?, authorDisplayName: String? = nil) {
         title = card.title
         description = card.description
         imageURL = card.imageURL
         providerDisplay = card.providerName ?? (URL(string: card.url).flatMap { HTMLParser.extractDomain(from: $0) } ?? card.url)
-        if let n = fediverseCreatorName {
-            authorName = n
-            authorURL = fediverseCreatorURL
-        } else if let n = card.authorName {
-            authorName = n
-            authorURL = card.authorUrl.flatMap { URL(string: $0) }
+        let cardAuthorURL = card.authorUrl.flatMap { URL(string: $0) }
+        let resolvedAuthorName = authorDisplayName ?? authorAttribution?.preferredName ?? card.authorName
+        let resolvedAuthorURL = authorAttribution?.preferredURL ?? cardAuthorURL
+
+        if let resolvedAuthorURL {
+            authorName = resolvedAuthorName ?? "Author"
+            authorURL = resolvedAuthorURL
+        } else if let resolvedAuthorName {
+            authorName = resolvedAuthorName
+            authorURL = nil
         } else {
             authorName = nil
             authorURL = nil

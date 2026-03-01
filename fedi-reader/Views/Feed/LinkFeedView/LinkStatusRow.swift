@@ -20,6 +20,7 @@ struct LinkStatusRow: View {
     var onArticleSelect: ((URL, Status) -> Void)?
 
     @Environment(AppState.self) private var appState
+    @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(\.openURL) private var openURL
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
@@ -28,6 +29,7 @@ struct LinkStatusRow: View {
 
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
+    @State private var localAuthorAttribution: AuthorAttribution?
     @State private var resolvedMastodonAccount: MastodonAccount?
     @State private var isProcessing = false
     @State private var localBookmarked: Bool?
@@ -106,6 +108,9 @@ struct LinkStatusRow: View {
             guard let url = blueskyCardURL, !hasLoadedBlueskyDescription else { return }
             hasLoadedBlueskyDescription = true
             blueskyDescription = await LinkPreviewService.shared.fetchDescription(for: url)
+        }
+        .task(id: authorAttributionTaskID) {
+            await ensureAuthorAttributionLoaded()
         }
     }
 
@@ -198,6 +203,13 @@ struct LinkStatusRow: View {
         return host.contains("bsky.app") || host.contains("bsky.social")
     }
 
+    private var showsAuthorAttribution: Bool {
+        let hasAuthorName = effectiveAuthorAttribution?.preferredName?.isEmpty == false
+        let hasAuthorURL = effectiveAuthorAttribution?.preferredURL != nil
+        let hasMastodonAttribution = effectiveAuthorAttribution?.mastodonHandle != nil || effectiveAuthorAttribution?.mastodonProfileURL != nil
+        return hasAuthorName || hasAuthorURL || hasMastodonAttribution
+    }
+
     private var linkCard: some View {
         Button {
             deferPostNavigation {
@@ -244,8 +256,7 @@ struct LinkStatusRow: View {
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
 
-                    // Prominent author attribution (only if valid author tag exists)
-                    if let authorName = linkStatus.authorAttribution, !authorName.isEmpty {
+                    if showsAuthorAttribution {
                         authorAttributionView
                     }
 
@@ -295,65 +306,44 @@ struct LinkStatusRow: View {
     
     @ViewBuilder
     private var authorAttributionView: some View {
-        // Show attribution if we have a name, OR if we have a Mastodon handle/profile URL
-        let hasAuthorName = linkStatus.authorAttribution != nil && !linkStatus.authorAttribution!.isEmpty
-        let hasMastodonAttribution = linkStatus.mastodonHandle != nil || linkStatus.mastodonProfileURL != nil
-        
-        if hasAuthorName || hasMastodonAttribution {
-            let authorName = linkStatus.authorAttribution ?? linkStatus.mastodonHandle ?? "Author"
-            let profilePictureURL = linkStatus.authorProfilePictureURL.flatMap { URL(string: $0) }
-            let isMastodonProfile = linkStatus.mastodonProfileURL != nil
-            let destinationURL: String? = linkStatus.mastodonProfileURL ?? linkStatus.authorURL
-            
-            if let destinationURL {
-                if isMastodonProfile {
-                    // Mastodon profile - navigate in-app
-                    Button {
-                        deferPostNavigation {
-                            handleMastodonProfileNavigation(url: destinationURL)
-                        }
-                    } label: {
-                        authorAttributionContent(
-                            authorName: authorName,
-                            profilePictureURL: profilePictureURL,
-                            mastodonHandle: linkStatus.mastodonHandle,
-                            showNavigationIcon: true
-                        )
+        if showsAuthorAttribution {
+            let authorName = resolvedMastodonAccount?.preferredDisplayName
+                ?? effectiveAuthorAttribution?.preferredName
+                ?? "Author"
+            let profilePictureURL = effectiveAuthorAttribution?.profilePictureURL.flatMap { URL(string: $0) }
+            if authorURL != nil {
+                Button {
+                    deferPostNavigation {
+                        handleAuthorAttributionNavigation()
                     }
-                    .buttonStyle(.plain)
-                    .task(id: destinationURL) {
-                        await resolveMastodonAccount(url: destinationURL)
-                    }
-                } else if let url = URL(string: destinationURL) {
-                    // Regular author URL - open in browser after deferred swipe/tap validation.
-                    Button {
-                        deferPostNavigation {
-                            openURL(url)
-                        }
-                    } label: {
-                        authorAttributionContent(
-                            authorName: authorName,
-                            profilePictureURL: profilePictureURL,
-                            mastodonHandle: linkStatus.mastodonHandle,
-                            showNavigationIcon: true
-                        )
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    // No valid link, just show attribution
+                } label: {
                     authorAttributionContent(
                         authorName: authorName,
                         profilePictureURL: profilePictureURL,
-                        mastodonHandle: linkStatus.mastodonHandle,
-                        showNavigationIcon: false
+                        mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
+                        showNavigationIcon: true
                     )
                 }
+                .buttonStyle(.plain)
+            } else if effectiveAuthorAttribution?.mastodonHandle != nil {
+                Button {
+                    deferPostNavigation {
+                        handleAuthorAttributionNavigation()
+                    }
+                } label: {
+                    authorAttributionContent(
+                        authorName: authorName,
+                        profilePictureURL: profilePictureURL,
+                        mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
+                        showNavigationIcon: true
+                    )
+                }
+                .buttonStyle(.plain)
             } else {
-                // No link, just show attribution
                 authorAttributionContent(
                     authorName: authorName,
                     profilePictureURL: profilePictureURL,
-                    mastodonHandle: linkStatus.mastodonHandle,
+                    mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
                     showNavigationIcon: false
                 )
             }
@@ -404,76 +394,97 @@ struct LinkStatusRow: View {
         .padding(12)
         .background(Color(.secondarySystemBackground).opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
     }
-    
-    private func handleMastodonProfileNavigation(url: String) {
-        // If we already resolved the account, use it
+
+    private var authorURL: URL? {
+        effectiveAuthorAttribution?.preferredURL
+    }
+
+    private var authorResolutionID: String {
+        "\(effectiveAuthorAttribution?.mastodonHandle ?? "")|\(authorURL?.absoluteString ?? "")"
+    }
+
+    private var authorAttributionTaskID: String {
+        "\(linkStatus.id)|\(linkStatus.primaryURL.absoluteString)|\(linkStatus.authorAttribution ?? "")|\(linkStatus.mastodonHandle ?? "")|\(linkStatus.mastodonProfileURL ?? "")"
+    }
+
+    private var effectiveAuthorAttribution: AuthorAttribution? {
+        localAuthorAttribution ?? linkStatusAuthorAttribution
+    }
+
+    private var linkStatusAuthorAttribution: AuthorAttribution? {
+        guard linkStatus.authorAttribution != nil
+            || linkStatus.authorURL != nil
+            || linkStatus.authorProfilePictureURL != nil
+            || linkStatus.mastodonHandle != nil
+            || linkStatus.mastodonProfileURL != nil else {
+            return nil
+        }
+
+        return AuthorAttribution(
+            name: linkStatus.authorAttribution,
+            url: linkStatus.authorURL,
+            source: .metaTag,
+            mastodonHandle: linkStatus.mastodonHandle,
+            mastodonProfileURL: linkStatus.mastodonProfileURL,
+            profilePictureURL: linkStatus.authorProfilePictureURL
+        )
+    }
+
+    private func handleAuthorAttributionNavigation() {
         if let account = resolvedMastodonAccount {
             appState.navigate(to: .profile(account))
             return
         }
-        
-        // Otherwise, try to parse and search for the account
-        if let (instance, username) = parseMastodonProfileURL(url) {
-            Task {
-                await resolveAndNavigateToMastodonAccount(instance: instance, username: username)
-            }
-        }
-    }
-    
-    private func parseMastodonProfileURL(_ urlString: String) -> (instance: String, username: String)? {
-        // Parse URL like https://instance.com/@username
-        guard let url = URL(string: urlString),
-              let host = url.host else {
-            return nil
-        }
-        
-        let path = url.path
-        // Remove leading /@
-        guard path.hasPrefix("/@") else {
-            return nil
-        }
-        
-        let username = String(path.dropFirst(2)) // Remove "/@"
-        return (host, username)
-    }
-    
-    private func resolveMastodonAccount(url: String) async {
-        guard let (instance, username) = parseMastodonProfileURL(url) else {
-            return
-        }
-        
-        await resolveAndNavigateToMastodonAccount(instance: instance, username: username, setState: true)
-    }
-    
-    private func resolveAndNavigateToMastodonAccount(
-        instance: String,
-        username: String,
-        setState: Bool = false
-    ) async {
-        // Use appState.client for account search
-        let client = appState.client
-        
-        // Try to search for the account
-        do {
-            let query = "@\(username)@\(instance)"
-            let accounts = try await client.searchAccounts(query: query, limit: 1)
-            
-            if let account = accounts.first,
-               account.acct.lowercased() == "\(username)@\(instance)".lowercased() {
-                if setState {
-                    await MainActor.run {
-                        resolvedMastodonAccount = account
-                    }
-                } else {
-                    await MainActor.run {
-                        appState.navigate(to: .profile(account))
-                    }
+
+        let authorURL = self.authorURL
+        let authorHandle = effectiveAuthorAttribution?.mastodonHandle
+        Task {
+            if let account = await appState.client.resolveProfileAccount(handle: authorHandle, profileURL: authorURL) {
+                await MainActor.run {
+                    resolvedMastodonAccount = account
+                    appState.navigate(to: .profile(account))
+                }
+            } else if let authorURL {
+                await MainActor.run {
+                    openURL(authorURL)
                 }
             }
-        } catch {
-            // If search fails, we can't resolve the account
-            // The user can still tap to try navigation
         }
+    }
+
+    private func preloadResolvedAuthorAccount() async {
+        guard resolvedMastodonAccount == nil else { return }
+        guard effectiveAuthorAttribution?.mastodonHandle != nil || authorURL != nil else { return }
+
+        if let account = await appState.client.resolveProfileAccount(
+            handle: effectiveAuthorAttribution?.mastodonHandle,
+            profileURL: authorURL
+        ) {
+            await MainActor.run {
+                resolvedMastodonAccount = account
+            }
+        }
+    }
+
+    private func ensureAuthorAttributionLoaded() async {
+        let shouldFetchAttribution = localAuthorAttribution == nil
+            && (linkStatusAuthorAttribution == nil
+                || linkStatus.mastodonHandle == nil
+                || linkStatus.mastodonProfileURL == nil)
+
+        if shouldFetchAttribution,
+           let attribution = await AttributionChecker.shared.checkAttribution(for: linkStatus.primaryURL) {
+            await MainActor.run {
+                localAuthorAttribution = attribution
+                linkFilterService.applyAttribution(attribution, toLinkStatusID: linkStatus.id)
+            }
+        } else if localAuthorAttribution == nil {
+            await MainActor.run {
+                localAuthorAttribution = linkStatusAuthorAttribution
+            }
+        }
+
+        await preloadResolvedAuthorAccount()
     }
 
     @ViewBuilder

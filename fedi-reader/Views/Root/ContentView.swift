@@ -78,6 +78,9 @@ struct ContentView: View {
         }
         .onChange(of: appState.currentAccount?.id) { _, _ in
             updateInboxAutoRefresh(for: scenePhase)
+            Task {
+                await appState.authService.refreshClientAuthenticationState()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .readLaterDidSave)) { notification in
             guard let result = notification.object as? ReadLaterSaveResult else { return }
@@ -97,6 +100,9 @@ struct ContentView: View {
 
     private func setupServices() {
         appState.authService.loadAccounts(from: modelContext)
+        Task {
+            await appState.authService.refreshClientAuthenticationState()
+        }
 
         if timelineWrapper.service == nil {
             timelineWrapper.service = TimelineService(

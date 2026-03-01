@@ -78,7 +78,7 @@ struct MastodonAccount: Codable, Identifiable, Hashable, Sendable {
         self.source = source
     }
 
-    init(from decoder: Decoder) throws {
+    nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         id = try container.decode(String.self, forKey: .id)
@@ -125,6 +125,9 @@ struct MastodonAccount: Codable, Identifiable, Hashable, Sendable {
         }
         return source?.fields ?? []
     }
+
+    var preferredDisplayName: String {
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? acct : trimmed
+    }
 }
-
-

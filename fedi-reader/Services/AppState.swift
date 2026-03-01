@@ -29,6 +29,7 @@ final class AppState {
     var selectedListId: String? = nil  // nil = Home timeline
     var isUserFilterOpen = false
     var userFilterPerFeedId: [String: String] = [:]  // feedId -> accountId
+    var linksLastVisibleStatusIdPerFeed: [String: String] = [:]
     
     // Navigation state (per-tab so switching tabs shows correct root)
     var linksNavigationPath: [NavigationDestination] = []

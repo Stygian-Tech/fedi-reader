@@ -23,6 +23,21 @@ struct AuthorAttribution: Sendable {
         self.mastodonProfileURL = mastodonProfileURL
         self.profilePictureURL = profilePictureURL
     }
-}
 
+    var preferredName: String? {
+        name ?? mastodonHandle
+    }
+
+    var preferredURL: URL? {
+        if let mastodonProfileURL, let url = URL(string: mastodonProfileURL) {
+            return url
+        }
+
+        if let url, let parsedURL = URL(string: url) {
+            return parsedURL
+        }
+
+        return nil
+    }
+}
 

@@ -148,6 +148,26 @@ struct MastodonTypesTests {
         #expect(account.preferredFields.count == 1)
         #expect(account.preferredFields.first?.name == "Top")
     }
+
+    @Test("MastodonAccount preferredDisplayName uses non-empty display name")
+    func accountPreferredDisplayNameUsesDisplayName() {
+        let account = makeAccount(
+            displayName: "Alice Example",
+            acct: "alice@example.com"
+        )
+
+        #expect(account.preferredDisplayName == "Alice Example")
+    }
+
+    @Test("MastodonAccount preferredDisplayName falls back to acct")
+    func accountPreferredDisplayNameFallsBackToAcct() {
+        let account = makeAccount(
+            displayName: "   ",
+            acct: "alice@example.com"
+        )
+
+        #expect(account.preferredDisplayName == "alice@example.com")
+    }
     
     // MARK: - Preview Card Tests
     
@@ -303,16 +323,18 @@ struct MastodonTypesTests {
     }
 
     private func makeAccount(
-        note: String,
-        sourceNote: String?,
+        displayName: String = "Test User",
+        acct: String = "testuser",
+        note: String = "<p>bio</p>",
+        sourceNote: String? = nil,
         fields: [Field] = [],
         sourceFields: [Field]? = nil
     ) -> MastodonAccount {
         MastodonAccount(
             id: "123",
             username: "testuser",
-            acct: "testuser",
-            displayName: "Test User",
+            acct: acct,
+            displayName: displayName,
             locked: false,
             bot: false,
             createdAt: Date(),

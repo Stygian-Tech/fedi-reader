@@ -135,6 +135,39 @@ struct LinkFilterServiceTests {
         #expect(linkStatuses.first?.primaryURL.absoluteString == "https://example.com/article")
     }
 
+    @Test("Preserves existing attribution when a feed is rebuilt")
+    func preservesExistingAttributionWhenReprocessingFeed() async {
+        let statuses = [
+            MockStatusFactory.makeStatus(
+                id: "1",
+                hasCard: true,
+                cardURL: "https://example.com/article",
+                cardTitle: "Test Article"
+            )
+        ]
+
+        _ = await service.processStatuses(statuses, for: "home")
+        service.applyAttribution(
+            AuthorAttribution(
+                name: "Jane Example",
+                url: "https://mastodon.social/@jane",
+                source: .metaTag,
+                mastodonHandle: "@jane@mastodon.social",
+                mastodonProfileURL: "https://mastodon.social/@jane",
+                profilePictureURL: "https://example.com/jane.jpg"
+            ),
+            toLinkStatusID: "1"
+        )
+
+        let rebuiltStatuses = await service.processStatuses(statuses, for: "home")
+
+        #expect(rebuiltStatuses.count == 1)
+        #expect(rebuiltStatuses.first?.authorAttribution == "Jane Example")
+        #expect(rebuiltStatuses.first?.mastodonHandle == "@jane@mastodon.social")
+        #expect(rebuiltStatuses.first?.mastodonProfileURL == "https://mastodon.social/@jane")
+        #expect(rebuiltStatuses.first?.authorProfilePictureURL == "https://example.com/jane.jpg")
+    }
+
     @Test("Deduplicates API tags case-insensitively")
     func deduplicatesAPITagsCaseInsensitively() async {
         let status = MockStatusFactory.makeStatus(

@@ -1,6 +1,11 @@
 import Foundation
 
 struct HTMLParser: Sendable {
+
+    struct AuthorRelation: Equatable, Sendable {
+        let href: String
+        let text: String?
+    }
     
     // MARK: - Link Extraction
     
@@ -31,6 +36,46 @@ struct HTMLParser: Sendable {
         }
         
         return urls
+    }
+
+    // MARK: - HTML Metadata Extraction
+
+    nonisolated static func metaContent(in html: String, name: String) -> String? {
+        tagAttributeValue(in: html, tagName: "meta", targetAttribute: "content") { attributes in
+            guard let candidate = attributes["name"] else { return false }
+            return candidate.caseInsensitiveCompare(name) == .orderedSame
+        }
+    }
+
+    nonisolated static func metaProperty(in html: String, property: String) -> String? {
+        tagAttributeValue(in: html, tagName: "meta", targetAttribute: "content") { attributes in
+            guard let candidate = attributes["property"] else { return false }
+            return candidate.caseInsensitiveCompare(property) == .orderedSame
+        }
+    }
+
+    nonisolated static func linkHref(in html: String, rel: String) -> String? {
+        tagAttributeValue(in: html, tagName: "link", targetAttribute: "href") { attributes in
+            relationTokens(in: attributes).contains { token in
+                token.caseInsensitiveCompare(rel) == .orderedSame
+            }
+        }
+    }
+
+    nonisolated static func authorRelation(in html: String) -> AuthorRelation? {
+        if let anchor = tagAttributeAndInnerText(in: html, tagName: "a", targetAttribute: "href", where: hasAuthorRelation) {
+            return AuthorRelation(href: anchor.value, text: anchor.text)
+        }
+
+        if let areaHref = tagAttributeValue(in: html, tagName: "area", targetAttribute: "href", where: hasAuthorRelation) {
+            return AuthorRelation(href: areaHref, text: nil)
+        }
+
+        if let linkHref = linkHref(in: html, rel: "author") {
+            return AuthorRelation(href: linkHref, text: nil)
+        }
+
+        return nil
     }
     
     /// Extracts external links (excludes Mastodon internal links like mentions and hashtags)
@@ -261,6 +306,121 @@ struct HTMLParser: Sendable {
         }
         
         return result
+    }
+
+    nonisolated private static func tagAttributeValue(
+        in html: String,
+        tagName: String,
+        targetAttribute: String,
+        where predicate: ([String: String]) -> Bool
+    ) -> String? {
+        let pattern = #"<\#(tagName)\b[^>]*>"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return nil
+        }
+
+        let range = NSRange(html.startIndex..., in: html)
+        let tagMatches = regex.matches(in: html, options: [], range: range)
+
+        for match in tagMatches {
+            guard let tagRange = Range(match.range, in: html) else { continue }
+            let tag = String(html[tagRange])
+            let attributes = extractAttributes(from: tag)
+            guard predicate(attributes),
+                  let rawValue = attributes[targetAttribute]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !rawValue.isEmpty else {
+                continue
+            }
+
+            return decodeHTMLEntities(rawValue)
+        }
+
+        return nil
+    }
+
+    nonisolated private static func tagAttributeAndInnerText(
+        in html: String,
+        tagName: String,
+        targetAttribute: String,
+        where predicate: ([String: String]) -> Bool
+    ) -> (value: String, text: String?)? {
+        let pattern = #"<\#(tagName)\b[^>]*>(.*?)</\#(tagName)\s*>"#
+
+        guard let regex = try? NSRegularExpression(
+            pattern: pattern,
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        ) else {
+            return nil
+        }
+
+        let range = NSRange(html.startIndex..., in: html)
+        let matches = regex.matches(in: html, options: [], range: range)
+
+        for match in matches {
+            guard let elementRange = Range(match.range, in: html),
+                  let contentRange = Range(match.range(at: 1), in: html) else {
+                continue
+            }
+
+            let element = String(html[elementRange])
+            guard let openingTagEnd = element.firstIndex(of: ">") else { continue }
+
+            let openingTag = String(element[..<element.index(after: openingTagEnd)])
+            let attributes = extractAttributes(from: openingTag)
+            guard predicate(attributes),
+                  let rawValue = attributes[targetAttribute]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !rawValue.isEmpty else {
+                continue
+            }
+
+            let text = stripHTML(String(html[contentRange])).trimmingCharacters(in: .whitespacesAndNewlines)
+            return (
+                decodeHTMLEntities(rawValue),
+                text.isEmpty ? nil : text
+            )
+        }
+
+        return nil
+    }
+
+    nonisolated private static func hasAuthorRelation(attributes: [String: String]) -> Bool {
+        relationTokens(in: attributes).contains { token in
+            token.caseInsensitiveCompare("author") == .orderedSame
+        }
+    }
+
+    nonisolated private static func relationTokens(in attributes: [String: String]) -> [Substring] {
+        guard let relValue = attributes["rel"] else { return [] }
+        return relValue.split(whereSeparator: \.isWhitespace)
+    }
+
+    nonisolated private static func extractAttributes(from tag: String) -> [String: String] {
+        let pattern = #"([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return [:]
+        }
+
+        let range = NSRange(tag.startIndex..., in: tag)
+        let matches = regex.matches(in: tag, options: [], range: range)
+
+        var attributes: [String: String] = [:]
+        attributes.reserveCapacity(matches.count)
+
+        for match in matches {
+            guard let keyRange = Range(match.range(at: 1), in: tag) else { continue }
+
+            let key = String(tag[keyRange]).lowercased()
+            let valueRange = Range(match.range(at: 2), in: tag)
+                ?? Range(match.range(at: 3), in: tag)
+                ?? Range(match.range(at: 4), in: tag)
+
+            guard let valueRange else { continue }
+            attributes[key] = String(tag[valueRange])
+        }
+
+        return attributes
     }
     
     // MARK: - URL Helpers
@@ -508,5 +668,3 @@ struct HTMLParser: Sendable {
 }
 
 // MARK: - String Extension
-
-
