@@ -43,50 +43,57 @@ struct AuthServiceTests {
 
     @Test("fetchVerifiedProfile throws unauthorized when token is missing")
     func fetchVerifiedProfileThrowsUnauthorizedWhenTokenMissing() async {
-        let auth = AuthService(client: nil, keychain: .shared)
-        let accountID = "example.social:\(UUID().uuidString)"
-        let account = Account(
-            id: accountID,
-            instance: "example.social",
-            username: "tester",
-            displayName: "Tester",
-            acct: "tester@example.social"
-        )
+        await SharedTestResourceGate.withExclusiveAccess {
+            let auth = AuthService(client: nil, keychain: .shared)
+            let accountID = "example.social:\(UUID().uuidString)"
+            let account = Account(
+                id: accountID,
+                instance: "example.social",
+                username: "tester",
+                displayName: "Tester",
+                acct: "tester@example.social"
+            )
 
-        try? await KeychainHelper.shared.deleteToken(forAccount: account.id)
+            try? await KeychainHelper.shared.deleteToken(forAccount: account.id)
 
-        do {
-            _ = try await auth.fetchVerifiedProfile(for: account)
-            Issue.record("Expected fetchVerifiedProfile to throw unauthorized")
-        } catch let error as FediReaderError {
-            #expect(error == .unauthorized)
-        } catch {
-            Issue.record("Expected FediReaderError.unauthorized, got \(error)")
+            do {
+                _ = try await auth.fetchVerifiedProfile(for: account)
+                Issue.record("Expected fetchVerifiedProfile to throw unauthorized")
+            } catch let error as FediReaderError {
+                #expect(error == .unauthorized)
+            } catch {
+                Issue.record("Expected FediReaderError.unauthorized, got \(error)")
+            }
         }
     }
 
     @Test("refreshClientAuthenticationState updates the client snapshot")
     func refreshClientAuthenticationStateUpdatesClientSnapshot() async throws {
-        let client = MastodonClient()
-        let auth = AuthService(client: client, keychain: .shared)
-        let accountID = "mastodon.social:\(UUID().uuidString)"
-        let account = Account(
-            id: accountID,
-            instance: "mastodon.social",
-            username: "tester",
-            displayName: "Tester",
-            acct: "tester@mastodon.social",
-            isActive: true
-        )
+        try await SharedTestResourceGate.withExclusiveAccess {
+            let client = MastodonClient()
+            let auth = AuthService(client: client, keychain: .shared)
+            let accountID = "mastodon.social:\(UUID().uuidString)"
+            let account = Account(
+                id: accountID,
+                instance: "mastodon.social",
+                username: "tester",
+                displayName: "Tester",
+                acct: "tester@mastodon.social",
+                isActive: true
+            )
 
-        try await KeychainHelper.shared.saveToken("secret-token", forAccount: accountID)
+            try await KeychainHelper.shared.saveToken("secret-token", forAccount: accountID)
+            defer {
+                Task {
+                    try? await KeychainHelper.shared.deleteToken(forAccount: accountID)
+                }
+            }
 
-        auth.currentAccount = account
-        await auth.refreshClientAuthenticationState()
+            auth.currentAccount = account
+            await auth.refreshClientAuthenticationState()
 
-        #expect(client.currentInstance == "mastodon.social")
-        #expect(client.currentAccessToken == "secret-token")
-
-        try? await KeychainHelper.shared.deleteToken(forAccount: accountID)
+            #expect(client.currentInstance == "mastodon.social")
+            #expect(client.currentAccessToken == "secret-token")
+        }
     }
 }

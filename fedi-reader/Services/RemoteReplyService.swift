@@ -8,105 +8,123 @@
 import Foundation
 import os
 
-@Observable
-@MainActor
 final class RemoteReplyService {
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "RemoteReplyService")
     
     private let client: MastodonClient
     private let authService: AuthService
+    private let contextRefetchDelaySeconds: TimeInterval
     
     // Cache for resolved remote statuses to avoid redundant fetches
     private var resolvedStatusCache: [String: Status] = [:]
     private var cacheLock = NSLock()
     
-    init(client: MastodonClient, authService: AuthService) {
+    init(
+        client: MastodonClient,
+        authService: AuthService,
+        contextRefetchDelaySeconds: TimeInterval = Constants.RemoteReplies.contextRefetchDelaySeconds
+    ) {
         self.client = client
         self.authService = authService
+        self.contextRefetchDelaySeconds = contextRefetchDelaySeconds
     }
     
     // MARK: - Public API
     
-    /// Fetches remote replies for a given status, resolving any missing remote statuses
-    func fetchRemoteReplies(for status: Status) async -> [Status] {
-        guard let account = authService.currentAccount,
-              let token = await authService.getAccessToken(for: account) else {
+    /// Fetches and merges the most complete reply context available for a status.
+    func fetchRemoteReplyContext(for status: Status, initialContext: StatusContext? = nil) async -> StatusContext? {
+        guard let session = await authService.activeSessionSnapshot() else {
             Self.logger.warning("No active account for remote reply fetch")
-            return []
+            return initialContext
         }
         
         Self.logger.info("Fetching remote replies for status: \(status.id.prefix(8), privacy: .public)")
         
         do {
-            // Get context with async refresh support
-            let contextWithRefresh = try await client.getStatusContextWithRefresh(
-                instance: account.instance,
-                accessToken: token,
-                id: status.id
-            )
-            
-            let context = contextWithRefresh.context
-            
-            // Check if we need to fetch missing replies
-            let missingReplies = try await fetchMissingReplies(
-                context: context,
-                status: status,
-                instance: account.instance,
-                accessToken: token
-            )
-            
-            // Combine known descendants with newly fetched remote replies
-            var allReplies = context.descendants
-            
-            // Add missing replies that aren't already in descendants
-            let existingIds = Set(context.descendants.map { $0.id })
-            for reply in missingReplies {
-                if !existingIds.contains(reply.id) {
-                    allReplies.append(reply)
-                }
+            let startingContext: StatusContext
+            if let initialContext {
+                startingContext = initialContext
+            } else {
+                let contextWithRefresh = try await client.getStatusContextWithRefreshInBackground(
+                    instance: session.instance,
+                    accessToken: session.accessToken,
+                    id: status.id
+                )
+                startingContext = contextWithRefresh.context
             }
-            
-            // Sort by creation date (oldest first for thread order)
-            allReplies.sort { $0.createdAt < $1.createdAt }
-            
-            Self.logger.info("Fetched \(allReplies.count) total replies (including \(missingReplies.count) remote)")
-            return allReplies
+
+            let updatedContext = try await fetchMissingReplies(
+                context: startingContext,
+                status: status,
+                instance: session.instance,
+                accessToken: session.accessToken
+            )
+
+            Self.logger.info("Resolved reply context with \(updatedContext.descendants.count) replies")
+            return updatedContext
             
         } catch {
             Self.logger.error("Error fetching remote replies: \(error.localizedDescription)")
-            return []
+            return initialContext
         }
     }
     
-    /// Fetches missing replies by comparing expected count with known descendants.
-    ///
-    /// We intentionally return `[]` because the API does not expose specific missing reply URIs.
-    /// **Missing replies are handled via async refresh**: when the server returns
-    /// `Mastodon-Async-Refresh`, we poll `GET /api/v1_alpha/async_refreshes/:id`, then re-GET
-    /// context. That flow (in TimelineService) is what fills in newly fetched replies—not this helper.
+    /// Re-fetches context when the server hints that additional remote replies exist.
     func fetchMissingReplies(
         context: StatusContext,
         status: Status,
         instance: String,
         accessToken: String
-    ) async throws -> [Status] {
-        let expectedCount = status.repliesCount
-        let knownCount = context.descendants.count
-        
-        guard expectedCount > knownCount else {
-            Self.logger.debug("No missing replies detected (expected: \(expectedCount), known: \(knownCount))")
-            return []
+    ) async throws -> StatusContext {
+        guard context.needsRemoteReplyFetch(for: status, localInstance: instance) else {
+            Self.logger.debug("No missing replies detected for status \(status.id.prefix(8), privacy: .public)")
+            return context
         }
-        
-        let missingCount = expectedCount - knownCount
-        Self.logger.info("Detected \(missingCount) missing replies, attempting to fetch")
-        
-        // The /context endpoint may not return all replies (e.g. remote instances, policy filters).
-        // We cannot identify which specific replies are missing. Async refresh + re-GET context
-        // (see TimelineService) handles those cases; this helper remains a no-op.
-        Self.logger.debug("Missing replies: expected \(expectedCount), have \(knownCount). Rely on async refresh + re-GET context.")
-        
-        return []
+
+        var latestContext = context
+        var delaySeconds: TimeInterval = 0
+        let maxAttempts = max(Constants.RemoteReplies.maxRetries + 1, 1)
+
+        for attempt in 0..<maxAttempts {
+            if Task.isCancelled {
+                break
+            }
+
+            if attempt > 0, delaySeconds > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+            }
+
+            do {
+                let contextWithRefresh = try await client.getStatusContextWithRefreshInBackground(
+                    instance: instance,
+                    accessToken: accessToken,
+                    id: status.id
+                )
+
+                latestContext = latestContext.merged(with: contextWithRefresh.context)
+                Self.logger.debug(
+                    "Remote reply fetch attempt \(attempt + 1)/\(maxAttempts) returned \(latestContext.descendants.count) replies"
+                )
+
+                if !latestContext.needsRemoteReplyFetch(for: status, localInstance: instance) {
+                    break
+                }
+
+                delaySeconds = nextDelaySeconds(
+                    from: contextWithRefresh,
+                    currentContext: latestContext
+                )
+            } catch {
+                if attempt == maxAttempts - 1 {
+                    throw error
+                }
+
+                Self.logger.debug("Retrying remote reply fetch after error: \(error.localizedDescription)")
+                delaySeconds = contextRefetchDelaySeconds
+            }
+        }
+
+        return latestContext
     }
     
     /// Resolves a remote status by its URI with comprehensive error handling
@@ -193,6 +211,21 @@ final class RemoteReplyService {
         defer { cacheLock.unlock() }
         resolvedStatusCache.removeAll()
         Self.logger.debug("Cleared remote reply cache")
+    }
+
+    private func nextDelaySeconds(
+        from contextWithRefresh: MastodonClient.StatusContextWithRefresh,
+        currentContext: StatusContext
+    ) -> TimeInterval {
+        if let asyncRefreshHeader = contextWithRefresh.asyncRefreshHeader {
+            return TimeInterval(asyncRefreshHeader.retrySeconds)
+        }
+
+        if currentContext.hasPendingAsyncRefresh {
+            return TimeInterval(Constants.RemoteReplies.asyncRefreshFallbackRetrySeconds)
+        }
+
+        return contextRefetchDelaySeconds
     }
 }
 

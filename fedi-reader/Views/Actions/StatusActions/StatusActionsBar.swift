@@ -17,6 +17,7 @@ struct StatusActionsBar: View {
     @State private var localBookmarked: Bool?
     @State private var localFavoriteCount: Int?
     @State private var localReblogCount: Int?
+    @State private var localReplyCount: Int?
     
     private var displayStatus: Status {
         status.displayStatus
@@ -36,6 +37,10 @@ struct StatusActionsBar: View {
     
     private var reblogCount: Int {
         localReblogCount ?? displayStatus.reblogsCount
+    }
+
+    private var replyCount: Int {
+        localReplyCount ?? displayStatus.repliesCount
     }
     
     private var isBookmarked: Bool {
@@ -67,6 +72,11 @@ struct StatusActionsBar: View {
                 guard let updated = notification.object as? Status else { return }
                 applyUpdatedStatus(updated)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .statusContextDidUpdate)) { notification in
+                guard let payload = notification.object as? StatusContextUpdatePayload,
+                      payload.statusId == displayStatus.id else { return }
+                localReplyCount = payload.context.resolvedReplyCount(for: displayStatus)
+            }
     }
     
     @ViewBuilder
@@ -89,17 +99,19 @@ struct StatusActionsBar: View {
                     .font(iconFont)
                     .foregroundStyle(isActive ? activeColor : .secondary)
 
-                Text(formatCount(count ?? 0))
-                    .font(countFont)
-                    .foregroundStyle(isActive ? activeColor : .secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .layoutPriority(1)
+                if let countText = formattedCountLabel(for: count) {
+                    Text(countText)
+                        .font(countFont)
+                        .foregroundStyle(isActive ? activeColor : .secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .layoutPriority(1)
+                }
             }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityValue(isActive ? "Active, \(formatCount(count ?? 0))" : formatCount(count ?? 0))
+        .accessibilityValue(accessibilityValue(for: count, isActive: isActive))
         .accessibilityHint("Double tap to \(accessibilityLabel.lowercased())")
     }
     
@@ -140,7 +152,7 @@ struct StatusActionsBar: View {
             // Reply
             actionButton(
                 icon: "arrowshape.turn.up.left",
-                count: displayStatus.repliesCount,
+                count: replyCount,
                 isActive: false,
                 activeColor: .accentColor,
                 accessibilityLabel: "Reply"
@@ -324,6 +336,19 @@ struct StatusActionsBar: View {
         }
         return "\(count)"
     }
+
+    func formattedCountLabel(for count: Int?) -> String? {
+        guard let count else { return nil }
+        return formatCount(count)
+    }
+
+    func accessibilityValue(for count: Int?, isActive: Bool) -> String {
+        guard let count else {
+            return isActive ? "Active" : "Inactive"
+        }
+        let formattedCount = formatCount(count)
+        return isActive ? "Active, \(formattedCount)" : formattedCount
+    }
     
     private func toggleFavorite() async {
         guard let service = timelineWrapper.service else { return }
@@ -412,9 +437,8 @@ struct StatusActionsBar: View {
         localBookmarked = resolvedStatus.bookmarked
         localFavoriteCount = resolvedStatus.favouritesCount
         localReblogCount = resolvedStatus.reblogsCount
+        localReplyCount = resolvedStatus.repliesCount
     }
 }
 
 // MARK: - Expanded Actions Toolbar (for Web View)
-
-

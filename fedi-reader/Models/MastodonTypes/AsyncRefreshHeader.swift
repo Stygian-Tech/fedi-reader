@@ -6,7 +6,7 @@ struct AsyncRefreshHeader: Sendable {
     let resultCount: Int?
     
     /// Parses the raw header value. Returns nil if missing or malformed.
-    static func parse(headerValue: String?) -> AsyncRefreshHeader? {
+    nonisolated static func parse(headerValue: String?) -> AsyncRefreshHeader? {
         guard let raw = headerValue?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
         var id: String?
         var retrySeconds: Int?
@@ -29,5 +29,4 @@ struct AsyncRefreshHeader: Sendable {
 }
 
 // MARK: - Async Refresh (API entity)
-
 

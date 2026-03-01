@@ -8,6 +8,8 @@ enum MockStatusFactory {
         hasCard: Bool = false,
         cardURL: String? = nil,
         cardTitle: String? = nil,
+        uri: String? = nil,
+        url: String? = nil,
         tags: [Tag] = [],
         account: MastodonAccount? = nil,
         isReblog: Bool = false,
@@ -15,7 +17,8 @@ enum MockStatusFactory {
         favourited: Bool = false,
         reblogged: Bool = false,
         visibility: Visibility = .public,
-        inReplyToId: String? = nil
+        inReplyToId: String? = nil,
+        repliesCount: Int = 2
     ) -> Status {
         let account = account ?? makeAccount()
         
@@ -41,8 +44,8 @@ enum MockStatusFactory {
         
         return Status(
             id: id,
-            uri: "https://mastodon.social/statuses/\(id)",
-            url: "https://mastodon.social/@testuser/\(id)",
+            uri: uri ?? "https://mastodon.social/statuses/\(id)",
+            url: url ?? "https://mastodon.social/@testuser/\(id)",
             createdAt: Date(),
             account: account,
             content: content,
@@ -55,7 +58,7 @@ enum MockStatusFactory {
             emojis: [],
             reblogsCount: 5,
             favouritesCount: 10,
-            repliesCount: 2,
+            repliesCount: repliesCount,
             application: nil,
             language: "en",
             reblog: nil,
@@ -179,7 +182,9 @@ enum MockStatusFactory {
 
 class MockURLProtocol: URLProtocol {
     static var mockResponses: [String: (Data, HTTPURLResponse)] = [:]
+    static var queuedResponses: [String: [(Data, HTTPURLResponse)]] = [:]
     static var mockErrors: [String: Error] = [:]
+    static var requestCounts: [String: Int] = [:]
     static var lastRequest: URLRequest?
     private static let lock = NSLock()
     
@@ -194,21 +199,32 @@ class MockURLProtocol: URLProtocol {
     override func startLoading() {
         Self.lock.lock()
         Self.lastRequest = request
-        let mockErrors = Self.mockErrors
-        let mockResponses = Self.mockResponses
-        Self.lock.unlock()
-        
         guard let url = request.url?.absoluteString else {
+            Self.lock.unlock()
             client?.urlProtocolDidFinishLoading(self)
             return
         }
+        Self.requestCounts[url, default: 0] += 1
+
+        let error = Self.mockErrors[url]
+        var queuedResponse: (Data, HTTPURLResponse)?
+        if var responses = Self.queuedResponses[url], !responses.isEmpty {
+            queuedResponse = responses.removeFirst()
+            if responses.isEmpty {
+                Self.queuedResponses.removeValue(forKey: url)
+            } else {
+                Self.queuedResponses[url] = responses
+            }
+        }
+        let mockResponse = queuedResponse ?? Self.mockResponses[url]
+        Self.lock.unlock()
         
-        if let error = mockErrors[url] {
+        if let error {
             client?.urlProtocol(self, didFailWithError: error)
             return
         }
         
-        if let (data, response) = mockResponses[url] {
+        if let (data, response) = mockResponse {
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
         }
@@ -222,20 +238,48 @@ class MockURLProtocol: URLProtocol {
         lock.lock()
         defer { lock.unlock() }
         mockResponses.removeAll()
+        queuedResponses.removeAll()
         mockErrors.removeAll()
+        requestCounts.removeAll()
         lastRequest = nil
     }
     
-    static func setMockResponse(for url: String, data: Data, statusCode: Int = 200) {
+    static func setMockResponse(
+        for url: String,
+        data: Data,
+        statusCode: Int = 200,
+        headerFields: [String: String]? = nil
+    ) {
         let response = HTTPURLResponse(
             url: URL(string: url)!,
             statusCode: statusCode,
             httpVersion: nil,
-            headerFields: nil
+            headerFields: headerFields
         )!
         lock.lock()
         defer { lock.unlock() }
         mockResponses[url] = (data, response)
+    }
+
+    static func setQueuedResponses(
+        for url: String,
+        responses: [(data: Data, statusCode: Int, headerFields: [String: String]?)]
+    ) {
+        let queued = responses.map { response in
+            (
+                response.data,
+                HTTPURLResponse(
+                    url: URL(string: url)!,
+                    statusCode: response.statusCode,
+                    httpVersion: nil,
+                    headerFields: response.headerFields
+                )!
+            )
+        }
+
+        lock.lock()
+        defer { lock.unlock() }
+        queuedResponses[url] = queued
     }
     
     static func setMockError(for url: String, error: Error) {
@@ -243,7 +287,12 @@ class MockURLProtocol: URLProtocol {
         defer { lock.unlock() }
         mockErrors[url] = error
     }
+
+    static func requestCount(for url: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return requestCounts[url, default: 0]
+    }
 }
 
 // MARK: - Mock Keychain Helper
-

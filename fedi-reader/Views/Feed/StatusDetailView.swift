@@ -47,6 +47,7 @@ struct StatusDetailView: View {
                 if let context = context {
                     // Build thread tree from descendants only (exclude parent/current post)
                     let replyTrees = threadingService.buildThreadTree(from: context.descendants)
+                    let shouldFetchMoreReplies = shouldFetchRemoteReplies(context: context)
                     
                     if !context.descendants.isEmpty {
                         // Single card containing reply thread (without parent)
@@ -69,10 +70,14 @@ struct StatusDetailView: View {
                                     Text("\(context.descendants.count) of \(threadStatus.repliesCount)")
                                         .font(.roundedCaption)
                                         .foregroundStyle(.secondary)
+                                } else if context.hasMoreReplies == true {
+                                    Text("More available")
+                                        .font(.roundedCaption)
+                                        .foregroundStyle(.secondary)
                                 }
                                 
                                 // Button to fetch remote replies
-                                if threadStatus.repliesCount > context.descendants.count && !isLoadingRemoteReplies {
+                                if shouldFetchMoreReplies && !isLoadingRemoteReplies {
                                     Button {
                                         Task {
                                             await refreshReplies()
@@ -97,7 +102,7 @@ struct StatusDetailView: View {
                         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
                         .padding(.horizontal)
                         .padding(.vertical, 5)
-                    } else if threadStatus.repliesCount > 0 {
+                    } else if shouldFetchMoreReplies || threadStatus.repliesCount > 0 {
                         // Show message if we expect replies but don't have any yet
                         VStack(alignment: .leading, spacing: 0) {
                             HStack {
@@ -177,13 +182,7 @@ struct StatusDetailView: View {
             let loadedContext = try await service.getStatusContext(for: threadStatus)
             context = loadedContext
             isLoading = false
-            
-            // Check if we need to fetch remote replies
-            // Note: getStatusContext already triggers remote reply fetching in background
-            // We just need to show loading state
-            if shouldFetchRemoteReplies(context: loadedContext) {
-                isLoadingRemoteReplies = true
-            }
+            isLoadingRemoteReplies = false
         } catch {
             isLoading = false
             isLoadingRemoteReplies = false
@@ -191,17 +190,7 @@ struct StatusDetailView: View {
     }
     
     private func shouldFetchRemoteReplies(context: StatusContext) -> Bool {
-        // Fetch if we have fewer descendants than expected
-        if threadStatus.repliesCount > context.descendants.count {
-            return true
-        }
-        
-        // Fetch if async refresh is indicated
-        if context.asyncRefreshId != nil {
-            return true
-        }
-        
-        return false
+        context.needsRemoteReplyFetch(for: threadStatus)
     }
     
     private func refreshReplies() async {
