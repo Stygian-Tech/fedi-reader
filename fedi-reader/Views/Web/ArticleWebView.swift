@@ -32,9 +32,11 @@ struct ArticleWebView: View {
             webView: $webView
         )
         .ignoresSafeArea()
-        .safeAreaInset(edge: .bottom) {
+        #if os(macOS)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             actionToolbar
         }
+        #endif
         .navigationTitle(pageTitle ?? url.host ?? "Article")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -121,6 +123,14 @@ struct ArticleWebView: View {
                 .accessibilityLabel("More options")
                 .accessibilityHint("Open in Safari, share, copy link, or save to read later")
             }
+            #if os(iOS)
+            if let status {
+                ToolbarItem(placement: .bottomBar) {
+                    StatusActionsToolbar(status: status)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            #endif
         }
     }
 
@@ -128,7 +138,9 @@ struct ArticleWebView: View {
     private var actionToolbar: some View {
         if let status {
             StatusActionsToolbar(status: status)
-                .glassEffect(.regular)
+                .glassEffect(.regular, in: Capsule())
+                .clipShape(Capsule())
+                .compositingGroup()
                 .padding(.horizontal, 5)
                 .padding(.vertical, 6)
         }

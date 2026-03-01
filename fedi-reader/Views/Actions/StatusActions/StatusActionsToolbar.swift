@@ -8,6 +8,7 @@ struct StatusActionsToolbar: View {
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
+    @AppStorage("themeColor") private var themeColorName = "blue"
     
     @State private var isProcessing = false
     @State private var localFavorited: Bool?
@@ -29,15 +30,19 @@ struct StatusActionsToolbar: View {
     private var isBookmarked: Bool {
         localBookmarked ?? displayStatus.bookmarked ?? false
     }
+
+    private var themeColor: Color {
+        ThemeColor.resolved(from: themeColorName).color
+    }
     
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 14) {
             // Reply
             toolbarButton(
                 icon: "arrowshape.turn.up.left",
                 label: "Reply",
                 isActive: false,
-                activeColor: .accentColor
+                activeColor: themeColor
             ) {
                 appState.present(sheet: .compose(replyTo: displayStatus))
             }
@@ -50,7 +55,7 @@ struct StatusActionsToolbar: View {
                 icon: isFavorited ? "star.fill" : "star",
                 label: "Star",
                 isActive: isFavorited,
-                activeColor: .yellow
+                activeColor: themeColor
             ) {
                 await toggleFavorite()
             }
@@ -60,7 +65,7 @@ struct StatusActionsToolbar: View {
                 icon: isBookmarked ? "bookmark.fill" : "bookmark",
                 label: "Bookmark",
                 isActive: isBookmarked,
-                activeColor: .orange
+                activeColor: themeColor
             ) {
                 await toggleBookmark()
             }
@@ -87,17 +92,17 @@ struct StatusActionsToolbar: View {
                     toolbarItemLabel(
                         icon: "tray.and.arrow.down",
                         label: "Save",
-                        foreground: .secondary
+                        foreground: themeColor
                     )
                 }
                 .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .contentShape(Rectangle())
+                .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 6)
-        .padding(.vertical, 5)
-        .frame(maxWidth: 300)
+        .padding(.vertical, 8)
+        .controlSize(.regular)
         .disabled(isProcessing)
         .onReceive(NotificationCenter.default.publisher(for: .statusDidUpdate)) { notification in
             guard let updated = notification.object as? Status else { return }
@@ -122,12 +127,11 @@ struct StatusActionsToolbar: View {
             toolbarItemLabel(
                 icon: icon,
                 label: label,
-                foreground: isActive ? activeColor : .secondary
+                foreground: isActive ? activeColor : themeColor
             )
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity, minHeight: 52)
-        .contentShape(Rectangle())
+        .frame(maxWidth: .infinity)
         .accessibilityLabel(label)
         .accessibilityValue(isActive ? "Active" : "Inactive")
         .accessibilityHint("Double tap to \(label.lowercased())")
@@ -139,18 +143,19 @@ struct StatusActionsToolbar: View {
         label: String,
         foreground: Color
     ) -> some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 2) {
             Image(systemName: icon)
-                .font(.roundedSubheadline)
+                .font(.roundedSubheadline.weight(.semibold))
 
             Text(label)
-                .font(.roundedCaption2)
+                .font(.roundedCaption.weight(.medium))
                 .lineLimit(1)
-                .minimumScaleFactor(0.9)
+                .minimumScaleFactor(0.7)
                 .allowsTightening(true)
+                .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, minHeight: 44)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, minHeight: 34)
         .foregroundStyle(foreground)
     }
     
@@ -170,12 +175,11 @@ struct StatusActionsToolbar: View {
                 toolbarItemLabel(
                     icon: "arrow.2.squarepath",
                     label: "Boost",
-                    foreground: .green
+                    foreground: themeColor
                 )
             }
             .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity)
             .accessibilityLabel("Boost")
             .accessibilityValue("Active")
         } else if showQuoteBoost {
@@ -198,12 +202,11 @@ struct StatusActionsToolbar: View {
                 toolbarItemLabel(
                     icon: "arrow.2.squarepath",
                     label: "Boost",
-                    foreground: .secondary
+                    foreground: themeColor
                 )
             }
             .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity)
             .accessibilityLabel("Boost")
         } else {
             // Not boosted and quote boost disabled - show direct button
@@ -211,7 +214,7 @@ struct StatusActionsToolbar: View {
                 icon: "arrow.2.squarepath",
                 label: "Boost",
                 isActive: false,
-                activeColor: .green
+                activeColor: themeColor
             ) {
                 await toggleReblog()
             }
@@ -308,5 +311,3 @@ struct StatusActionsToolbar: View {
 }
 
 // MARK: - Preview Helper
-
-
