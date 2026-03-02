@@ -36,6 +36,7 @@ final class AppState {
     var linksNavigationPath: [NavigationDestination] = []
     var exploreNavigationPath: [NavigationDestination] = []
     var profileNavigationPath: [NavigationDestination] = []
+    var mentionsNavigationPath: [NavigationDestination] = []
     var presentedSheet: SheetDestination?
     var presentedAlert: AlertItem?
     
@@ -121,7 +122,7 @@ final class AppState {
         case .profile:
             profileNavigationPath.append(destination)
         case .mentions:
-            break
+            mentionsNavigationPath.append(destination)
         }
     }
     
@@ -152,7 +153,13 @@ final class AppState {
                 Self.logger.debug("Navigate back called but navigation path is empty")
             }
         case .mentions:
-            break
+            if !mentionsNavigationPath.isEmpty {
+                let previous = mentionsNavigationPath.last
+                mentionsNavigationPath.removeLast()
+                Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
+            } else {
+                Self.logger.debug("Navigate back called but mentions navigation path is empty")
+            }
         }
     }
     
@@ -171,7 +178,9 @@ final class AppState {
             profileNavigationPath.removeAll()
             Self.logger.info("Navigating to root, cleared \(count) destinations")
         case .mentions:
-            break
+            let count = mentionsNavigationPath.count
+            mentionsNavigationPath.removeAll()
+            Self.logger.info("Navigating to root, cleared \(count) mentions destinations")
         }
     }
     
@@ -243,6 +252,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 
 enum NavigationDestination: Hashable {
     case status(Status)
+    case conversation(GroupedConversation)
     case profile(MastodonAccount)
     case article(url: URL, status: Status?)
     case thread(statusId: String)

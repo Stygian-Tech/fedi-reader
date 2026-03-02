@@ -4,7 +4,7 @@ Link-focused Mastodon news reader for iOS/macOS. Pure Swift, SwiftUI + SwiftData
 
 **Agent context is under [.agents/](.agents/).** Read the following as needed:
 
-- **Always first:** [.agents/rules/linear-workflow.md](.agents/rules/linear-workflow.md) — check for linked Linear issue before starting work
+- **Always first (GATE):** [.agents/rules/linear-workflow.md](.agents/rules/linear-workflow.md) — run `git branch --show-current`, set Linear issue In Progress if FED-XXX in branch, add completion comment before claiming done. Do this before any code edits.
 - **Architecture:** [.agents/context/architecture.md](.agents/context/architecture.md)
 - **Conventions:** [.agents/context/conventions.md](.agents/context/conventions.md)
 - **Build & test:** [.agents/context/build-commands.md](.agents/context/build-commands.md)

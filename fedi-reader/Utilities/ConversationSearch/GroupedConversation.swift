@@ -1,6 +1,6 @@
 import Foundation
 
-struct GroupedConversation: Identifiable {
+struct GroupedConversation: Identifiable, Hashable {
     let id: String
     let participants: [MastodonAccount] // Other participants (excluding current user)
     let conversations: [MastodonConversation]
