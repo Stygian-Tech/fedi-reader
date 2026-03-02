@@ -57,7 +57,7 @@ struct TrendingLinkRow: View {
                             Task {
                                 try? await readLaterManager.save(
                                     url: url,
-                                    title: link.title,
+                                    title: link.decodedTitle,
                                     to: serviceType
                                 )
                             }

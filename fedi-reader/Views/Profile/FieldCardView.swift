@@ -34,7 +34,7 @@ struct FieldCardView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Text(field.name)
+                        Text(field.decodedName)
                             .font(.roundedCaption.bold())
                             .foregroundStyle(.secondary)
                             .lineLimit(1)

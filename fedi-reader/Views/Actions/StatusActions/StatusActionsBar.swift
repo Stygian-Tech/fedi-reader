@@ -278,7 +278,7 @@ struct StatusActionsBar: View {
                             Task {
                                 try? await readLaterManager.save(
                                     url: url,
-                                    title: displayStatus.card?.title,
+                                    title: displayStatus.card?.decodedTitle,
                                     to: serviceType
                                 )
                             }
@@ -295,7 +295,7 @@ struct StatusActionsBar: View {
                                     Task {
                                         try? await readLaterManager.save(
                                             url: url,
-                                            title: displayStatus.card?.title,
+                                            title: displayStatus.card?.decodedTitle,
                                             to: serviceType
                                         )
                                     }

@@ -362,12 +362,12 @@ struct StatusRowView: View {
                 
                 // Content
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(card.title)
+                    Text(card.decodedTitle)
                         .font(.roundedTitle3.bold())
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
                     
-                    let descriptionText = blueskyDescription ?? card.description
+                    let descriptionText = blueskyDescription ?? card.decodedDescription
                     if !descriptionText.isEmpty {
                         Text(descriptionText)
                             .font(.roundedSubheadline)
@@ -379,7 +379,7 @@ struct StatusRowView: View {
                         Image(systemName: "link")
                             .font(.roundedCaption)
                         
-                        Text(card.providerName ?? HTMLParser.extractDomain(from: URL(string: card.url)!) ?? card.url)
+                        Text(card.decodedProviderName ?? HTMLParser.extractDomain(from: URL(string: card.url)!) ?? card.url)
                             .font(.roundedCaption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -388,7 +388,7 @@ struct StatusRowView: View {
                         let authorLink = authorAttribution?.preferredURL ?? card.authorUrl.flatMap { URL(string: $0) }
                         let authorDisplayName = resolvedAuthorAccount?.preferredDisplayName
                             ?? authorAttribution?.preferredName
-                            ?? card.authorName
+                            ?? card.decodedAuthorName
                             ?? (authorLink != nil ? "Author" : nil)
 
                         if let authorURL = authorLink {
@@ -538,7 +538,7 @@ struct StatusRowView: View {
                     Task {
                         try? await readLaterManager.save(
                             url: url,
-                            title: displayStatus.card?.title,
+                            title: displayStatus.card?.decodedTitle,
                             to: serviceType
                         )
                     }
@@ -554,7 +554,7 @@ struct StatusRowView: View {
                             Task {
                                 try? await readLaterManager.save(
                                     url: url,
-                                    title: displayStatus.card?.title,
+                                    title: displayStatus.card?.decodedTitle,
                                     to: serviceType
                                 )
                             }

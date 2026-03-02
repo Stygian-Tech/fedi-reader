@@ -43,6 +43,16 @@ struct Field: Codable, Hashable, Sendable {
         formatter.formatOptions = [.withInternetDateTime]
         verifiedAt = formatter.date(from: decodedDateString)
     }
+
+    /// Field name with HTML entities decoded for display (remote profile metadata).
+    nonisolated var decodedName: String {
+        HTMLParser.decodeHTMLEntities(name).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Field value with HTML entities decoded for display (remote profile metadata).
+    nonisolated var decodedValue: String {
+        HTMLParser.decodeHTMLEntities(value).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 // MARK: - Media Attachment

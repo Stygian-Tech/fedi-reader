@@ -61,9 +61,9 @@ final class CachedStatus {
             timelineType: timelineType,
             hasLinkCard: status.hasLinkCard,
             cardURL: status.card?.url,
-            cardTitle: status.card?.title,
+            cardTitle: status.card.flatMap { $0.decodedTitle.isEmpty ? nil : $0.decodedTitle },
             cardImageURL: status.card?.image,
-            authorAttribution: status.card?.authorName
+            authorAttribution: status.card?.decodedAuthorName
         )
     }
 }

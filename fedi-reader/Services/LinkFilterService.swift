@@ -345,11 +345,11 @@ final class LinkFilterService {
                         status: status,
                         primaryURL: cardURL,
                         tags: tags,
-                        title: card.title.isEmpty ? nil : card.title,
-                        description: card.description.isEmpty ? nil : card.description,
+                        title: card.decodedTitle.isEmpty ? nil : card.decodedTitle,
+                        description: card.decodedDescription.isEmpty ? nil : card.decodedDescription,
                         imageURL: card.imageURL,
-                        providerName: card.providerName,
-                        authorAttribution: card.authorName,
+                        providerName: card.decodedProviderName,
+                        authorAttribution: card.decodedAuthorName,
                         authorURL: card.authorUrl
                     )
                 )
