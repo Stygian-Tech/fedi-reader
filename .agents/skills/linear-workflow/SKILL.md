@@ -7,11 +7,13 @@ description: ALWAYS check for linked Linear issue and follow conventions before 
 
 **MANDATORY:** Check for a linked Linear issue before starting work. Linear–GitHub integration depends on correct branch names and issue updates.
 
-## When to Use
+## When to Use (invoke this skill FIRST)
 
-- Before starting any coding task
+- **Every** coding task, fix, or implementation—before any other actions
 - When switching to a new branch
-- When the user asks you to implement something
+- When the user asks you to implement, fix, or change something
+
+**Do not skip.** If you will edit code, invoke this skill and complete the workflow before touching files.
 
 ## Instructions
 

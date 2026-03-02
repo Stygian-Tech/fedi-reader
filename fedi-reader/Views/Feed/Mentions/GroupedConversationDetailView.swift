@@ -90,7 +90,7 @@ struct GroupedConversationDetailView: View {
         guard let currentId = appState.currentAccount?.mastodonAccount.id else { return false }
         return status.account.id == currentId
     }
-    
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -143,7 +143,10 @@ struct GroupedConversationDetailView: View {
                             Button {
                                 appState.navigate(to: .profile(participant))
                             } label: {
-                                Label(participant.displayName, systemImage: "person")
+                                HStack(spacing: 8) {
+                                    CircularMenuAvatarView(url: participant.avatarURL, size: 24)
+                                    Text(participant.displayName)
+                                }
                             }
                         }
                     } label: {

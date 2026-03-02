@@ -7,6 +7,7 @@ struct ChatBubble: View {
     let account: MastodonAccount
     let isSent: Bool
     @Environment(AppState.self) private var appState
+    @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("autoPlayGifs") private var autoPlayGifs = false
     
@@ -75,28 +76,32 @@ struct ChatBubble: View {
             .buttonStyle(.plain)
             .padding(.bottom, hasFavorites ? 8 : 0) // Extra space for tapback
             .contextMenu {
-                if !isSent {
-                    Button {
-                        appState.present(sheet: .compose(replyTo: status))
-                    } label: {
-                        Label("Reply", systemImage: "arrowshape.turn.up.left")
-                    }
-                    
-                    Button {
-                        appState.navigate(to: .thread(statusId: status.id))
-                    } label: {
-                        Label("View Thread", systemImage: "bubble.left.and.bubble.right")
-                    }
-                    
-                    Divider()
-                }
-                
                 Button {
                     appState.navigate(to: .profile(account))
                 } label: {
                     Label("View Profile", systemImage: "person")
                 }
+
+                Button {
+                    Task {
+                        await toggleFavorite(status: status)
+                    }
+                } label: {
+                    Label(
+                        isFavoritedByMe ? "Unfavorite Message" : "Favorite Message",
+                        systemImage: isFavoritedByMe ? "star.slash" : "star"
+                    )
+                }
             }
+        }
+    }
+
+    private func toggleFavorite(status: Status) async {
+        guard let service = timelineWrapper.service else { return }
+        do {
+            _ = try await service.setFavorite(status: status, isFavorited: !isFavoritedByMe)
+        } catch {
+            appState.handleError(error)
         }
     }
     

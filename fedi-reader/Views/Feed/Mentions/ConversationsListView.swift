@@ -51,9 +51,7 @@ struct ConversationsListView: View {
                     : Color.clear
             )
         } else {
-            NavigationLink {
-                GroupedConversationDetailView(groupedConversation: groupedConvo)
-            } label: {
+            NavigationLink(value: NavigationDestination.conversation(groupedConvo)) {
                 GroupedConversationRow(groupedConversation: groupedConvo)
             }
             .listRowBackground(Color.clear)

@@ -1,19 +1,23 @@
 # Linear Workflow (MANDATORY)
 
-**Agents MUST ALWAYS check for a linked Linear issue before starting work.** Linear–GitHub integration depends on correct branch names and issue updates.
+**GATE: Do NOT make any code edits until you complete the "Before code" steps below.** Linear–GitHub integration depends on correct branch names and issue updates.
 
-## Steps (do first, every time)
+## Before code (first actions—do these before any read_file, search_replace, or write)
 
-1. **Parse branch name** for a Linear issue ID (e.g. `FED-123`, `PROJ-456`). Valid patterns: `FED-123-feature-name`, `sam/FED-456-fix`, `feature/FED-789-thing`.
+1. Run `git branch --show-current`. Parse for Linear ID (e.g. `FED-123`). Valid patterns: `FED-123-feature-name`, `sam/FED-456-fix`.
 
-2. **Confirm issue exists** via Linear MCP `get_issue` or `list_issues`.
+2. **If Linear ID found**: Use Linear MCP `get_issue` to confirm, then `save_issue` with `state: "In Progress"` before touching code.
 
-3. **Set In Progress** via `save_issue` with `state: "In Progress"` before making code changes. Do this before touching code.
+3. **If no Linear ID** (e.g. `main`): Proceed without Linear updates.
 
-4. **Include the full plan** via `create_comment`—when implementing from a `.plan.md` file, paste the **entire plan content** (name, overview, summary, implementation details, files to modify, testing) as a Linear comment. This gives reviewers and future readers the full context in one place.
+## While implementing
 
-5. **Add comments as you work** via `create_comment`—implementations, decisions, blockers. Keeps issue history useful for PR review.
+4. **Include the full plan** via `create_comment`—when implementing from a `.plan.md` file, paste the **entire plan content** as a Linear comment.
 
-6. **Do not mark Done**—let Linear–GitHub integration set Done when the PR is merged. Manual Done bypasses that flow.
+5. **Add comments as you work** via `create_comment`—implementations, decisions, blockers.
 
-If no Linear issue exists (e.g. branch is `main` or doesn’t match patterns), proceed without Linear updates—but **always check first**.
+## Before claiming work complete
+
+6. **Add a completion comment** via `create_comment`—summarize changes made and how to verify. Do not skip this step.
+
+7. **Do not mark Done**—let Linear–GitHub integration set Done when the PR is merged.

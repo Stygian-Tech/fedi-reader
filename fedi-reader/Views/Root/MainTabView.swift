@@ -32,6 +32,9 @@ struct MainTabView: View {
             if oldValue == .profile {
                 state.profileNavigationPath.removeAll()
             }
+            if oldValue == .mentions {
+                state.mentionsNavigationPath.removeAll()
+            }
             if newValue == .mentions {
                 Task {
                     await timelineWrapper.service?.refreshMentions()
@@ -146,11 +149,18 @@ struct MainTabView: View {
 
     @ViewBuilder
     private func mentionsTabContent() -> some View {
+        @Bindable var state = appState
+
         Group {
             if useSidebarLayout {
-                MentionsTwoColumnView()
+                NavigationStack(path: $state.mentionsNavigationPath) {
+                    MentionsTwoColumnView()
+                        .navigationDestination(for: NavigationDestination.self) { destination in
+                            destinationView(for: destination)
+                        }
+                }
             } else {
-                NavigationStack {
+                NavigationStack(path: $state.mentionsNavigationPath) {
                     MentionsView()
                         .navigationDestination(for: NavigationDestination.self) { destination in
                             destinationView(for: destination)
@@ -196,6 +206,8 @@ struct MainTabView: View {
         switch destination {
         case .status(let status):
             StatusDetailView(status: status)
+        case .conversation(let groupedConversation):
+            GroupedConversationDetailView(groupedConversation: groupedConversation)
         case .profile(let account):
             ProfileDetailView(account: account)
         case .article(let url, let status):
