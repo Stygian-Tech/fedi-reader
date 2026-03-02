@@ -41,7 +41,8 @@ struct ContentView: View {
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
             #else
             .background {
-                (colorScheme == .dark ? Color(red: 0, green: 0, blue: 0) : Color.white)
+                Rectangle()
+                    .fill(.ultraThinMaterial)
                     .ignoresSafeArea()
             }
             #endif
