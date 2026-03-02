@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import os
 
@@ -7,6 +8,7 @@ struct ChatBubble: View {
     let isSent: Bool
     @Environment(AppState.self) private var appState
     @AppStorage("themeColor") private var themeColorName = "blue"
+    @AppStorage("autoPlayGifs") private var autoPlayGifs = false
     
     var status: Status? {
         message.status
@@ -101,26 +103,96 @@ struct ChatBubble: View {
     private var chatMediaAttachments: some View {
         VStack(alignment: isSent ? .trailing : .leading, spacing: 6) {
             ForEach(mediaAttachments) { attachment in
-                AsyncImage(url: URL(string: attachment.previewUrl ?? attachment.url)) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Rectangle()
-                        .fill(.tertiary)
-                }
-                .frame(maxWidth: 220, maxHeight: 220)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(alignment: .bottomTrailing) {
-                    if attachment.type == .video || attachment.type == .gifv {
-                        Image(systemName: attachment.type == .gifv ? "play.circle" : "video")
-                            .font(.roundedCaption)
-                            .padding(4)
-                            .glassEffect(.clear, in: Circle())
-                            .padding(6)
-                    }
-                }
+                ChatMediaAttachmentView(
+                    attachment: attachment,
+                    isSent: isSent,
+                    autoPlayGifs: autoPlayGifs
+                )
             }
+        }
+    }
+}
+
+// MARK: - Chat Media Attachment View
+
+private struct ChatMediaAttachmentView: View {
+    let attachment: MediaAttachment
+    let isSent: Bool
+    let autoPlayGifs: Bool
+
+    private var imageURL: URL? {
+        URL(string: attachment.previewUrl ?? attachment.url)
+    }
+
+    private var videoURL: URL? {
+        (attachment.type == .gifv || attachment.type == .video) ? URL(string: attachment.url) : nil
+    }
+
+    private var shouldAutoplayVideo: Bool {
+        autoPlayGifs && videoURL != nil
+    }
+
+    var body: some View {
+        ZStack {
+            // Base layer: always show preview/image
+            AsyncImage(url: imageURL) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Rectangle()
+                    .fill(.tertiary)
+            }
+            .frame(maxWidth: 220, maxHeight: 220)
+
+            // Overlay: video player when autoplay is on
+            if shouldAutoplayVideo, let url = videoURL {
+                ChatGifvPlayerView(url: url)
+                    .frame(maxWidth: 220, maxHeight: 220)
+            }
+        }
+        .frame(maxWidth: 220, maxHeight: 220)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .bottomTrailing) {
+            if attachment.type == .video || attachment.type == .gifv {
+                Image(systemName: attachment.type == .gifv ? "play.circle" : "video")
+                    .font(.roundedCaption)
+                    .padding(4)
+                    .glassEffect(.clear, in: Circle())
+                    .padding(6)
+            }
+        }
+    }
+}
+
+// MARK: - Chat GIFV Player View
+
+private struct ChatGifvPlayerView: View {
+    let url: URL
+    @State private var player: AVQueuePlayer?
+    @State private var looper: AVPlayerLooper?
+
+    var body: some View {
+        Group {
+            if let player {
+                VideoPlayer(player: player)
+                    .onAppear {
+                        player.isMuted = true
+                        player.play()
+                    }
+            } else {
+                // Transparent until video loads so base AsyncImage preview shows through
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            guard player == nil else { return }
+            let item = AVPlayerItem(url: url)
+            let queuePlayer = AVQueuePlayer(playerItem: item)
+            let loop = AVPlayerLooper(player: queuePlayer, templateItem: item)
+            player = queuePlayer
+            looper = loop
         }
     }
 }

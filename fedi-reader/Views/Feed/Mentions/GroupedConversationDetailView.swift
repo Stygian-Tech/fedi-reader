@@ -10,6 +10,7 @@ struct GroupedConversationDetailView: View {
     @State private var messageText = ""
     @State private var isSending = false
     @FocusState private var isTextFieldFocused: Bool
+    @AppStorage("themeColor") private var themeColorName = "blue"
     
     private var timelineService: TimelineService? {
         timelineWrapper.service
@@ -91,40 +92,44 @@ struct GroupedConversationDetailView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Chat messages
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(groupedMessages) { group in
-                            ChatMessageGroup(group: group)
-                                .id(group.id)
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(groupedMessages) { group in
+                        ChatMessageGroup(group: group)
+                            .id(group.id)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .onAppear {
-                    // Scroll to bottom (newest messages) when view appears
-                    if let lastGroup = groupedMessages.last {
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .onAppear {
+                if let lastGroup = groupedMessages.last {
+                    proxy.scrollTo(lastGroup.id, anchor: .bottom)
+                }
+            }
+            .onChange(of: groupedMessages.count) { _, _ in
+                if let lastGroup = groupedMessages.last {
+                    withAnimation {
                         proxy.scrollTo(lastGroup.id, anchor: .bottom)
                     }
                 }
-                .onChange(of: groupedMessages.count) { _, _ in
-                    // Scroll to bottom when new messages arrive
-                    if let lastGroup = groupedMessages.last {
-                        withAnimation {
-                            proxy.scrollTo(lastGroup.id, anchor: .bottom)
-                        }
+            }
+            .onChange(of: isTextFieldFocused) { _, focused in
+                if focused, let lastGroup = groupedMessages.last {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo(lastGroup.id, anchor: .bottom)
                     }
                 }
             }
-            
-            // Compose bar
-            composeBar
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                composeBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+                    .padding(.bottom, 4)
+            }
         }
         .navigationTitle(currentGroupedConversation.displayName)
         .navigationBarTitleDisplayMode(.inline)
@@ -216,14 +221,14 @@ struct GroupedConversationDetailView: View {
     }
     
     private var composeBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 0) {
             TextField("Message", text: $messageText, axis: .vertical)
                 .textFieldStyle(.plain)
-                .lineLimit(1...5)
+                .lineLimit(1...4)
                 .focused($isTextFieldFocused)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 24))
+                .padding(.leading, 16)
+                .padding(.trailing, 8)
+                .padding(.vertical, 10)
             
             Button {
                 Task {
@@ -232,23 +237,30 @@ struct GroupedConversationDetailView: View {
             } label: {
                 if isSending {
                     ProgressView()
-                        .frame(width: 30, height: 30)
+                        .frame(width: 26, height: 26)
                 } else {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(canSend ? .blue : .gray)
+                        .font(.title3)
+                        .foregroundStyle(canSend ? ThemeColor.resolved(from: themeColorName).color : .gray)
                 }
             }
+            .buttonStyle(.plain)
             .disabled(!canSend)
+            .frame(width: 36, height: 36)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .glassEffect(.regular)
+        .glassEffect(.clear, in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(.quaternary, lineWidth: 0.5)
+        )
     }
     
     private func sendMessage() async {
         guard canSend else { return }
+        let textToSend = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !textToSend.isEmpty else { return }
         
+        messageText = ""
         isSending = true
         defer { isSending = false }
         
@@ -260,17 +272,15 @@ struct GroupedConversationDetailView: View {
             
             // Build mentions for all participants
             let mentions = participants.map { "@\($0.acct)" }.joined(separator: " ")
-            let contentWithMentions = messageText.hasPrefix("@") ? messageText : "\(mentions) \(messageText)"
+            let contentWithMentions = textToSend.hasPrefix("@") ? textToSend : "\(mentions) \(textToSend)"
             
             // Reply to the last message in the conversation
             _ = try await service.reply(to: lastMessage, content: contentWithMentions)
             
-            // Clear input
-            messageText = ""
-            
             await loadAllConversationThreads()
         } catch {
             Logger(subsystem: "app.fedi-reader", category: "Mentions").error("Failed to send message: \(error.localizedDescription)")
+            messageText = textToSend
         }
     }
     
