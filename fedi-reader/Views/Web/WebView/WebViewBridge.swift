@@ -15,6 +15,9 @@ struct WebViewBridge: View {
             .onAppear {
                 setupWebView()
             }
+            .onChange(of: url) { _, newURL in
+                webView?.load(URLRequest(url: newURL))
+            }
             .overlay {
                 if let webView = webView {
                     WebViewOverlay(webView: webView)

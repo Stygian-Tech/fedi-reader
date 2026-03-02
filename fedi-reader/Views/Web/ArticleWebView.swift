@@ -11,11 +11,13 @@ import WebKit
 struct ArticleWebView: View {
     let url: URL
     let status: Status?
+    var onClose: (() -> Void)?
     
     @Environment(AppState.self) private var appState
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
-    
+    @Environment(\.layoutMode) private var layoutMode
+
     @State private var isLoading = true
     @State private var pageTitle: String?
     @State private var canGoBack = false
@@ -32,16 +34,33 @@ struct ArticleWebView: View {
             webView: $webView
         )
         .ignoresSafeArea()
-        #if os(macOS)
         .safeAreaInset(edge: .bottom, spacing: 0) {
+            #if os(macOS)
             actionToolbar
+            #elseif os(iOS)
+            if layoutMode != .compact, status != nil {
+                actionToolbar
+            }
+            #endif
         }
-        #endif
-        .navigationTitle(pageTitle ?? url.host ?? "Article")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
+            if let onClose {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 22))
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .accessibilityLabel("Close article")
+                    .accessibilityHint("Closes the article and returns to the feed")
+                }
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 // Navigation
                 HStack(spacing: 16) {
@@ -124,15 +143,18 @@ struct ArticleWebView: View {
                 .accessibilityHint("Open in Safari, share, copy link, or save to read later")
             }
             #if os(iOS)
-            if let status {
+            if let status, layoutMode == .compact {
                 ToolbarItem(placement: .bottomBar) {
                     StatusActionsToolbar(status: status)
+                        .frame(maxWidth: Self.actionToolbarMaxWidth)
                         .frame(maxWidth: .infinity)
                 }
             }
             #endif
         }
     }
+
+    private static let actionToolbarMaxWidth: CGFloat = 480
 
     @ViewBuilder
     private var actionToolbar: some View {
@@ -143,6 +165,8 @@ struct ArticleWebView: View {
                 .compositingGroup()
                 .padding(.horizontal, 5)
                 .padding(.vertical, 6)
+                .frame(maxWidth: Self.actionToolbarMaxWidth)
+                .frame(maxWidth: .infinity)
         }
     }
 }

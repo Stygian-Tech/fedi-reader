@@ -114,15 +114,38 @@ final class AppState {
     
     func navigate(to destination: NavigationDestination) {
         Self.logger.info("Navigating to: \(String(describing: destination), privacy: .public)")
+        func shouldReplaceArticle(path: [NavigationDestination]) -> Bool {
+            if case .article = destination,
+               case .article? = path.last {
+                return true
+            }
+            return false
+        }
         switch selectedTab {
         case .links:
-            linksNavigationPath.append(destination)
+            if shouldReplaceArticle(path: linksNavigationPath) {
+                linksNavigationPath[linksNavigationPath.count - 1] = destination
+            } else {
+                linksNavigationPath.append(destination)
+            }
         case .explore:
-            exploreNavigationPath.append(destination)
+            if shouldReplaceArticle(path: exploreNavigationPath) {
+                exploreNavigationPath[exploreNavigationPath.count - 1] = destination
+            } else {
+                exploreNavigationPath.append(destination)
+            }
         case .profile:
-            profileNavigationPath.append(destination)
+            if shouldReplaceArticle(path: profileNavigationPath) {
+                profileNavigationPath[profileNavigationPath.count - 1] = destination
+            } else {
+                profileNavigationPath.append(destination)
+            }
         case .mentions:
-            mentionsNavigationPath.append(destination)
+            if shouldReplaceArticle(path: mentionsNavigationPath) {
+                mentionsNavigationPath[mentionsNavigationPath.count - 1] = destination
+            } else {
+                mentionsNavigationPath.append(destination)
+            }
         }
     }
     
