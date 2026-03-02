@@ -50,7 +50,7 @@ struct ProfileLinksListView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Text(field.name)
+                    Text(field.decodedName)
                         .font(.roundedCaption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -62,7 +62,7 @@ struct ProfileLinksListView: View {
                     }
                 }
 
-                Text(field.value.htmlStripped)
+                Text(field.decodedValue.htmlStripped)
                     .font(.roundedSubheadline)
                     .foregroundStyle(destinationURL == nil ? .secondary : .primary)
                     .lineLimit(1)

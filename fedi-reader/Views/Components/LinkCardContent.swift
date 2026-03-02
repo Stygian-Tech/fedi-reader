@@ -104,22 +104,22 @@ struct LinkCardContent: View {
 
 extension LinkCardContent {
     init(link: TrendingLink) {
-        title = link.title
-        description = link.description
+        title = link.decodedTitle
+        description = link.decodedDescription
         imageURL = link.imageURL
-        providerDisplay = link.providerName ?? link.url
-        authorName = link.authorName
+        providerDisplay = link.decodedProviderName ?? link.url
+        authorName = link.decodedAuthorName
         authorURL = link.authorUrl.flatMap { URL(string: $0) }
         showLinkIcon = false
     }
 
     init(card: PreviewCard, authorAttribution: AuthorAttribution?, authorDisplayName: String? = nil) {
-        title = card.title
-        description = card.description
+        title = card.decodedTitle
+        description = card.decodedDescription
         imageURL = card.imageURL
-        providerDisplay = card.providerName ?? (URL(string: card.url).flatMap { HTMLParser.extractDomain(from: $0) } ?? card.url)
+        providerDisplay = card.decodedProviderName ?? (URL(string: card.url).flatMap { HTMLParser.extractDomain(from: $0) } ?? card.url)
         let cardAuthorURL = card.authorUrl.flatMap { URL(string: $0) }
-        let resolvedAuthorName = authorDisplayName ?? authorAttribution?.preferredName ?? card.authorName
+        let resolvedAuthorName = authorDisplayName ?? authorAttribution?.preferredName ?? card.decodedAuthorName
         let resolvedAuthorURL = authorAttribution?.preferredURL ?? cardAuthorURL
 
         if let resolvedAuthorURL {

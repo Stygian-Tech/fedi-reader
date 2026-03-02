@@ -226,6 +226,17 @@ struct HTMLParserTests {
         
         #expect(decoded == "A B C")
     }
+
+    @Test("Decodes apostrophe entity in names")
+    func decodesApostropheInNames() {
+        let html = "Terrence O&#x27;Brien"
+        let decoded = HTMLParser.decodeHTMLEntities(html)
+        #expect(decoded == "Terrence O'Brien")
+
+        let withApos = "O&apos;Reilly"
+        let decodedApos = HTMLParser.decodeHTMLEntities(withApos)
+        #expect(decodedApos == "O'Reilly")
+    }
     
     // MARK: - Mention and Hashtag Extraction
     

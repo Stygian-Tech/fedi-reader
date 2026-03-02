@@ -79,7 +79,7 @@ struct StatusActionsToolbar: View {
                                 Task {
                                     try? await readLaterManager.save(
                                         url: url,
-                                        title: displayStatus.card?.title,
+                                        title: displayStatus.card?.decodedTitle,
                                         to: serviceType
                                     )
                                 }

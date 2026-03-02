@@ -138,12 +138,14 @@ actor AttributionChecker {
             // Check custom author headers (only if they contain actual author info, not derived)
             if let author = httpResponse.value(forHTTPHeaderField: "X-Author"), !author.isEmpty {
                 Self.logger.debug("Found attribution in X-Author header: \(url.absoluteString, privacy: .public)")
-                return AuthorAttribution(name: author, url: nil, source: .linkHeader)
+                let decoded = HTMLParser.decodeHTMLEntities(author).trimmingCharacters(in: .whitespacesAndNewlines)
+                return AuthorAttribution(name: decoded.isEmpty ? author : decoded, url: nil, source: .linkHeader)
             }
             
             if let author = httpResponse.value(forHTTPHeaderField: "Author"), !author.isEmpty {
                 Self.logger.debug("Found attribution in Author header: \(url.absoluteString, privacy: .public)")
-                return AuthorAttribution(name: author, url: nil, source: .linkHeader)
+                let decoded = HTMLParser.decodeHTMLEntities(author).trimmingCharacters(in: .whitespacesAndNewlines)
+                return AuthorAttribution(name: decoded.isEmpty ? author : decoded, url: nil, source: .linkHeader)
             }
             
             return nil
@@ -348,7 +350,8 @@ actor AttributionChecker {
                 return authorAttribution(fromJSONLD: resolved, identifierIndex: identifierIndex, pageURL: pageURL)
             }
 
-            return makeAuthorAttribution(from: stringValue, source: .jsonLD, relativeTo: pageURL)
+            let decoded = HTMLParser.decodeHTMLEntities(stringValue).trimmingCharacters(in: .whitespacesAndNewlines)
+            return makeAuthorAttribution(from: decoded, source: .jsonLD, relativeTo: pageURL)
         }
 
         if let arrayValue = value as? [Any] {
@@ -370,7 +373,8 @@ actor AttributionChecker {
             return authorAttribution(fromJSONLD: resolved, identifierIndex: identifierIndex, pageURL: pageURL)
         }
 
-        let name = firstTextValue(in: dictionaryValue["name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawName = firstTextValue(in: dictionaryValue["name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = rawName.map { HTMLParser.decodeHTMLEntities($0).trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
         let urlCandidates = urlValues(in: dictionaryValue["url"]) + urlValues(in: dictionaryValue["sameAs"])
         let absoluteURLs = urlCandidates.compactMap { absoluteURLString(from: $0, relativeTo: pageURL) }
         let mastodonProfileURL = absoluteURLs.first(where: isMastodonProfileURL)
