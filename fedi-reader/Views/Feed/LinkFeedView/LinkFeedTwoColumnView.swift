@@ -102,19 +102,7 @@ struct LinkFeedTwoColumnView: View {
     private var detailColumn: some View {
         Group {
             if let selected = selectedArticle {
-                ArticleWebView(url: selected.url, status: selected.status)
-                    .overlay(alignment: .topTrailing) {
-                        Button {
-                            selectedArticle = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 28))
-                                .symbolRenderingMode(.hierarchical)
-                        }
-                        .padding(16)
-                        .accessibilityLabel("Close article")
-                        .accessibilityHint("Closes the article and returns to the empty state")
-                    }
+                ArticleWebView(url: selected.url, status: selected.status, onClose: { selectedArticle = nil })
             } else {
                 ContentUnavailableView {
                     Label("Select an Article", systemImage: "doc.text.magnifyingglass")
