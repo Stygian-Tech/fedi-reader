@@ -60,7 +60,7 @@ struct LinkFeedThreeColumnView: View {
         timelineWrapper.cachedLists(for: accountId)
     }
 
-    private var lists: [MastodonList] {
+    private var rawLists: [MastodonList] {
         if !liveLists.isEmpty {
             return liveLists
         }
@@ -71,9 +71,7 @@ struct LinkFeedThreeColumnView: View {
     }
 
     private var feedTabs: [FeedTabItem] {
-        var tabs = [FeedTabItem.home]
-        tabs.append(contentsOf: lists.map { FeedTabItem(id: $0.id, title: $0.title) })
-        return tabs
+        appState.feedTabs(from: rawLists)
     }
 
     private var currentTab: FeedTabItem {
@@ -246,6 +244,20 @@ struct LinkFeedThreeColumnView: View {
                 selectedTabIndex = index
             }
         }
+        .onChange(of: feedTabs.map(\.id)) { _, tabIDs in
+            guard !tabIDs.isEmpty else {
+                selectedTabIndex = 0
+                return
+            }
+            let targetTabID = tabIDs.contains(appState.selectedLinkFeedID)
+                ? appState.selectedLinkFeedID
+                : AppState.homeFeedID
+            if let index = feedTabs.firstIndex(where: { $0.id == targetTabID }) {
+                selectedTabIndex = index
+            } else {
+                selectedTabIndex = 0
+            }
+        }
         .onChange(of: liveLists) { _, newLists in
             syncRetainedLists(with: newLists, allowEmpty: false)
         }
@@ -263,6 +275,7 @@ struct LinkFeedThreeColumnView: View {
             if retainedLists.isEmpty, !cachedLists.isEmpty {
                 retainedLists = cachedLists
             }
+            appState.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
             syncRetainedLists(with: liveLists, allowEmpty: false)
             attemptRestoreScrollIfNeeded()
         }
@@ -458,6 +471,10 @@ struct LinkFeedThreeColumnView: View {
             if !retainedLists.isEmpty {
                 retainedLists = []
             }
+            appState.synchronizeCurrentAccountListDisplayPreferences(
+                with: [],
+                allowEmptyListSet: true
+            )
             return
         }
 
@@ -467,6 +484,7 @@ struct LinkFeedThreeColumnView: View {
         if cachedLists != incomingLists {
             timelineWrapper.updateCachedLists(incomingLists, for: accountId)
         }
+        appState.synchronizeCurrentAccountListDisplayPreferences(with: incomingLists)
     }
 
     // MARK: - Data Loading

@@ -14,6 +14,10 @@ import os
 final class AppState {
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "AppState")
     static let homeFeedID = "home"
+    static let defaultListIdStorageKey = "defaultListId"
+    private static let listDisplayPreferencesStorageKeyPrefix = "listDisplayPreferences."
+    private static let listDisplayPreferencesEncoder = JSONEncoder()
+    private static let listDisplayPreferencesDecoder = JSONDecoder()
     
     // Services
     let client: MastodonClient
@@ -31,6 +35,7 @@ final class AppState {
     var isUserFilterOpen = false
     var userFilterPerFeedId: [String: String] = [:]  // feedId -> accountId
     var linksLastVisibleStatusIdPerFeed: [String: String] = [:]
+    var currentAccountListDisplayPreferences = AccountListDisplayPreferences()
     
     // Navigation state (per-tab so switching tabs shows correct root)
     var linksNavigationPath: [NavigationDestination] = []
@@ -60,6 +65,11 @@ final class AppState {
     var selectedLinkFeedID: String {
         selectedListId ?? Self.homeFeedID
     }
+
+    private var currentAccountListDisplayPreferencesStorageKey: String? {
+        guard let accountID = currentAccount?.id else { return nil }
+        return Self.listDisplayPreferencesStorageKeyPrefix + accountID
+    }
     
     func getAccessToken() async -> String? {
         guard let account = currentAccount else { return nil }
@@ -68,6 +78,162 @@ final class AppState {
     
     func getCurrentInstance() -> String? {
         currentAccount?.instance
+    }
+
+    // MARK: - List Display
+
+    func loadListDisplayPreferencesForCurrentAccount(defaults: UserDefaults = .standard) {
+        guard let storageKey = currentAccountListDisplayPreferencesStorageKey else {
+            currentAccountListDisplayPreferences = AccountListDisplayPreferences()
+            return
+        }
+
+        guard let data = defaults.data(forKey: storageKey),
+              let preferences = try? Self.listDisplayPreferencesDecoder.decode(
+                  AccountListDisplayPreferences.self,
+                  from: data
+              ) else {
+            currentAccountListDisplayPreferences = AccountListDisplayPreferences()
+            return
+        }
+
+        currentAccountListDisplayPreferences = preferences
+    }
+
+    func persistListDisplayPreferencesForCurrentAccount(defaults: UserDefaults = .standard) {
+        guard let storageKey = currentAccountListDisplayPreferencesStorageKey else { return }
+
+        if currentAccountListDisplayPreferences == AccountListDisplayPreferences() {
+            defaults.removeObject(forKey: storageKey)
+            return
+        }
+
+        guard let data = try? Self.listDisplayPreferencesEncoder.encode(currentAccountListDisplayPreferences) else {
+            Self.logger.error("Failed to encode list display preferences")
+            return
+        }
+
+        defaults.set(data, forKey: storageKey)
+    }
+
+    func resolvedListDisplay(for rawLists: [MastodonList]) -> AccountListDisplayResolution {
+        AccountListDisplayResolver.resolve(
+            lists: rawLists,
+            preferences: currentAccountListDisplayPreferences
+        )
+    }
+
+    @discardableResult
+    func synchronizeCurrentAccountListDisplayPreferences(
+        with rawLists: [MastodonList],
+        allowEmptyListSet: Bool = false,
+        defaults: UserDefaults = .standard
+    ) -> AccountListDisplayResolution {
+        let resolution = resolvedListDisplay(for: rawLists)
+        guard !rawLists.isEmpty || allowEmptyListSet else {
+            return resolution
+        }
+
+        if resolution.normalizedPreferences != currentAccountListDisplayPreferences {
+            currentAccountListDisplayPreferences = resolution.normalizedPreferences
+            persistListDisplayPreferencesForCurrentAccount(defaults: defaults)
+        }
+
+        reconcileVisibleFeedSelection(
+            visibleListIDs: resolution.visibleListIDs,
+            defaults: defaults
+        )
+        return resolution
+    }
+
+    func visibleLists(from rawLists: [MastodonList]) -> [MastodonList] {
+        resolvedListDisplay(for: rawLists).visibleLists
+    }
+
+    func hiddenLists(from rawLists: [MastodonList]) -> [MastodonList] {
+        resolvedListDisplay(for: rawLists).hiddenLists
+    }
+
+    func visibleListIDs(from rawLists: [MastodonList]) -> [String] {
+        resolvedListDisplay(for: rawLists).visibleListIDs
+    }
+
+    func feedTabs(from rawLists: [MastodonList]) -> [FeedTabItem] {
+        [FeedTabItem.home] + visibleLists(from: rawLists).map {
+            FeedTabItem(id: $0.id, title: $0.title)
+        }
+    }
+
+    func updateListDisplaySortOrder(
+        _ sortOrder: ListDisplaySortOrder,
+        rawLists: [MastodonList],
+        defaults: UserDefaults = .standard
+    ) {
+        currentAccountListDisplayPreferences.sortOrder = sortOrder
+        _ = synchronizeCurrentAccountListDisplayPreferences(with: rawLists, defaults: defaults)
+    }
+
+    func setListVisibility(
+        listID: String,
+        isVisible: Bool,
+        rawLists: [MastodonList],
+        defaults: UserDefaults = .standard
+    ) {
+        if isVisible {
+            currentAccountListDisplayPreferences.hiddenListIDs.removeAll { $0 == listID }
+            if currentAccountListDisplayPreferences.sortOrder == .custom,
+               !currentAccountListDisplayPreferences.customVisibleListOrder.contains(listID) {
+                currentAccountListDisplayPreferences.customVisibleListOrder.append(listID)
+            }
+        } else {
+            if !currentAccountListDisplayPreferences.hiddenListIDs.contains(listID) {
+                currentAccountListDisplayPreferences.hiddenListIDs.append(listID)
+            }
+            currentAccountListDisplayPreferences.customVisibleListOrder.removeAll { $0 == listID }
+        }
+
+        _ = synchronizeCurrentAccountListDisplayPreferences(with: rawLists, defaults: defaults)
+    }
+
+    func moveVisibleLists(
+        fromOffsets: IndexSet,
+        toOffset: Int,
+        rawLists: [MastodonList],
+        defaults: UserDefaults = .standard
+    ) {
+        var reorderedVisibleIDs = visibleListIDs(from: rawLists)
+        moveIDs(&reorderedVisibleIDs, fromOffsets: fromOffsets, toOffset: toOffset)
+        currentAccountListDisplayPreferences.sortOrder = .custom
+        currentAccountListDisplayPreferences.customVisibleListOrder = reorderedVisibleIDs
+        _ = synchronizeCurrentAccountListDisplayPreferences(with: rawLists, defaults: defaults)
+    }
+
+    private func reconcileVisibleFeedSelection(
+        visibleListIDs: [String],
+        defaults: UserDefaults
+    ) {
+        if let selectedListId, !visibleListIDs.contains(selectedListId) {
+            self.selectedListId = nil
+        }
+
+        let defaultListID = defaults.string(forKey: Self.defaultListIdStorageKey) ?? ""
+        if !defaultListID.isEmpty, !visibleListIDs.contains(defaultListID) {
+            defaults.set("", forKey: Self.defaultListIdStorageKey)
+        }
+    }
+
+    private func moveIDs(
+        _ ids: inout [String],
+        fromOffsets: IndexSet,
+        toOffset: Int
+    ) {
+        let movingItems = fromOffsets.map { ids[$0] }
+        let removedBeforeDestination = fromOffsets.filter { $0 < toOffset }.count
+        for offset in fromOffsets.sorted(by: >) {
+            ids.remove(at: offset)
+        }
+        let adjustedOffset = max(0, min(ids.count, toOffset - removedBeforeDestination))
+        ids.insert(contentsOf: movingItems, at: adjustedOffset)
     }
     
     // MARK: - Error Handling
@@ -281,6 +447,7 @@ enum NavigationDestination: Hashable {
     case thread(statusId: String)
     case hashtag(String)
     case settings
+    case listDisplay
     case accountSettings
     case readLaterSettings
     case accountPosts(accountId: String, account: MastodonAccount)

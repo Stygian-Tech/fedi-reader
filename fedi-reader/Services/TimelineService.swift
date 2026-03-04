@@ -1104,7 +1104,6 @@ final class TimelineService {
             let list = try await client.createList(instance: account.instance, accessToken: token, title: title)
             if !lists.contains(list) {
                 lists.append(list)
-                lists.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
             }
             return list
         } catch let err as FediReaderError where err == .unauthorized {

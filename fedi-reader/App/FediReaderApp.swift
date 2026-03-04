@@ -84,6 +84,10 @@ struct FediReaderApp: App {
                 }
                 .onChange(of: appState.currentAccount?.id) { _, _ in
                     updateInboxAutoRefresh(for: scenePhase)
+                    appState.loadListDisplayPreferencesForCurrentAccount()
+                    if let service = timelineWrapper.service {
+                        service.lists = timelineWrapper.cachedLists(for: appState.currentAccount?.id)
+                    }
                     timelineWrapper.resetStartupLinkFeedLoad(for: appState.currentAccount?.id)
                     startInitialLinkFeedLoadIfNeeded()
                     Task {
@@ -122,6 +126,7 @@ struct FediReaderApp: App {
     @MainActor
     private func setupServices() {
         appState.authService.loadAccounts(from: modelContext)
+        appState.loadListDisplayPreferencesForCurrentAccount()
         Task {
             await appState.authService.refreshClientAuthenticationState()
         }
@@ -186,7 +191,7 @@ struct FediReaderApp: App {
                 await self.linkFilterService.enrichWithAttributions()
             }
 
-            let allFeedIDs = [AppState.homeFeedID] + service.lists.map(\.id)
+            let allFeedIDs = [AppState.homeFeedID] + self.appState.visibleListIDs(from: service.lists)
             await self.linkFilterService.prefetchAdjacentFeeds(
                 currentFeedId: initialFeedID,
                 allFeedIds: allFeedIDs
@@ -201,13 +206,19 @@ struct FediReaderApp: App {
         guard appState.hasAccount else { return AppState.homeFeedID }
 
         await service.loadLists()
+        let resolution = appState.synchronizeCurrentAccountListDisplayPreferences(
+            with: service.lists,
+            allowEmptyListSet: true
+        )
         if !service.lists.isEmpty {
             timelineWrapper.updateCachedLists(service.lists, for: appState.currentAccount?.id)
         }
 
+        let persistedDefaultListID =
+            UserDefaults.standard.string(forKey: AppState.defaultListIdStorageKey) ?? defaultListId
         return appState.applyDefaultLinkFeed(
-            defaultListId: defaultListId,
-            availableListIDs: service.lists.map(\.id)
+            defaultListId: persistedDefaultListID,
+            availableListIDs: resolution.visibleListIDs
         )
     }
 
