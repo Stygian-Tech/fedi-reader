@@ -48,6 +48,14 @@ struct ProfileView: View {
                     Label("Account Settings", systemImage: "person.crop.circle.badge.checkmark")
                 }
             }
+
+            Section("Lists") {
+                Button {
+                    appState.navigate(to: .listDisplay)
+                } label: {
+                    Label("List Display", systemImage: "list.bullet.rectangle")
+                }
+            }
             
             // Read Later
             Section("Read Later") {

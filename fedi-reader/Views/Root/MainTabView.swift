@@ -218,6 +218,8 @@ struct MainTabView: View {
             HashtagPlaceholderView(tag: tag)
         case .settings:
             SettingsView()
+        case .listDisplay:
+            ListDisplaySettingsView()
         case .accountSettings:
             AccountSettingsView()
         case .readLaterSettings:
@@ -269,4 +271,3 @@ private struct ConditionalTabViewStyle: ViewModifier {
         }
     }
 }
-

@@ -17,9 +17,21 @@ struct SettingsView: View {
     @AppStorage("defaultListId") private var defaultListId = ""
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
+
+    private var accountID: String? {
+        appState.currentAccount?.id
+    }
+
+    private var rawLists: [MastodonList] {
+        let liveLists = timelineWrapper.service?.lists ?? []
+        if !liveLists.isEmpty {
+            return liveLists
+        }
+        return timelineWrapper.cachedLists(for: accountID)
+    }
     
     private var lists: [MastodonList] {
-        timelineWrapper.service?.lists ?? []
+        return appState.visibleLists(from: rawLists)
     }
     
     private var selectedThemeColor: Color {
@@ -58,6 +70,14 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .tint(selectedThemeColor)
         .id("settings-theme-\(themeColorName)")
+        .onAppear {
+            _ = appState.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
+        }
+        .onChange(of: lists.map(\.id)) { _, visibleListIDs in
+            if !defaultListId.isEmpty, !visibleListIDs.contains(defaultListId) {
+                defaultListId = ""
+            }
+        }
     }
 
     private var settingsListContent: some View {
@@ -535,5 +555,3 @@ private struct ThemeColorSelectionView: View {
         .tint(selectedThemeColor)
     }
 }
-
-

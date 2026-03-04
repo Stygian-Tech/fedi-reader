@@ -15,6 +15,10 @@ private struct GenericTestError: LocalizedError {
     }
 }
 
+private func makeList(id: String, title: String) -> MastodonList {
+    MastodonList(id: id, title: title, repliesPolicy: nil, exclusive: nil)
+}
+
 @Suite("AppState Tests")
 @MainActor
 struct AppStateTests {
@@ -162,5 +166,94 @@ struct AppStateTests {
         #expect(feedID == AppState.homeFeedID)
         #expect(state.selectedListId == nil)
         #expect(state.selectedLinkFeedID == AppState.homeFeedID)
+    }
+
+    @Test("visible list ids exclude hidden lists when resolving default feed selection")
+    func visibleListIDsExcludeHiddenLists() async {
+        let state = AppState()
+        let rawLists = [
+            makeList(id: "list-1", title: "Alpha"),
+            makeList(id: "list-2", title: "Beta")
+        ]
+        state.currentAccountListDisplayPreferences = AccountListDisplayPreferences(
+            sortOrder: .alphabetical,
+            hiddenListIDs: ["list-2"],
+            customVisibleListOrder: []
+        )
+
+        let feedID = state.applyDefaultLinkFeed(
+            defaultListId: "list-2",
+            availableListIDs: state.visibleListIDs(from: rawLists)
+        )
+
+        #expect(feedID == AppState.homeFeedID)
+        #expect(state.selectedLinkFeedID == AppState.homeFeedID)
+    }
+
+    @Test("synchronize clears the selected feed when it becomes hidden")
+    func synchronizeClearsHiddenSelectedFeed() async {
+        let state = AppState()
+        let rawLists = [
+            makeList(id: "list-1", title: "Alpha"),
+            makeList(id: "list-2", title: "Beta")
+        ]
+        state.selectedListId = "list-2"
+        state.currentAccountListDisplayPreferences = AccountListDisplayPreferences(
+            sortOrder: .alphabetical,
+            hiddenListIDs: ["list-2"],
+            customVisibleListOrder: []
+        )
+
+        _ = state.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
+
+        #expect(state.selectedListId == nil)
+        #expect(state.selectedLinkFeedID == AppState.homeFeedID)
+    }
+
+    @Test("synchronize clears the stored default feed when it becomes hidden")
+    func synchronizeClearsHiddenDefaultFeed() async {
+        let state = AppState()
+        let rawLists = [
+            makeList(id: "list-1", title: "Alpha"),
+            makeList(id: "list-2", title: "Beta")
+        ]
+        let defaults = UserDefaults.standard
+        let previousDefaultListID = defaults.string(forKey: AppState.defaultListIdStorageKey)
+        defaults.set("list-2", forKey: AppState.defaultListIdStorageKey)
+        defer {
+            if let previousDefaultListID {
+                defaults.set(previousDefaultListID, forKey: AppState.defaultListIdStorageKey)
+            } else {
+                defaults.removeObject(forKey: AppState.defaultListIdStorageKey)
+            }
+        }
+
+        state.currentAccountListDisplayPreferences = AccountListDisplayPreferences(
+            sortOrder: .alphabetical,
+            hiddenListIDs: ["list-2"],
+            customVisibleListOrder: []
+        )
+
+        _ = state.synchronizeCurrentAccountListDisplayPreferences(with: rawLists, defaults: defaults)
+
+        #expect((defaults.string(forKey: AppState.defaultListIdStorageKey) ?? "") == "")
+    }
+
+    @Test("feed tabs always place home first")
+    func feedTabsAlwaysPlaceHomeFirst() async {
+        let state = AppState()
+        let rawLists = [
+            makeList(id: "list-1", title: "Alpha"),
+            makeList(id: "list-2", title: "Beta")
+        ]
+        state.currentAccountListDisplayPreferences = AccountListDisplayPreferences(
+            sortOrder: .reverseAlphabetical,
+            hiddenListIDs: ["list-1"],
+            customVisibleListOrder: []
+        )
+
+        let tabIDs = state.feedTabs(from: rawLists).map(\.id)
+
+        #expect(tabIDs == [AppState.homeFeedID, "list-2"])
     }
 }
