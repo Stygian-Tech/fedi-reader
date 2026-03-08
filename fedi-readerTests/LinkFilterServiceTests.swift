@@ -464,6 +464,43 @@ struct LinkFilterServiceTests {
 
         #expect(accounts.map(\.id) == ["acct-alice", "acct-charlie"])
     }
+
+    @Test("Feed-scoped data reads from the requested feed even when another feed is active")
+    func feedScopedDataReadsRequestedFeedWhenAnotherFeedIsActive() async {
+        let homeAccount = MockStatusFactory.makeAccount(id: "acct-home", username: "home")
+        let listAccount = MockStatusFactory.makeAccount(id: "acct-list", username: "list")
+
+        let homeStatuses = [
+            MockStatusFactory.makeStatus(
+                id: "home-1",
+                hasCard: true,
+                cardURL: "https://example.com/home",
+                account: homeAccount
+            )
+        ]
+        let listStatuses = [
+            MockStatusFactory.makeStatus(
+                id: "list-1",
+                hasCard: true,
+                cardURL: "https://example.com/list",
+                account: listAccount
+            )
+        ]
+
+        _ = await service.processStatuses(homeStatuses, for: AppState.homeFeedID)
+        _ = await service.processStatuses(listStatuses, for: "list-1")
+        service.switchToFeed(AppState.homeFeedID)
+
+        let scopedStatuses = FeedScopedLinkData.filteredStatuses(
+            in: service,
+            feedId: "list-1",
+            userFilterAccountId: nil
+        )
+        let scopedAccounts = FeedScopedLinkData.accounts(in: service, feedId: "list-1")
+
+        #expect(scopedStatuses.map(\.id) == ["list-1"])
+        #expect(scopedAccounts.map(\.id) == ["acct-list"])
+    }
     
     // MARK: - Filter by Account
     

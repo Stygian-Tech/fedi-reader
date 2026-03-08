@@ -82,7 +82,7 @@ struct LinkFeedThreeColumnView: View {
     }
 
     private var currentAccounts: [MastodonAccount] {
-        linkFilterService.uniqueAccounts()
+        FeedScopedLinkData.accounts(in: linkFilterService, feedId: currentTab.id)
     }
 
     private var currentUserFilter: String? {
@@ -90,9 +90,11 @@ struct LinkFeedThreeColumnView: View {
     }
 
     private var filteredStatuses: [LinkStatus] {
-        var statuses = linkFilterService.linkStatuses
-        statuses = linkFilterService.filter(linkStatuses: statuses, byAccountId: currentUserFilter)
-        return statuses
+        FeedScopedLinkData.filteredStatuses(
+            in: linkFilterService,
+            feedId: currentTab.id,
+            userFilterAccountId: currentUserFilter
+        )
     }
 
     private func shouldShowPaginationLoadingRow(for statuses: [LinkStatus]) -> Bool {
@@ -326,7 +328,7 @@ struct LinkFeedThreeColumnView: View {
 
     private func postsColumnContent(statuses: [LinkStatus]) -> some View {
         Group {
-            if statuses.isEmpty, !linkFilterService.isLoading {
+            if statuses.isEmpty, !FeedScopedLinkData.isLoading(in: linkFilterService, feedId: currentTab.id) {
                 emptyStateView
             } else {
                 let canLoadMore = currentTab.isHome
@@ -334,7 +336,7 @@ struct LinkFeedThreeColumnView: View {
                     : (timelineService?.canLoadMoreListTimeline() ?? false)
                 LinkFeedPostList(
                     statuses: statuses,
-                    isLoading: linkFilterService.isLoading,
+                    isLoading: FeedScopedLinkData.isLoading(in: linkFilterService, feedId: currentTab.id),
                     shouldShowPaginationLoading: shouldShowPaginationLoadingRow(for: statuses),
                     canLoadMore: canLoadMore,
                     deferPostNavigation: { action in action() },

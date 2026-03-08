@@ -15,6 +15,7 @@ final class AppState {
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "AppState")
     static let homeFeedID = "home"
     static let defaultListIdStorageKey = "defaultListId"
+    static let listsInSeparateTabStorageKey = "listsInSeparateTab"
     private static let listDisplayPreferencesStorageKeyPrefix = "listDisplayPreferences."
     private static let listDisplayPreferencesEncoder = JSONEncoder()
     private static let listDisplayPreferencesDecoder = JSONDecoder()
@@ -32,6 +33,7 @@ final class AppState {
     
     // List and filter state
     var selectedListId: String? = nil  // nil = Home timeline
+    var pendingListNavigationListID: String? = nil
     var isUserFilterOpen = false
     var userFilterPerFeedId: [String: String] = [:]  // feedId -> accountId
     var linksLastVisibleStatusIdPerFeed: [String: String] = [:]
@@ -39,6 +41,7 @@ final class AppState {
     
     // Navigation state (per-tab so switching tabs shows correct root)
     var linksNavigationPath: [NavigationDestination] = []
+    var listsNavigationPath: [NavigationDestination] = []
     var exploreNavigationPath: [NavigationDestination] = []
     var profileNavigationPath: [NavigationDestination] = []
     var mentionsNavigationPath: [NavigationDestination] = []
@@ -162,6 +165,25 @@ final class AppState {
         [FeedTabItem.home] + visibleLists(from: rawLists).map {
             FeedTabItem(id: $0.id, title: $0.title)
         }
+    }
+
+    func homeFeedTabs(from rawLists: [MastodonList], listsInSeparateTab: Bool) -> [FeedTabItem] {
+        listsInSeparateTab ? [.home] : feedTabs(from: rawLists)
+    }
+
+    func listFeedTabs(from rawLists: [MastodonList]) -> [FeedTabItem] {
+        visibleLists(from: rawLists).map {
+            FeedTabItem(id: $0.id, title: $0.title)
+        }
+    }
+
+    func appTabs(listsInSeparateTab: Bool) -> [AppTab] {
+        var tabs: [AppTab] = [.links]
+        if listsInSeparateTab {
+            tabs.append(.lists)
+        }
+        tabs.append(contentsOf: [.explore, .mentions, .profile])
+        return tabs
     }
 
     func updateListDisplaySortOrder(
@@ -294,6 +316,12 @@ final class AppState {
             } else {
                 linksNavigationPath.append(destination)
             }
+        case .lists:
+            if shouldReplaceArticle(path: listsNavigationPath) {
+                listsNavigationPath[listsNavigationPath.count - 1] = destination
+            } else {
+                listsNavigationPath.append(destination)
+            }
         case .explore:
             if shouldReplaceArticle(path: exploreNavigationPath) {
                 exploreNavigationPath[exploreNavigationPath.count - 1] = destination
@@ -324,6 +352,14 @@ final class AppState {
                 Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
             } else {
                 Self.logger.debug("Navigate back called but navigation path is empty")
+            }
+        case .lists:
+            if !listsNavigationPath.isEmpty {
+                let previous = listsNavigationPath.last
+                listsNavigationPath.removeLast()
+                Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
+            } else {
+                Self.logger.debug("Navigate back called but lists navigation path is empty")
             }
         case .explore:
             if !exploreNavigationPath.isEmpty {
@@ -358,6 +394,10 @@ final class AppState {
             let count = linksNavigationPath.count
             linksNavigationPath.removeAll()
             Self.logger.info("Navigating to root, cleared \(count) destinations")
+        case .lists:
+            let count = listsNavigationPath.count
+            listsNavigationPath.removeAll()
+            Self.logger.info("Navigating to root, cleared \(count) list destinations")
         case .explore:
             let count = exploreNavigationPath.count
             exploreNavigationPath.removeAll()
@@ -398,12 +438,21 @@ final class AppState {
     }
 
     @discardableResult
-    func applyDefaultLinkFeed(defaultListId: String, availableListIDs: [String]) -> String {
+    func applyDefaultLinkFeed(
+        defaultListId: String,
+        availableListIDs: [String],
+        listsInSeparateTab: Bool = false
+    ) -> String {
         let feedID = resolvedDefaultLinkFeedID(
             defaultListId: defaultListId,
             availableListIDs: availableListIDs
         )
         selectedListId = feedID == Self.homeFeedID ? nil : feedID
+        selectedTab = feedID == Self.homeFeedID || !listsInSeparateTab ? .links : .lists
+        pendingListNavigationListID = selectedTab == .lists ? feedID : nil
+        if pendingListNavigationListID == Self.homeFeedID {
+            pendingListNavigationListID = nil
+        }
         return feedID
     }
 }
@@ -412,6 +461,7 @@ final class AppState {
 
 enum AppTab: String, CaseIterable, Identifiable {
     case links
+    case lists
     case explore
     case mentions
     case profile
@@ -421,6 +471,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .links: return "Home"
+        case .lists: return "Lists"
         case .explore: return "Explore"
         case .mentions: return "Messages"
         case .profile: return "Profile"
@@ -430,6 +481,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .links: return "house"
+        case .lists: return "list.bullet"
         case .explore: return "globe"
         case .mentions: return "at"
         case .profile: return "person"
@@ -443,6 +495,7 @@ enum NavigationDestination: Hashable {
     case status(Status)
     case conversation(GroupedConversation)
     case profile(MastodonAccount)
+    case listFeed(MastodonList)
     case article(url: URL, status: Status?)
     case thread(statusId: String)
     case hashtag(String)
