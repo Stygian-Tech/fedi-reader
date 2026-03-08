@@ -256,4 +256,73 @@ struct AppStateTests {
 
         #expect(tabIDs == [AppState.homeFeedID, "list-2"])
     }
+
+    @Test("app tabs include lists when separate tab mode is enabled")
+    func appTabsIncludeListsWhenSeparateTabModeEnabled() async {
+        let state = AppState()
+
+        let tabs = state.appTabs(listsInSeparateTab: true)
+
+        #expect(tabs == [.links, .lists, .explore, .mentions, .profile])
+    }
+
+    @Test("home feed tabs exclude lists when separate tab mode is enabled")
+    func homeFeedTabsExcludeListsWhenSeparateTabModeEnabled() async {
+        let state = AppState()
+        let rawLists = [
+            makeList(id: "list-1", title: "Alpha"),
+            makeList(id: "list-2", title: "Beta")
+        ]
+
+        let tabs = state.homeFeedTabs(from: rawLists, listsInSeparateTab: true)
+
+        #expect(tabs.map(\.id) == [AppState.homeFeedID])
+    }
+
+    @Test("list feed tabs exclude home when separate tab mode is enabled")
+    func listFeedTabsExcludeHomeWhenSeparateTabModeEnabled() async {
+        let state = AppState()
+        let rawLists = [
+            makeList(id: "list-1", title: "Alpha"),
+            makeList(id: "list-2", title: "Beta")
+        ]
+
+        let tabs = state.listFeedTabs(from: rawLists)
+
+        #expect(tabs.map(\.id) == ["list-1", "list-2"])
+    }
+
+    @Test("apply default link feed selects lists tab when separate tab mode is enabled")
+    func applyDefaultLinkFeedSelectsListsTabWhenSeparateTabModeEnabled() async {
+        let state = AppState()
+
+        let feedID = state.applyDefaultLinkFeed(
+            defaultListId: "list-2",
+            availableListIDs: ["list-1", "list-2"],
+            listsInSeparateTab: true
+        )
+
+        #expect(feedID == "list-2")
+        #expect(state.selectedListId == "list-2")
+        #expect(state.selectedTab == .lists)
+        #expect(state.pendingListNavigationListID == "list-2")
+    }
+
+    @Test("apply default link feed keeps home tab when separate tab mode is enabled and list is unavailable")
+    func applyDefaultLinkFeedKeepsHomeTabWhenSeparateTabModeEnabledAndListUnavailable() async {
+        let state = AppState()
+        state.selectedTab = .lists
+        state.selectedListId = "old-list"
+
+        let feedID = state.applyDefaultLinkFeed(
+            defaultListId: "missing-list",
+            availableListIDs: ["list-1", "list-2"],
+            listsInSeparateTab: true
+        )
+
+        #expect(feedID == AppState.homeFeedID)
+        #expect(state.selectedListId == nil)
+        #expect(state.selectedTab == .links)
+        #expect(state.pendingListNavigationListID == nil)
+    }
 }

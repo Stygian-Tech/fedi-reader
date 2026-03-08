@@ -8,6 +8,28 @@
 import Foundation
 import os
 
+enum FeedScopedLinkData {
+    static func statuses(in service: LinkFilterService, feedId: String) -> [LinkStatus] {
+        service.getCachedContent(for: feedId)
+    }
+
+    static func filteredStatuses(
+        in service: LinkFilterService,
+        feedId: String,
+        userFilterAccountId: String?
+    ) -> [LinkStatus] {
+        service.filter(linkStatuses: statuses(in: service, feedId: feedId), byAccountId: userFilterAccountId)
+    }
+
+    static func accounts(in service: LinkFilterService, feedId: String) -> [MastodonAccount] {
+        service.uniqueAccounts(in: statuses(in: service, feedId: feedId))
+    }
+
+    static func isLoading(in service: LinkFilterService, feedId: String) -> Bool {
+        service.isLoadingFeed(feedId)
+    }
+}
+
 @Observable
 @MainActor
 final class LinkFilterService {

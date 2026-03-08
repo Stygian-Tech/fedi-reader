@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("defaultListId") private var defaultListId = ""
+    @AppStorage(AppState.listsInSeparateTabStorageKey) private var listsInSeparateTab = false
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
 
@@ -58,6 +59,7 @@ struct SettingsView: View {
                     hideTabBarLabels: $hideTabBarLabels,
                     themeColorName: $themeColorName,
                     defaultListId: $defaultListId,
+                    listsInSeparateTab: $listsInSeparateTab,
                     showQuoteBoost: $showQuoteBoost,
                     showHandleInFeed: $showHandleInFeed,
                     lists: lists,
@@ -105,6 +107,8 @@ struct SettingsView: View {
             
             // Timeline
             Section("Timeline") {
+                Toggle("Show Lists in Separate Tab", isOn: $listsInSeparateTab)
+
                 Picker("Default Feed", selection: $defaultListId) {
                     Text("Home").tag("")
                     ForEach(lists) { list in
@@ -199,6 +203,7 @@ private struct SettingsTwoColumnView: View {
     @Binding var hideTabBarLabels: Bool
     @Binding var themeColorName: String
     @Binding var defaultListId: String
+    @Binding var listsInSeparateTab: Bool
     @Binding var showQuoteBoost: Bool
     @Binding var showHandleInFeed: Bool
     let lists: [MastodonList]
@@ -358,6 +363,8 @@ private struct SettingsTwoColumnView: View {
 
             case .timeline:
                 Section {
+                    settingsToggleRow("Show Lists in Separate Tab", isOn: $listsInSeparateTab)
+
                     Picker(selection: $defaultListId) {
                         Text("Home").tag("")
                         ForEach(lists) { list in

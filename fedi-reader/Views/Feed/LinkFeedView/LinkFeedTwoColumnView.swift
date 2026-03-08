@@ -13,6 +13,12 @@ struct LinkFeedTwoColumnView: View {
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
 
+    let feedTabsOverride: [FeedTabItem]?
+    let showsFeedPicker: Bool
+    let allowsSwipeNavigation: Bool
+    let titleOverride: String?
+    let userFilterToolbarPlacement: UserFilterToolbarPlacement
+
     @State private var selectedArticle: (url: URL, status: Status)?
     @AppStorage("linkFeedTwoColumnPostsWidth") private var persistedPostsWidth: Double = 350
     @State private var postsWidth: Double = 350
@@ -20,6 +26,20 @@ struct LinkFeedTwoColumnView: View {
     private static let minPostsWidth: CGFloat = 280
     private static let minArticleWidth: CGFloat = 400
     private static let dividerWidth: CGFloat = 4
+
+    init(
+        feedTabsOverride: [FeedTabItem]? = nil,
+        showsFeedPicker: Bool = true,
+        allowsSwipeNavigation: Bool = true,
+        titleOverride: String? = nil,
+        userFilterToolbarPlacement: UserFilterToolbarPlacement = .leading
+    ) {
+        self.feedTabsOverride = feedTabsOverride
+        self.showsFeedPicker = showsFeedPicker
+        self.allowsSwipeNavigation = allowsSwipeNavigation
+        self.titleOverride = titleOverride
+        self.userFilterToolbarPlacement = userFilterToolbarPlacement
+    }
 
     private struct TwoColumnLayout {
         let postsWidth: CGFloat
@@ -75,7 +95,7 @@ struct LinkFeedTwoColumnView: View {
             HStack(spacing: 0) {
                 LinkFeedContentView(onArticleSelect: { url, status in
                     selectedArticle = (url, status)
-                })
+                }, feedTabsOverride: feedTabsOverride, showsFeedPicker: showsFeedPicker, allowsSwipeNavigation: allowsSwipeNavigation, titleOverride: titleOverride, userFilterToolbarPlacement: userFilterToolbarPlacement)
                 .frame(width: layout.postsWidth)
                 .background(Color(.systemBackground))
 

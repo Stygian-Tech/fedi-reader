@@ -23,6 +23,22 @@ enum HorizontalListPickerGestureFilter {
     }
 }
 
+enum UserFilterToolbarPlacement: Equatable {
+    case leading
+    case trailing
+
+    static let listsDetail: Self = .trailing
+
+    var toolbarItemPlacement: ToolbarItemPlacement {
+        switch self {
+        case .leading:
+            .topBarLeading
+        case .trailing:
+            .topBarTrailing
+        }
+    }
+}
+
 #if os(iOS)
 private struct HorizontalListPickerScrollProtector: UIViewRepresentable {
     typealias UIViewType = UIView
@@ -107,6 +123,11 @@ struct LinkFeedContentView: View {
     private static let pickerHeight: CGFloat = 44
 
     var onArticleSelect: ((URL, Status) -> Void)?
+    var feedTabsOverride: [FeedTabItem]? = nil
+    var showsFeedPicker = true
+    var allowsSwipeNavigation = true
+    var titleOverride: String? = nil
+    var userFilterToolbarPlacement: UserFilterToolbarPlacement = .leading
 
     @Environment(AppState.self) private var appState
     @Environment(LinkFilterService.self) private var linkFilterService
@@ -150,7 +171,8 @@ struct LinkFeedContentView: View {
     }
 
     private var feedTabs: [FeedTabItem] {
-        appState.feedTabs(from: rawLists)
+        let tabs = feedTabsOverride ?? appState.feedTabs(from: rawLists)
+        return tabs.isEmpty ? [.home] : tabs
     }
 
     private var currentTab: FeedTabItem {
@@ -161,7 +183,7 @@ struct LinkFeedContentView: View {
     }
 
     private var currentAccounts: [MastodonAccount] {
-        linkFilterService.uniqueAccounts()
+        FeedScopedLinkData.accounts(in: linkFilterService, feedId: currentTab.id)
     }
 
     private var currentUserFilter: String? {
@@ -169,9 +191,11 @@ struct LinkFeedContentView: View {
     }
 
     private var filteredStatuses: [LinkStatus] {
-        var statuses = linkFilterService.linkStatuses
-        statuses = linkFilterService.filter(linkStatuses: statuses, byAccountId: currentUserFilter)
-        return statuses
+        FeedScopedLinkData.filteredStatuses(
+            in: linkFilterService,
+            feedId: currentTab.id,
+            userFilterAccountId: currentUserFilter
+        )
     }
 
     private func shouldShowPaginationLoadingRow(for statuses: [LinkStatus]) -> Bool {
@@ -188,12 +212,13 @@ struct LinkFeedContentView: View {
 
         feedStack(statuses: statuses)
         .background(Color(.systemBackground))
+        .navigationTitle(showsFeedPicker ? "" : (titleOverride ?? currentTab.title))
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: appState.linksScrollToTopRequestID) { _, _ in
             scrollToTop()
         }
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: userFilterToolbarPlacement.toolbarItemPlacement) {
                 Button {
                     appState.isUserFilterOpen = true
                 } label: {
@@ -202,8 +227,10 @@ struct LinkFeedContentView: View {
                 .accessibilityLabel(currentUserFilter != nil ? "User filter active" : "Filter by user")
                 .accessibilityHint("Opens user filter pane")
             }
-            ToolbarItem(placement: .principal) {
-                listPickerHeader
+            if showsFeedPicker {
+                ToolbarItem(placement: .principal) {
+                    listPickerHeader
+                }
             }
         }
         .sheet(isPresented: $state.isUserFilterOpen) {
@@ -228,6 +255,7 @@ struct LinkFeedContentView: View {
             handleTabChange(to: newIndex)
         }
         .onChange(of: appState.selectedListId) { _, newListId in
+            guard feedTabsOverride == nil else { return }
             let targetId = newListId ?? AppState.homeFeedID
             if let index = feedTabs.firstIndex(where: { $0.id == targetId }), selectedTabIndex != index {
                 selectedTabIndex = index
@@ -238,9 +266,9 @@ struct LinkFeedContentView: View {
                 selectedTabIndex = 0
                 return
             }
-            let targetTabID = tabIds.contains(appState.selectedLinkFeedID)
+            let targetTabID = feedTabsOverride == nil && tabIds.contains(appState.selectedLinkFeedID)
                 ? appState.selectedLinkFeedID
-                : AppState.homeFeedID
+                : feedTabs.first?.id ?? AppState.homeFeedID
             if let index = feedTabs.firstIndex(where: { $0.id == targetTabID }) {
                 selectedTabIndex = index
             } else {
@@ -278,8 +306,8 @@ struct LinkFeedContentView: View {
 
     @ViewBuilder
     private func feedStack(statuses: [LinkStatus]) -> some View {
-        Group {
-            if statuses.isEmpty, !linkFilterService.isLoading {
+        let baseStack = Group {
+            if statuses.isEmpty, !FeedScopedLinkData.isLoading(in: linkFilterService, feedId: currentTab.id) {
                 emptyStateView
             } else {
                 linkList(statuses: statuses)
@@ -287,34 +315,40 @@ struct LinkFeedContentView: View {
         }
         .frame(minHeight: 0, maxHeight: .infinity)
         .id(currentTab.id)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: FeedSwipeGestureEvaluator.horizontalIntentDistance)
-                .onChanged { value in
-                    guard !isHorizontalSwipeIntentActive else { return }
-                    if FeedSwipeGestureEvaluator.isHorizontalIntent(translation: value.translation) {
-                        isHorizontalSwipeIntentActive = true
-                    }
-                }
-                .onEnded { value in
-                    defer { isHorizontalSwipeIntentActive = false }
-                    let direction = FeedSwipeGestureEvaluator.shouldCommit(
-                        translation: value.translation,
-                        predictedEndTranslation: value.predictedEndTranslation
-                    )
-                    switch direction {
-                    case .previous:
-                        selectTab(at: selectedTabIndex - 1)
-                    case .next:
-                        selectTab(at: selectedTabIndex + 1)
-                    case .none:
-                        break
-                    }
-                    if isHorizontalSwipeIntentActive || direction != .none || FeedSwipeGestureEvaluator.shouldSuppressTapAfterGesture(translation: value.translation) {
-                        suppressPostSwipeTaps()
-                    }
-                }
-        )
         .background(Color(.systemBackground))
+
+        if allowsSwipeNavigation {
+            baseStack
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: FeedSwipeGestureEvaluator.horizontalIntentDistance)
+                        .onChanged { value in
+                            guard !isHorizontalSwipeIntentActive else { return }
+                            if FeedSwipeGestureEvaluator.isHorizontalIntent(translation: value.translation) {
+                                isHorizontalSwipeIntentActive = true
+                            }
+                        }
+                        .onEnded { value in
+                            defer { isHorizontalSwipeIntentActive = false }
+                            let direction = FeedSwipeGestureEvaluator.shouldCommit(
+                                translation: value.translation,
+                                predictedEndTranslation: value.predictedEndTranslation
+                            )
+                            switch direction {
+                            case .previous:
+                                selectTab(at: selectedTabIndex - 1)
+                            case .next:
+                                selectTab(at: selectedTabIndex + 1)
+                            case .none:
+                                break
+                            }
+                            if isHorizontalSwipeIntentActive || direction != .none || FeedSwipeGestureEvaluator.shouldSuppressTapAfterGesture(translation: value.translation) {
+                                suppressPostSwipeTaps()
+                            }
+                        }
+                )
+        } else {
+            baseStack
+        }
     }
 
     private func linkList(statuses: [LinkStatus]) -> some View {
@@ -323,7 +357,7 @@ struct LinkFeedContentView: View {
             : (timelineService?.canLoadMoreListTimeline() ?? false)
         return LinkFeedPostList(
             statuses: statuses,
-            isLoading: linkFilterService.isLoading,
+            isLoading: FeedScopedLinkData.isLoading(in: linkFilterService, feedId: currentTab.id),
             shouldShowPaginationLoading: shouldShowPaginationLoadingRow(for: statuses),
             canLoadMore: canLoadMore,
             deferPostNavigation: { action in
@@ -531,10 +565,12 @@ struct LinkFeedContentView: View {
         await service.loadLists(forceRefresh: liveLists.isEmpty)
         syncRetainedLists(with: service.lists, allowEmpty: service.error == nil)
 
-        if let index = feedTabs.firstIndex(where: { $0.id == appState.selectedLinkFeedID }) {
+        if feedTabsOverride == nil,
+           let index = feedTabs.firstIndex(where: { $0.id == appState.selectedLinkFeedID }) {
             selectedTabIndex = index
         }
 
+        syncAppStateSelectionToCurrentTab()
         linkFilterService.switchToFeed(currentTab.id)
 
         if linkFilterService.hasCachedContent(for: currentTab.id) {
@@ -566,6 +602,13 @@ struct LinkFeedContentView: View {
     private func loadContentForTabIfNeeded(_ tab: FeedTabItem) async {
         guard !linkFilterService.hasCachedContent(for: tab.id) else { return }
         await loadContentForTab(tab)
+    }
+
+    private func syncAppStateSelectionToCurrentTab() {
+        let listId = currentTab.isHome ? nil : currentTab.id
+        if appState.selectedListId != listId {
+            appState.selectedListId = listId
+        }
     }
 
     private func refreshCurrentFeed() async {

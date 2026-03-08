@@ -12,6 +12,7 @@ struct MainTabView: View {
     @State private var tabTracker = TabSelectionTracker()
     @AppStorage("hapticFeedback") private var hapticFeedback = true
     @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
+    @AppStorage(AppState.listsInSeparateTabStorageKey) private var listsInSeparateTab = false
     @AppStorage("themeColor") private var themeColorName = "blue"
 
     private var unreadMentionsCount: Int {
@@ -32,6 +33,9 @@ struct MainTabView: View {
             if oldValue == .profile {
                 state.profileNavigationPath.removeAll()
             }
+            if oldValue == .lists {
+                state.listsNavigationPath.removeAll()
+            }
             if oldValue == .mentions {
                 state.mentionsNavigationPath.removeAll()
             }
@@ -43,6 +47,11 @@ struct MainTabView: View {
                 tabTracker.reset()
             } else if newValue != .links {
                 tabTracker.reset()
+            }
+        }
+        .onChange(of: listsInSeparateTab) { _, isEnabled in
+            if !isEnabled, state.selectedTab == .lists {
+                state.selectedTab = .links
             }
         }
         .onChange(of: useSidebarLayout) { _, _ in
@@ -64,6 +73,17 @@ struct MainTabView: View {
         ) {
             Tab(useSidebarLayout ? "Home" : (hideTabBarLabels ? "" : "Home"), systemImage: "house", value: .links) {
                 linksTabContent()
+            }
+
+            if listsInSeparateTab {
+                Tab(useSidebarLayout ? "Lists" : (hideTabBarLabels ? "" : "Lists"), systemImage: "list.bullet", value: .lists) {
+                    NavigationStack(path: $state.listsNavigationPath) {
+                        ListsTabRootView()
+                        .navigationDestination(for: NavigationDestination.self) { destination in
+                            destinationView(for: destination)
+                        }
+                    }
+                }
             }
 
             Tab(useSidebarLayout ? "Explore" : (hideTabBarLabels ? "" : "Explore"), systemImage: "globe", value: .explore) {
@@ -122,21 +142,42 @@ struct MainTabView: View {
             switch layoutMode {
             case .wide:
                 NavigationStack(path: $state.linksNavigationPath) {
-                    LinkFeedThreeColumnView()
+                    Group {
+                        if listsInSeparateTab {
+                            LinkFeedTwoColumnView(
+                                feedTabsOverride: [.home],
+                                showsFeedPicker: false,
+                                allowsSwipeNavigation: false,
+                                titleOverride: "Home"
+                            )
+                        } else {
+                            LinkFeedThreeColumnView()
+                        }
+                    }
                         .navigationDestination(for: NavigationDestination.self) { destination in
                             splitLayoutDestinationView(for: destination)
                         }
                 }
             case .medium:
                 NavigationStack(path: $state.linksNavigationPath) {
-                    LinkFeedTwoColumnView()
+                    LinkFeedTwoColumnView(
+                        feedTabsOverride: listsInSeparateTab ? [.home] : nil,
+                        showsFeedPicker: !listsInSeparateTab,
+                        allowsSwipeNavigation: !listsInSeparateTab,
+                        titleOverride: listsInSeparateTab ? "Home" : nil
+                    )
                         .navigationDestination(for: NavigationDestination.self) { destination in
                             splitLayoutDestinationView(for: destination)
                         }
                 }
             case .compact:
                 NavigationStack(path: $state.linksNavigationPath) {
-                    LinkFeedView()
+                    LinkFeedView(
+                        feedTabsOverride: listsInSeparateTab ? [.home] : nil,
+                        showsFeedPicker: !listsInSeparateTab,
+                        allowsSwipeNavigation: !listsInSeparateTab,
+                        titleOverride: listsInSeparateTab ? "Home" : nil
+                    )
                         .navigationDestination(for: NavigationDestination.self) { destination in
                             destinationView(for: destination)
                         }
@@ -210,6 +251,8 @@ struct MainTabView: View {
             GroupedConversationDetailView(groupedConversation: groupedConversation)
         case .profile(let account):
             ProfileDetailView(account: account)
+        case .listFeed(let list):
+            ListFeedDetailView(list: list)
         case .article(let url, let status):
             ArticleWebView(url: url, status: status)
         case .thread(let statusId):
