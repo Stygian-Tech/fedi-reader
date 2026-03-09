@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage("defaultListId") private var defaultListId = ""
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
+    @AppStorage("useSafariViewer") private var useSafariViewer = false
 
     private var accountID: String? {
         appState.currentAccount?.id
@@ -60,6 +61,7 @@ struct SettingsView: View {
                     defaultListId: $defaultListId,
                     showQuoteBoost: $showQuoteBoost,
                     showHandleInFeed: $showHandleInFeed,
+                    useSafariViewer: $useSafariViewer,
                     lists: lists,
                     isCompactDevice: isCompactDevice
                 )
@@ -88,6 +90,13 @@ struct SettingsView: View {
                 Toggle("Auto-play GIFs", isOn: $autoPlayGifs)
                 Toggle("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
                 Toggle("Show Handle in Feed", isOn: $showHandleInFeed)
+
+                #if os(iOS)
+                Picker("Article Viewer", selection: $useSafariViewer) {
+                    Text("FediReader").tag(false)
+                    Text("Safari").tag(true)
+                }
+                #endif
 
                 NavigationLink(value: NavigationDestination.tabOrder) {
                     Label("Tab Order", systemImage: "rectangle.3.group")
@@ -221,6 +230,7 @@ private struct SettingsTwoColumnView: View {
     @Binding var defaultListId: String
     @Binding var showQuoteBoost: Bool
     @Binding var showHandleInFeed: Bool
+    @Binding var useSafariViewer: Bool
     let lists: [MastodonList]
     let isCompactDevice: Bool
 
@@ -364,6 +374,16 @@ private struct SettingsTwoColumnView: View {
                     settingsToggleRow("Auto-play GIFs", isOn: $autoPlayGifs)
                     settingsToggleRow("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
                     settingsToggleRow("Show Handle in Feed", isOn: $showHandleInFeed)
+                    #if os(iOS)
+                    Picker(selection: $useSafariViewer) {
+                        Text("FediReader").tag(false)
+                        Text("Safari").tag(true)
+                    } label: {
+                        Text("Article Viewer").font(.roundedBody)
+                    }
+                    .pickerStyle(.menu)
+                    .listRowInsets(Self.detailRowInsets)
+                    #endif
                     NavigationLink(value: NavigationDestination.tabOrder) {
                         Label("Tab Order", systemImage: "rectangle.3.group")
                             .font(.roundedBody)

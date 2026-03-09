@@ -16,11 +16,20 @@ struct TrendingLinkRow: View {
     let link: TrendingLink
     @Environment(AppState.self) private var appState
     @Environment(ReadLaterManager.self) private var readLaterManager
+    @AppStorage("useSafariViewer") private var useSafariViewer = false
 
     var body: some View {
         Button {
             if let url = link.linkURL {
+                #if os(iOS)
+                if useSafariViewer {
+                    appState.present(sheet: .safariView(url: url))
+                } else {
+                    appState.navigate(to: .article(url: url, status: nil))
+                }
+                #else
                 appState.navigate(to: .article(url: url, status: nil))
+                #endif
             }
         } label: {
             LinkCardContent(link: link)
