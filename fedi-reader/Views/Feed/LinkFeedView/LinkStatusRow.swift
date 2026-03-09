@@ -26,7 +26,7 @@ struct LinkStatusRow: View {
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
-    @AppStorage("useSafariViewer") private var useSafariViewer = false
+    @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
 
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
@@ -217,15 +217,19 @@ struct LinkStatusRow: View {
                 if let onArticleSelect {
                     onArticleSelect(linkStatus.primaryURL, linkStatus.status)
                 } else {
-                    #if os(iOS)
-                    if useSafariViewer {
+                    let pref = ArticleViewerPreference.from(raw: articleViewerPreferenceRaw)
+                    switch pref {
+                    case .externalBrowser:
+                        openURL(linkStatus.primaryURL)
+                    case .safari:
+                        #if os(iOS)
                         appState.present(sheet: .safariView(url: linkStatus.primaryURL))
-                    } else {
+                        #else
+                        openURL(linkStatus.primaryURL)
+                        #endif
+                    case .inApp:
                         appState.navigate(to: .article(url: linkStatus.primaryURL, status: linkStatus.status))
                     }
-                    #else
-                    appState.navigate(to: .article(url: linkStatus.primaryURL, status: linkStatus.status))
-                    #endif
                 }
             }
         } label: {

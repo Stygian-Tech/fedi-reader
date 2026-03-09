@@ -15,21 +15,26 @@ import AppKit
 struct TrendingLinkRow: View {
     let link: TrendingLink
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @Environment(ReadLaterManager.self) private var readLaterManager
-    @AppStorage("useSafariViewer") private var useSafariViewer = false
+    @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
 
     var body: some View {
         Button {
             if let url = link.linkURL {
-                #if os(iOS)
-                if useSafariViewer {
+                let pref = ArticleViewerPreference.from(raw: articleViewerPreferenceRaw)
+                switch pref {
+                case .externalBrowser:
+                    openURL(url)
+                case .safari:
+                    #if os(iOS)
                     appState.present(sheet: .safariView(url: url))
-                } else {
+                    #else
+                    openURL(url)
+                    #endif
+                case .inApp:
                     appState.navigate(to: .article(url: url, status: nil))
                 }
-                #else
-                appState.navigate(to: .article(url: url, status: nil))
-                #endif
             }
         } label: {
             LinkCardContent(link: link)

@@ -17,7 +17,7 @@ struct SettingsView: View {
     @AppStorage("defaultListId") private var defaultListId = ""
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
-    @AppStorage("useSafariViewer") private var useSafariViewer = false
+    @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
 
     private var accountID: String? {
         appState.currentAccount?.id
@@ -61,7 +61,7 @@ struct SettingsView: View {
                     defaultListId: $defaultListId,
                     showQuoteBoost: $showQuoteBoost,
                     showHandleInFeed: $showHandleInFeed,
-                    useSafariViewer: $useSafariViewer,
+                    articleViewerPreferenceRaw: $articleViewerPreferenceRaw,
                     lists: lists,
                     isCompactDevice: isCompactDevice
                 )
@@ -91,12 +91,11 @@ struct SettingsView: View {
                 Toggle("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
                 Toggle("Show Handle in Feed", isOn: $showHandleInFeed)
 
-                #if os(iOS)
-                Picker("Article Viewer", selection: $useSafariViewer) {
-                    Text("FediReader").tag(false)
-                    Text("Safari").tag(true)
+                Picker("Article Viewer", selection: $articleViewerPreferenceRaw) {
+                    ForEach(ArticleViewerPreference.platformOptions, id: \.rawValue) { option in
+                        Text(option.displayName).tag(option.rawValue)
+                    }
                 }
-                #endif
 
                 NavigationLink(value: NavigationDestination.tabOrder) {
                     Label("Tab Order", systemImage: "rectangle.3.group")
@@ -230,7 +229,7 @@ private struct SettingsTwoColumnView: View {
     @Binding var defaultListId: String
     @Binding var showQuoteBoost: Bool
     @Binding var showHandleInFeed: Bool
-    @Binding var useSafariViewer: Bool
+    @Binding var articleViewerPreferenceRaw: String
     let lists: [MastodonList]
     let isCompactDevice: Bool
 
@@ -374,16 +373,15 @@ private struct SettingsTwoColumnView: View {
                     settingsToggleRow("Auto-play GIFs", isOn: $autoPlayGifs)
                     settingsToggleRow("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
                     settingsToggleRow("Show Handle in Feed", isOn: $showHandleInFeed)
-                    #if os(iOS)
-                    Picker(selection: $useSafariViewer) {
-                        Text("FediReader").tag(false)
-                        Text("Safari").tag(true)
+                    Picker(selection: $articleViewerPreferenceRaw) {
+                        ForEach(ArticleViewerPreference.platformOptions, id: \.rawValue) { option in
+                            Text(option.displayName).tag(option.rawValue)
+                        }
                     } label: {
                         Text("Article Viewer").font(.roundedBody)
                     }
                     .pickerStyle(.menu)
                     .listRowInsets(Self.detailRowInsets)
-                    #endif
                     NavigationLink(value: NavigationDestination.tabOrder) {
                         Label("Tab Order", systemImage: "rectangle.3.group")
                             .font(.roundedBody)

@@ -21,6 +21,10 @@ private enum AppIntentsDependency {
 struct FediReaderApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        _ = ArticleViewerPreference.resolved()
+    }
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Account.self,

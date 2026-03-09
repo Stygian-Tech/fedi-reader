@@ -8,7 +8,7 @@ struct StatusRowView: View {
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
-    @AppStorage("useSafariViewer") private var useSafariViewer = false
+    @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
     
     @State private var blueskyDescription: String?
     @State private var hasLoadedBlueskyDescription = false
@@ -337,15 +337,19 @@ struct StatusRowView: View {
     private func linkCard(_ card: PreviewCard) -> some View {
         Button {
             if let url = card.linkURL {
-                #if os(iOS)
-                if useSafariViewer {
+                let pref = ArticleViewerPreference.from(raw: articleViewerPreferenceRaw)
+                switch pref {
+                case .externalBrowser:
+                    openURL(url)
+                case .safari:
+                    #if os(iOS)
                     appState.present(sheet: .safariView(url: url))
-                } else {
+                    #else
+                    openURL(url)
+                    #endif
+                case .inApp:
                     appState.navigate(to: .article(url: url, status: status))
                 }
-                #else
-                appState.navigate(to: .article(url: url, status: status))
-                #endif
             }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
