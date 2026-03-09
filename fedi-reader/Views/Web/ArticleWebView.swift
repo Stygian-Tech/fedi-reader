@@ -7,6 +7,11 @@
 
 import SwiftUI
 import WebKit
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct ArticleWebView: View {
     let url: URL
@@ -23,7 +28,7 @@ struct ArticleWebView: View {
     @State private var canGoBack = false
     @State private var canGoForward = false
     @State private var webView: WKWebView?
-    
+
     var body: some View {
         WebViewContainer(
             url: url,
@@ -45,7 +50,7 @@ struct ArticleWebView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarBackground(adaptiveBarColor, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             if let onClose {
@@ -155,6 +160,14 @@ struct ArticleWebView: View {
     }
 
     private static let actionToolbarMaxWidth: CGFloat = 480
+
+    private var adaptiveBarColor: Color {
+        #if os(iOS)
+        Color(uiColor: .systemBackground)
+        #elseif os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #endif
+    }
 
     @ViewBuilder
     private var actionToolbar: some View {
