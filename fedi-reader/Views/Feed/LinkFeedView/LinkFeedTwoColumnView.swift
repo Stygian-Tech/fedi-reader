@@ -21,6 +21,7 @@ struct LinkFeedTwoColumnView: View {
 
     @State private var selectedArticle: (url: URL, status: Status)?
     @AppStorage("linkFeedTwoColumnPostsWidth") private var persistedPostsWidth: Double = 350
+    @AppStorage("useSafariViewer") private var useSafariViewer = false
     @State private var postsWidth: Double = 350
 
     private static let minPostsWidth: CGFloat = 280
@@ -94,7 +95,15 @@ struct LinkFeedTwoColumnView: View {
 
             HStack(spacing: 0) {
                 LinkFeedContentView(onArticleSelect: { url, status in
+                    #if os(iOS)
+                    if useSafariViewer {
+                        appState.present(sheet: .safariView(url: url))
+                    } else {
+                        selectedArticle = (url, status)
+                    }
+                    #else
                     selectedArticle = (url, status)
+                    #endif
                 }, feedTabsOverride: feedTabsOverride, showsFeedPicker: showsFeedPicker, allowsSwipeNavigation: allowsSwipeNavigation, titleOverride: titleOverride, userFilterToolbarPlacement: userFilterToolbarPlacement)
                 .frame(width: layout.postsWidth)
                 .background(Color(.systemBackground))

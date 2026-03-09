@@ -55,6 +55,7 @@ final class AppState {
     var mentionsNavigationPath: [NavigationDestination] = []
     var moreTabPath: [NavigationDestination] = []
     var presentedSheet: SheetDestination?
+    var presentedSafariURL: SafariPresentation?
     var presentedAlert: AlertItem?
     
     init() {
@@ -563,10 +564,20 @@ final class AppState {
     }
     
     func present(sheet: SheetDestination) {
-        Self.logger.info("Presenting sheet: \(sheet.id, privacy: .public)")
-        presentedSheet = sheet
+        switch sheet {
+        case .safariView(let url):
+            Self.logger.info("Presenting Safari full screen: \(url.absoluteString, privacy: .public)")
+            presentedSafariURL = SafariPresentation(url: url)
+        default:
+            Self.logger.info("Presenting sheet: \(sheet.id, privacy: .public)")
+            presentedSheet = sheet
+        }
     }
-    
+
+    func dismissSafari() {
+        presentedSafariURL = nil
+    }
+
     func dismissSheet() {
         if let sheet = presentedSheet {
             Self.logger.info("Dismissing sheet: \(sheet.id, privacy: .public)")
@@ -678,6 +689,18 @@ enum NavigationDestination: Hashable {
     case accountFollowers(accountId: String, account: MastodonAccount)
 }
 
+// MARK: - Safari Presentation
+
+struct SafariPresentation: Identifiable {
+    let id: String
+    let url: URL
+
+    init(url: URL) {
+        self.url = url
+        self.id = url.absoluteString
+    }
+}
+
 // MARK: - Sheet Destinations
 
 enum SheetDestination: Identifiable {
@@ -687,6 +710,7 @@ enum SheetDestination: Identifiable {
     case readLaterLogin(ReadLaterServiceType)
     case shareSheet(url: URL)
     case accountSwitcher
+    case safariView(url: URL)
     
     var id: String {
         switch self {
@@ -696,6 +720,7 @@ enum SheetDestination: Identifiable {
         case .readLaterLogin(let type): return "readLater-\(type.rawValue)"
         case .shareSheet: return "share"
         case .accountSwitcher: return "accountSwitcher"
+        case .safariView(let url): return "safari-\(url.absoluteString)"
         }
     }
 }

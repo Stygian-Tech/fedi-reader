@@ -5,6 +5,7 @@ struct StatusDetailRowView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
+    @AppStorage("useSafariViewer") private var useSafariViewer = false
 
     @State private var authorAttribution: AuthorAttribution?
     @State private var resolvedAuthorAccount: MastodonAccount?
@@ -99,7 +100,15 @@ struct StatusDetailRowView: View {
             if let card = displayStatus.card, card.type == .link {
                 Button {
                     if let url = card.linkURL {
+                        #if os(iOS)
+                        if useSafariViewer {
+                            appState.present(sheet: .safariView(url: url))
+                        } else {
+                            appState.navigate(to: .article(url: url, status: status))
+                        }
+                        #else
                         appState.navigate(to: .article(url: url, status: status))
+                        #endif
                     }
                 } label: {
                     LinkCardContent(

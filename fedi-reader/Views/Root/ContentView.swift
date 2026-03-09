@@ -59,6 +59,14 @@ struct ContentView: View {
         .sheet(item: $state.presentedSheet) { sheet in
             sheetContent(for: sheet)
         }
+        #if os(iOS)
+        .fullScreenCover(item: $state.presentedSafariURL) { presentation in
+            SFSafariView(url: presentation.url) {
+                state.dismissSafari()
+            }
+            .ignoresSafeArea()
+        }
+        #endif
         .alert(item: $state.presentedAlert) { alert in
             Alert(
                 title: Text(alert.title),
@@ -101,6 +109,8 @@ struct ContentView: View {
         case .accountSwitcher:
             AccountSwitcherView()
                 .environment(appState)
+        case .safariView:
+            EmptyView()
         }
     }
 }
