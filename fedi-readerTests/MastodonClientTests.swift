@@ -58,6 +58,37 @@ struct MastodonClientTests {
         }
     }
 
+    @Test("getBookmarks uses the bookmarks endpoint with pagination and auth")
+    func getBookmarksUsesBookmarksEndpointWithPaginationAndAuth() async throws {
+        try await SharedTestResourceGate.withExclusiveAccess {
+            MockURLProtocol.reset()
+            defer { MockURLProtocol.reset() }
+
+            let statuses = [
+                MockStatusFactory.makeStatus(id: "bookmark-1", hasCard: true, cardURL: "https://example.com/1"),
+                MockStatusFactory.makeStatus(id: "bookmark-2", hasCard: true, cardURL: "https://example.com/2")
+            ]
+            let url = bookmarksURL(instance: "mastodon.social", maxId: "bookmark-99", limit: 25)
+            MockURLProtocol.setMockResponse(
+                for: url,
+                data: try makeEncoder().encode(statuses)
+            )
+
+            let client = makeClient()
+
+            let resolved = try await client.getBookmarks(
+                instance: "mastodon.social",
+                accessToken: "secret-token",
+                maxId: "bookmark-99",
+                limit: 25
+            )
+
+            #expect(resolved.map(\.id) == ["bookmark-1", "bookmark-2"])
+            #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer secret-token")
+            #expect(MockURLProtocol.lastRequest?.url?.path == "/api/v1/bookmarks")
+        }
+    }
+
     private func makeClient() -> MastodonClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
@@ -89,6 +120,18 @@ struct MastodonClientTests {
             URLQueryItem(name: "resolve", value: String(true)),
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "type", value: type)
+        ]
+        return components.url!.absoluteString
+    }
+
+    private func bookmarksURL(instance: String, maxId: String?, limit: Int) -> String {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = instance
+        components.path = "/api/v1/bookmarks"
+        components.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "max_id", value: maxId)
         ]
         return components.url!.absoluteString
     }

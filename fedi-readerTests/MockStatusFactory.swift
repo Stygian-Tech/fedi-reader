@@ -16,6 +16,7 @@ enum MockStatusFactory {
         isQuote: Bool = false,
         favourited: Bool = false,
         reblogged: Bool = false,
+        bookmarked: Bool = false,
         visibility: Visibility = .public,
         inReplyToId: String? = nil,
         repliesCount: Int = 2
@@ -68,7 +69,7 @@ enum MockStatusFactory {
             favourited: favourited,
             reblogged: reblogged,
             muted: false,
-            bookmarked: false,
+            bookmarked: bookmarked,
             pinned: false,
             inReplyToId: inReplyToId,
             inReplyToAccountId: nil

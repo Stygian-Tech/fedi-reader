@@ -352,9 +352,18 @@ struct LinkFeedContentView: View {
     }
 
     private func linkList(statuses: [LinkStatus]) -> some View {
-        let canLoadMore = currentTab.isHome
-            ? (timelineService?.canLoadMoreHomeTimeline() ?? false)
-            : (timelineService?.canLoadMoreListTimeline() ?? false)
+        let canLoadMore: Bool = {
+            if currentTab.id == AppState.bookmarksFeedID {
+                return timelineService?.canLoadMoreBookmarks() ?? false
+            }
+            if currentTab.id.hasPrefix("hashtag:") {
+                let tagName = String(currentTab.id.dropFirst("hashtag:".count))
+                return timelineService?.canLoadMoreHashtagTimeline(tag: tagName) ?? false
+            }
+            return currentTab.isHome
+                ? (timelineService?.canLoadMoreHomeTimeline() ?? false)
+                : (timelineService?.canLoadMoreListTimeline() ?? false)
+        }()
         return LinkFeedPostList(
             statuses: statuses,
             isLoading: FeedScopedLinkData.isLoading(in: linkFilterService, feedId: currentTab.id),
@@ -440,10 +449,19 @@ struct LinkFeedContentView: View {
     }
 
     private var emptyStateView: some View {
-        ContentUnavailableView {
+        let description: String = {
+            if currentTab.id == AppState.bookmarksFeedID {
+                return "Bookmarked posts with links will appear here."
+            }
+            if currentTab.id.hasPrefix("hashtag:") {
+                return "Posts with links from this hashtag will appear here."
+            }
+            return "Posts with links from your \(currentTab.isHome ? "home timeline" : "list") will appear here."
+        }()
+        return ContentUnavailableView {
             Label("No Links Yet", systemImage: "link.badge.plus")
         } description: {
-            Text("Posts with links from your \(currentTab.isHome ? "home timeline" : "list") will appear here.")
+            Text(description)
         } actions: {
             Button("Refresh") {
                 Task {
@@ -527,7 +545,14 @@ struct LinkFeedContentView: View {
         guard !isPaginating, !service.isLoadingMore else { return }
 
         let tab = currentTab
-        let canLoadMore = tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
+        let canLoadMore: Bool = {
+            if tab.id == AppState.bookmarksFeedID { return service.canLoadMoreBookmarks() }
+            if tab.id.hasPrefix("hashtag:") {
+                let tagName = String(tab.id.dropFirst("hashtag:".count))
+                return service.canLoadMoreHashtagTimeline(tag: tagName)
+            }
+            return tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
+        }()
         guard canLoadMore else { return }
 
         isPaginating = true
@@ -605,6 +630,8 @@ struct LinkFeedContentView: View {
     }
 
     private func syncAppStateSelectionToCurrentTab() {
+        guard currentTab.id != AppState.bookmarksFeedID,
+              !currentTab.id.hasPrefix("hashtag:") else { return }
         let listId = currentTab.isHome ? nil : currentTab.id
         if appState.selectedListId != listId {
             appState.selectedListId = listId
@@ -615,7 +642,14 @@ struct LinkFeedContentView: View {
         guard let service = timelineService else { return }
         let tab = currentTab
 
-        if tab.isHome {
+        if tab.id == AppState.bookmarksFeedID {
+            await service.refreshBookmarks()
+            _ = await linkFilterService.processStatuses(service.bookmarks, for: tab.id)
+        } else if tab.id.hasPrefix("hashtag:") {
+            let tagName = String(tab.id.dropFirst("hashtag:".count))
+            await service.refreshHashtagTimeline(tag: tagName)
+            _ = await linkFilterService.processStatuses(service.hashtagTimeline, for: tab.id)
+        } else if tab.isHome {
             await service.refreshHomeTimeline()
             _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
         } else {
@@ -642,14 +676,25 @@ struct LinkFeedContentView: View {
         defer { isPaginating = false }
 
         let loadMore: () async -> [Status] = {
+            if tab.id == AppState.bookmarksFeedID {
+                return await service.loadMoreBookmarks()
+            }
+            if tab.id.hasPrefix("hashtag:") {
+                let tagName = String(tab.id.dropFirst("hashtag:".count))
+                return await service.loadMoreHashtagTimeline(tag: tagName)
+            }
             if tab.isHome {
                 return await service.loadMoreHomeTimeline()
-            } else {
-                return await service.loadMoreListTimeline(listId: tab.id)
             }
+            return await service.loadMoreListTimeline(listId: tab.id)
         }
         let canLoadMore: () -> Bool = {
-            tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
+            if tab.id == AppState.bookmarksFeedID { return service.canLoadMoreBookmarks() }
+            if tab.id.hasPrefix("hashtag:") {
+                let tagName = String(tab.id.dropFirst("hashtag:".count))
+                return service.canLoadMoreHashtagTimeline(tag: tagName)
+            }
+            return tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
         }
 
         // Keep fetching until we add link posts or exhaust the API (link feed can get batches with 0 links)

@@ -49,23 +49,6 @@ struct ProfileView: View {
                 }
             }
 
-            Section("Lists") {
-                Button {
-                    appState.navigate(to: .listDisplay)
-                } label: {
-                    Label("List Display", systemImage: "list.bullet.rectangle")
-                }
-            }
-            
-            // Read Later
-            Section("Read Later") {
-                Button {
-                    appState.navigate(to: .readLaterSettings)
-                } label: {
-                    Label("Read Later Services", systemImage: "bookmark")
-                }
-            }
-            
             // App settings
             Section("App") {
                 Button {

@@ -131,7 +131,7 @@ Each read-later service requires authentication:
 | Readwise | Access token |
 | Raindrop | OAuth or API token |
 
-Configure services in **Profile → Read Later Services**.
+Configure services in **Settings → Read Later Services**.
 
 ### URL Scheme
 

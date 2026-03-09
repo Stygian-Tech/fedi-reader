@@ -6,10 +6,9 @@ struct StatusDetailView: View {
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
 
     @State private var context: StatusContext?
+    @State private var replyTrees: [ThreadNode] = []
     @State private var isLoading = true
     @State private var isLoadingRemoteReplies = false
-    
-    private let threadingService = ThreadingService()
 
     private var threadStatus: Status {
         status.displayStatus
@@ -45,8 +44,6 @@ struct StatusDetailView: View {
                 }
 
                 if let context = context {
-                    // Build thread tree from descendants only (exclude parent/current post)
-                    let replyTrees = threadingService.buildThreadTree(from: context.descendants)
                     let shouldFetchMoreReplies = shouldFetchRemoteReplies(context: context)
                     
                     if !context.descendants.isEmpty {
@@ -155,6 +152,9 @@ struct StatusDetailView: View {
         .task {
             await loadContext()
         }
+        .onChange(of: context?.descendants) { _, descendants in
+            buildReplyTrees(descendants: descendants ?? [])
+        }
         .refreshable {
             await refreshReplies()
         }
@@ -162,11 +162,10 @@ struct StatusDetailView: View {
             timelineWrapper.service?.cancelAsyncRefreshPolling(forStatusId: threadStatus.id)
         }
         .onReceive(NotificationCenter.default.publisher(for: .statusContextDidUpdate)) { notification in
-            // Update context when remote replies are fetched
             if let payload = notification.object as? StatusContextUpdatePayload,
                payload.statusId == threadStatus.id {
-                // Replace context with updated one (it already contains all replies)
                 context = payload.context
+                buildReplyTrees(descendants: payload.context.descendants)
                 isLoadingRemoteReplies = false
             }
         }
@@ -181,11 +180,26 @@ struct StatusDetailView: View {
         do {
             let loadedContext = try await service.getStatusContext(for: threadStatus)
             context = loadedContext
+            buildReplyTrees(descendants: loadedContext.descendants)
             isLoading = false
             isLoadingRemoteReplies = false
         } catch {
             isLoading = false
             isLoadingRemoteReplies = false
+        }
+    }
+
+    /// Builds thread tree off main thread to avoid UI hangs with large reply counts
+    private func buildReplyTrees(descendants: [Status]) {
+        if descendants.isEmpty {
+            replyTrees = []
+            return
+        }
+        Task.detached(priority: .userInitiated) { [descendants] in
+            let trees = ThreadBuilder.buildThreadTree(from: descendants)
+            await MainActor.run {
+                replyTrees = trees
+            }
         }
     }
     

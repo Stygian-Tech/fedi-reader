@@ -43,7 +43,6 @@ struct FediReaderApp: App {
     
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("defaultListId") private var defaultListId = ""
-    @AppStorage(AppState.listsInSeparateTabStorageKey) private var listsInSeparateTab = false
     @State private var appState = AppState()
     @State private var timelineWrapper = TimelineServiceWrapper()
     @State private var linkFilterService = LinkFilterService()
@@ -219,8 +218,7 @@ struct FediReaderApp: App {
             UserDefaults.standard.string(forKey: AppState.defaultListIdStorageKey) ?? defaultListId
         return appState.applyDefaultLinkFeed(
             defaultListId: persistedDefaultListID,
-            availableListIDs: resolution.visibleListIDs,
-            listsInSeparateTab: listsInSeparateTab
+            availableListIDs: resolution.visibleListIDs
         )
     }
 
