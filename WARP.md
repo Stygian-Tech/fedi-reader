@@ -102,5 +102,5 @@ Data flow (typical)
 ## Configuration & Behavior (from README)
 
 - URL scheme: The app registers the custom scheme `fedi-reader://` for OAuth callbacks.
-- Read-later services: Pocket, Instapaper, Omnivore, Readwise Reader, Raindrop are supported via in-app authentication (Profile → Read Later Services).
+- Read-later services: Pocket, Instapaper, Omnivore, Readwise Reader, Raindrop are supported via in-app authentication (Settings → Read Later Services).
 - Privacy: Credentials are stored in Keychain; no analytics or tracking; HTTPS-only API access.

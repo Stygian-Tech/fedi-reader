@@ -25,6 +25,7 @@ struct MentionsView: View {
             }
         }
         .navigationTitle("Messages")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

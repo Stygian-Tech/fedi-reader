@@ -85,6 +85,7 @@ struct MentionsTwoColumnView: View {
             }
         }
         .navigationTitle("Messages")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

@@ -3,18 +3,17 @@ import Foundation
 enum ThreadBuilder {
     /// Builds a thread tree from a flat array of statuses
     /// Returns root-level threads (statuses that aren't replies, or whose parent isn't in the set)
+    /// Uses O(n) pre-grouping to avoid O(n²) filtering on large reply threads
     static func buildThreadTree(from statuses: [Status]) -> [ThreadNode] {
         guard !statuses.isEmpty else { return [] }
         
-        // Create a lookup map for quick parent finding
         let statusMap = Dictionary(uniqueKeysWithValues: statuses.map { ($0.id, $0) })
+        let repliesByParentId = Dictionary(grouping: statuses) { $0.inReplyToId ?? "" }
         
-        // Find root statuses (those with no parent or parent not in the set)
         let rootStatuses = findRootStatuses(statuses, statusMap: statusMap)
         
-        // Build tree for each root
         return rootStatuses.map { root in
-            buildSubtree(root: root, allStatuses: statuses, statusMap: statusMap)
+            buildSubtree(root: root, repliesByParentId: repliesByParentId)
         }
     }
     
@@ -22,27 +21,16 @@ enum ThreadBuilder {
     static func findRootStatuses(_ statuses: [Status], statusMap: [String: Status]) -> [Status] {
         statuses.filter { status in
             guard let replyToId = status.inReplyToId else {
-                // No parent = root
                 return true
             }
-            // If parent is not in our set, this is effectively a root
             return statusMap[replyToId] == nil
         }
     }
     
-    /// Recursively builds a subtree starting from a root status
-    static func buildSubtree(root: Status, allStatuses: [Status], statusMap: [String: Status]) -> ThreadNode {
-        // Find all direct replies to this status
-        let directReplies = allStatuses.filter { $0.inReplyToId == root.id }
-        
-        // Sort replies chronologically
-        let sortedReplies = directReplies.sorted { $0.createdAt < $1.createdAt }
-        
-        // Recursively build subtrees for each reply
-        let childNodes = sortedReplies.map { reply in
-            buildSubtree(root: reply, allStatuses: allStatuses, statusMap: statusMap)
-        }
-        
+    /// Recursively builds a subtree; uses pre-grouped replies for O(1) child lookup
+    private static func buildSubtree(root: Status, repliesByParentId: [String: [Status]]) -> ThreadNode {
+        let directReplies = (repliesByParentId[root.id] ?? []).sorted { $0.createdAt < $1.createdAt }
+        let childNodes = directReplies.map { buildSubtree(root: $0, repliesByParentId: repliesByParentId) }
         return ThreadNode(status: root, children: childNodes)
     }
     

@@ -12,8 +12,6 @@ struct MainTabView: View {
     @State private var tabTracker = TabSelectionTracker()
     @AppStorage("hapticFeedback") private var hapticFeedback = true
     @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
-    @AppStorage(AppState.listsInSeparateTabStorageKey) private var listsInSeparateTab = false
-    @AppStorage("themeColor") private var themeColorName = "blue"
 
     private var unreadMentionsCount: Int {
         timelineWrapper.service?.unreadConversationsCount ?? 0
@@ -23,18 +21,36 @@ struct MainTabView: View {
         layoutMode.useSidebarLayout
     }
 
+    private var visibleTabs: [AppTab] {
+        appState.resolvedVisibleTabs()
+    }
+
+    private var listsInSeparateTab: Bool {
+        appState.listsInSeparateTab
+    }
 
     var body: some View {
         @Bindable var state = appState
 
         mainTabView()
+            .animation(.easeInOut(duration: 0.25), value: hideTabBarLabels)
             .onChange(of: state.selectedTab) { oldValue, newValue in
             HapticFeedback.play(.selection, enabled: hapticFeedback && !useSidebarLayout)
+            let primaryTabs = Array(visibleTabs.prefix(4))
+            if primaryTabs.contains(newValue) {
+                state.moreTabPath.removeAll()
+            }
             if oldValue == .profile {
                 state.profileNavigationPath.removeAll()
             }
             if oldValue == .lists {
                 state.listsNavigationPath.removeAll()
+            }
+            if oldValue == .hashtags {
+                state.hashtagsNavigationPath.removeAll()
+            }
+            if oldValue == .bookmarks {
+                state.bookmarksNavigationPath.removeAll()
             }
             if oldValue == .mentions {
                 state.mentionsNavigationPath.removeAll()
@@ -49,9 +65,45 @@ struct MainTabView: View {
                 tabTracker.reset()
             }
         }
-        .onChange(of: listsInSeparateTab) { _, isEnabled in
-            if !isEnabled, state.selectedTab == .lists {
-                state.selectedTab = .links
+        .onChange(of: visibleTabs) { oldVisibleTabs, newVisibleTabs in
+            let wasCompact = oldVisibleTabs.count > 5
+            let isCompact = newVisibleTabs.count > 5
+            let moreTabs = Array(newVisibleTabs.dropFirst(4))
+
+            if wasCompact, !isCompact, case .moreTab(let tab)? = state.moreTabPath.first {
+                let destinations = Array(state.moreTabPath.dropFirst())
+                switch tab {
+                case .mentions: state.mentionsNavigationPath = destinations
+                case .lists: state.listsNavigationPath = destinations
+                case .hashtags: state.hashtagsNavigationPath = destinations
+                case .bookmarks: state.bookmarksNavigationPath = destinations
+                case .explore: state.exploreNavigationPath = destinations
+                case .profile: state.profileNavigationPath = destinations
+                default: break
+                }
+                state.moreTabPath.removeAll()
+            } else if !wasCompact, isCompact, moreTabs.contains(state.selectedTab) {
+                let destinations: [NavigationDestination]
+                switch state.selectedTab {
+                case .mentions: destinations = state.mentionsNavigationPath
+                case .lists: destinations = state.listsNavigationPath
+                case .hashtags: destinations = state.hashtagsNavigationPath
+                case .bookmarks: destinations = state.bookmarksNavigationPath
+                case .explore: destinations = state.exploreNavigationPath
+                case .profile: destinations = state.profileNavigationPath
+                default: destinations = []
+                }
+                if !destinations.isEmpty {
+                    state.moreTabPath = [.moreTab(state.selectedTab)] + destinations
+                }
+            }
+
+            let resolvedSelection = MainTabViewSelectionFeatures.resolvedSelection(
+                selectedTab: state.selectedTab,
+                visibleTabs: newVisibleTabs
+            )
+            if state.selectedTab != resolvedSelection {
+                state.selectedTab = resolvedSelection
             }
         }
         .onChange(of: useSidebarLayout) { _, _ in
@@ -65,72 +117,255 @@ struct MainTabView: View {
     private func mainTabView() -> some View {
         @Bindable var state = appState
 
+        if useSidebarLayout || visibleTabs.count <= 5 {
+            standardTabView()
+        } else {
+            compactTabViewWithMoreList()
+        }
+    }
+
+    @ViewBuilder
+    private func standardTabView() -> some View {
+        @Bindable var state = appState
+
         TabView(
             selection: Binding(
-                get: { state.selectedTab },
-                set: { handleTabSelection($0) }
+                get: {
+                    MainTabViewSelectionFeatures.resolvedSelection(
+                        selectedTab: state.selectedTab,
+                        visibleTabs: visibleTabs
+                    )
+                },
+                set: { newValue in
+                    handleTabSelection(
+                        MainTabViewSelectionFeatures.resolvedSelection(
+                            selectedTab: newValue,
+                            visibleTabs: visibleTabs
+                        )
+                    )
+                }
             )
         ) {
-            Tab(useSidebarLayout ? "Home" : (hideTabBarLabels ? "" : "Home"), systemImage: "house", value: .links) {
-                linksTabContent()
-            }
-
-            if listsInSeparateTab {
-                Tab(useSidebarLayout ? "Lists" : (hideTabBarLabels ? "" : "Lists"), systemImage: "list.bullet", value: .lists) {
-                    NavigationStack(path: $state.listsNavigationPath) {
-                        ListsTabRootView()
-                        .navigationDestination(for: NavigationDestination.self) { destination in
-                            destinationView(for: destination)
+            ForEach(visibleTabs) { tab in
+                if tab == .mentions && unreadMentionsCount > 0 {
+                    tabContent(for: tab)
+                        .tag(tab)
+                        .tabItem {
+                            tabItemLabel(for: tab)
                         }
-                    }
-                }
-            }
-
-            Tab(useSidebarLayout ? "Explore" : (hideTabBarLabels ? "" : "Explore"), systemImage: "globe", value: .explore) {
-                NavigationStack(path: $state.exploreNavigationPath) {
-                    ExploreFeedView()
-                        .navigationDestination(for: NavigationDestination.self) { destination in
-                            destinationView(for: destination)
-                        }
-                }
-            }
-
-            Tab(useSidebarLayout ? "Messages" : (hideTabBarLabels ? "" : "Messages"), systemImage: "at", value: AppTab.mentions) {
-                mentionsTabContent()
-            }
-
-            Tab(useSidebarLayout ? "Profile" : (hideTabBarLabels ? "" : "Profile"), systemImage: "person", value: .profile) {
-                NavigationStack(path: $state.profileNavigationPath) {
-                    ProfileView()
-                        .navigationDestination(for: NavigationDestination.self) { destination in
-                            destinationView(for: destination)
+                        .badge(unreadMentionsCount)
+                } else {
+                    tabContent(for: tab)
+                        .tag(tab)
+                        .tabItem {
+                            tabItemLabel(for: tab)
                         }
                 }
             }
         }
         .modifier(ConditionalTabViewStyle(useSidebarLayout: useSidebarLayout))
-        .overlay {
-            unreadDotOverlay
+        .id(hideTabBarLabels)
+    }
+
+    private enum CompactTabSelection: Hashable {
+        case primary(AppTab)
+        case more
+    }
+
+    @ViewBuilder
+    private func compactTabViewWithMoreList() -> some View {
+        @Bindable var state = appState
+        let primaryTabs = Array(visibleTabs.prefix(4))
+        let moreTabs = Array(visibleTabs.dropFirst(4))
+
+        TabView(
+            selection: Binding(
+                get: {
+                    let resolved = MainTabViewSelectionFeatures.resolvedSelection(
+                        selectedTab: state.selectedTab,
+                        visibleTabs: visibleTabs
+                    )
+                    if primaryTabs.contains(resolved) {
+                        return .primary(resolved)
+                    }
+                    return .more
+                },
+                set: { (newValue: CompactTabSelection) in
+                    switch newValue {
+                    case .primary(let tab):
+                        handleTabSelection(tab)
+                    case .more:
+                        if let first = moreTabs.first {
+                            state.selectedTab = first
+                        }
+                    }
+                }
+            )
+        ) {
+            ForEach(primaryTabs) { tab in
+                if tab == .mentions && unreadMentionsCount > 0 {
+                    tabContent(for: tab)
+                        .tag(CompactTabSelection.primary(tab))
+                        .tabItem {
+                            tabItemLabel(for: tab)
+                        }
+                        .badge(unreadMentionsCount)
+                } else {
+                    tabContent(for: tab)
+                        .tag(CompactTabSelection.primary(tab))
+                        .tabItem {
+                            tabItemLabel(for: tab)
+                        }
+                }
+            }
+
+            moreTabContent(moreTabs: moreTabs)
+                .tag(CompactTabSelection.more)
+                .tabItem {
+                    Group {
+                        if hideTabBarLabels {
+                            Label("More", systemImage: "ellipsis.circle")
+                                .labelStyle(.iconOnly)
+                        } else {
+                            Label("More", systemImage: "ellipsis.circle")
+                        }
+                    }
+                    .accessibilityLabel("More")
+                }
+        }
+        .tabViewStyle(.automatic)
+        .id(hideTabBarLabels)
+    }
+
+    @ViewBuilder
+    private func moreTabContent(moreTabs: [AppTab]) -> some View {
+        @Bindable var state = appState
+
+        NavigationStack(path: $state.moreTabPath) {
+            moreTabList(moreTabs: moreTabs)
+                .navigationDestination(for: NavigationDestination.self) { destination in
+                    destinationView(for: destination)
+                }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func moreTabList(moreTabs: [AppTab]) -> some View {
+        List {
+            ForEach(moreTabs) { tab in
+                NavigationLink(value: NavigationDestination.moreTab(tab)) {
+                    Label {
+                        Text(tab.title)
+                    } icon: {
+                        Image(systemName: tab.systemImage)
+                            .foregroundStyle(.tint)
+                    }
+                }
+            }
+        }
+        .navigationTitle("More")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func moreTabRootView(for tab: AppTab) -> some View {
+        switch tab {
+        case .lists:
+            ListsTabRootView()
+        case .hashtags:
+            HashtagsTabRootView()
+        case .bookmarks:
+            LinkFeedView(
+                feedTabsOverride: [FeedTabItem(id: AppState.bookmarksFeedID, title: "Bookmarks")],
+                showsFeedPicker: false,
+                allowsSwipeNavigation: false,
+                titleOverride: "Bookmarks",
+                userFilterToolbarPlacement: .trailing
+            )
+        case .explore:
+            ExploreFeedView()
+        case .mentions:
+            MentionsView()
+        case .profile:
+            ProfileView()
+        default:
+            EmptyView()
         }
     }
 
     @ViewBuilder
-    private var unreadDotOverlay: some View {
-        if !useSidebarLayout, unreadMentionsCount > 0 {
-            GeometryReader { geometry in
-                Circle()
-                    .fill(ThemeColor.resolved(from: themeColorName).color)
-                    .frame(width: 8, height: 8)
-                    .overlay(
-                        Circle()
-                            .stroke(Color(.systemBackground), lineWidth: 2)
-                    )
-                    .position(
-                        x: geometry.size.width * (2.5 / 4),
-                        y: geometry.size.height - 35
-                    )
+    private func tabItemLabel(for tab: AppTab) -> some View {
+        let title = MainTabViewTabItemFeatures.title(
+            for: tab,
+            useSidebarLayout: useSidebarLayout,
+            hideTabBarLabels: hideTabBarLabels
+        )
+        let tabsBehindMore = Set(TabOrderSettingsFeatures.tabsBehindMore(in: visibleTabs))
+        let useIconOnly = MainTabViewTabItemFeatures.usesIconOnlyLabelStyle(
+            useSidebarLayout: useSidebarLayout,
+            hideTabBarLabels: hideTabBarLabels
+        ) && !tabsBehindMore.contains(tab)
+
+        if useIconOnly {
+            Label(title, systemImage: tab.systemImage)
+                .labelStyle(.iconOnly)
+                .accessibilityLabel(title)
+        } else {
+            Label(title, systemImage: tab.systemImage)
+        }
+    }
+
+    @ViewBuilder
+    private func tabContent(for tab: AppTab) -> some View {
+        @Bindable var state = appState
+
+        switch tab {
+        case .links:
+            linksTabContent()
+        case .lists:
+            NavigationStack(path: $state.listsNavigationPath) {
+                ListsTabRootView()
+                    .navigationDestination(for: NavigationDestination.self) { destination in
+                        destinationView(for: destination)
+                    }
             }
-            .allowsHitTesting(false)
+        case .hashtags:
+            NavigationStack(path: $state.hashtagsNavigationPath) {
+                HashtagsTabRootView()
+                    .navigationDestination(for: NavigationDestination.self) { destination in
+                        destinationView(for: destination)
+                    }
+            }
+        case .bookmarks:
+            NavigationStack(path: $state.bookmarksNavigationPath) {
+                LinkFeedView(
+                    feedTabsOverride: [FeedTabItem(id: AppState.bookmarksFeedID, title: "Bookmarks")],
+                    showsFeedPicker: false,
+                    allowsSwipeNavigation: false,
+                    titleOverride: "Bookmarks",
+                    userFilterToolbarPlacement: .trailing
+                )
+                .navigationDestination(for: NavigationDestination.self) { destination in
+                    destinationView(for: destination)
+                }
+            }
+        case .explore:
+            NavigationStack(path: $state.exploreNavigationPath) {
+                ExploreFeedView()
+                    .navigationDestination(for: NavigationDestination.self) { destination in
+                        destinationView(for: destination)
+                    }
+            }
+        case .mentions:
+            mentionsTabContent()
+        case .profile:
+            NavigationStack(path: $state.profileNavigationPath) {
+                ProfileView()
+                    .navigationDestination(for: NavigationDestination.self) { destination in
+                        destinationView(for: destination)
+                    }
+            }
         }
     }
 
@@ -245,6 +480,21 @@ struct MainTabView: View {
     @ViewBuilder
     private func destinationView(for destination: NavigationDestination) -> some View {
         switch destination {
+        case .moreTab(let tab):
+            moreTabRootView(for: tab)
+                .navigationDestination(for: NavigationDestination.self) { dest in
+                    destinationViewContent(for: dest)
+                }
+        default:
+            destinationViewContent(for: destination)
+        }
+    }
+
+    @ViewBuilder
+    private func destinationViewContent(for destination: NavigationDestination) -> some View {
+        switch destination {
+        case .moreTab:
+            EmptyView()
         case .status(let status):
             StatusDetailView(status: status)
         case .conversation(let groupedConversation):
@@ -253,6 +503,8 @@ struct MainTabView: View {
             ProfileDetailView(account: account)
         case .listFeed(let list):
             ListFeedDetailView(list: list)
+        case .hashtagFeed(let tag):
+            HashtagFeedDetailView(tag: tag)
         case .article(let url, let status):
             ArticleWebView(url: url, status: status)
         case .thread(let statusId):
@@ -261,6 +513,8 @@ struct MainTabView: View {
             HashtagPlaceholderView(tag: tag)
         case .settings:
             SettingsView()
+        case .tabOrder:
+            TabOrderSettingsView()
         case .listDisplay:
             ListDisplaySettingsView()
         case .accountSettings:
@@ -285,6 +539,30 @@ struct MainTabView: View {
         if !service.lists.isEmpty {
             timelineWrapper.updateCachedLists(service.lists, for: appState.currentAccount?.id)
         }
+    }
+}
+
+enum MainTabViewTabItemFeatures {
+    static func title(for tab: AppTab, useSidebarLayout: Bool, hideTabBarLabels: Bool) -> String {
+        tab.title
+    }
+
+    static func usesIconOnlyLabelStyle(useSidebarLayout: Bool, hideTabBarLabels: Bool) -> Bool {
+        !useSidebarLayout && hideTabBarLabels
+    }
+}
+
+enum MainTabViewSelectionFeatures {
+    static func resolvedSelection(selectedTab: AppTab, visibleTabs: [AppTab]) -> AppTab {
+        if visibleTabs.contains(selectedTab) {
+            return selectedTab
+        }
+
+        if visibleTabs.contains(.links) {
+            return .links
+        }
+
+        return visibleTabs.first ?? .links
     }
 }
 
@@ -314,3 +592,4 @@ private struct ConditionalTabViewStyle: ViewModifier {
         }
     }
 }
+

@@ -1,10 +1,17 @@
 import SwiftUI
 
+enum ListDisplaySettingsFeatures {
+    static func editMode(isCustomSortOrder: Bool) -> EditMode {
+        isCustomSortOrder ? .active : .inactive
+    }
+}
+
 struct ListDisplaySettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
 
     @State private var isLoading = false
+    @State private var editMode: EditMode = .inactive
 
     private var timelineService: TimelineService? {
         timelineWrapper.service
@@ -48,14 +55,18 @@ struct ListDisplaySettingsView: View {
             )
         }
         .navigationTitle("List Display")
-        .environment(\.editMode, .constant(isCustomSortOrder ? .active : .inactive))
+        .environment(\.editMode, $editMode)
         .task {
             await loadLists()
         }
         .onAppear {
+            editMode = ListDisplaySettingsFeatures.editMode(isCustomSortOrder: isCustomSortOrder)
             if !rawLists.isEmpty {
                 appState.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
             }
+        }
+        .onChange(of: isCustomSortOrder) { _, newValue in
+            editMode = ListDisplaySettingsFeatures.editMode(isCustomSortOrder: newValue)
         }
         .onChange(of: liveLists) { _, newLists in
             appState.synchronizeCurrentAccountListDisplayPreferences(with: newLists)

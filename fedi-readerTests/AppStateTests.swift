@@ -19,6 +19,29 @@ private func makeList(id: String, title: String) -> MastodonList {
     MastodonList(id: id, title: title, repliesPolicy: nil, exclusive: nil)
 }
 
+private func withPreservedTabConfiguration(_ operation: () async -> Void) async {
+    let defaults = UserDefaults.standard
+    let tabConfigurationKey = "tabConfiguration"
+    let legacyListsKey = AppState.listsInSeparateTabStorageKey
+    let previousConfiguration = defaults.data(forKey: tabConfigurationKey)
+    let previousLegacyListsValue = defaults.object(forKey: legacyListsKey)
+    defer {
+        if let previousConfiguration {
+            defaults.set(previousConfiguration, forKey: tabConfigurationKey)
+        } else {
+            defaults.removeObject(forKey: tabConfigurationKey)
+        }
+
+        if let previousLegacyListsValue {
+            defaults.set(previousLegacyListsValue, forKey: legacyListsKey)
+        } else {
+            defaults.removeObject(forKey: legacyListsKey)
+        }
+    }
+
+    await operation()
+}
+
 @Suite("AppState Tests")
 @MainActor
 struct AppStateTests {
@@ -101,6 +124,22 @@ struct AppStateTests {
         #expect(state.profileNavigationPath.isEmpty == true)
     }
 
+    @Test("navigate routes bookmarks destinations to the bookmarks navigation path")
+    func navigateRoutesBookmarksDestinationsToBookmarksPath() async {
+        let state = AppState()
+        let destination = NavigationDestination.article(
+            url: URL(string: "https://example.com/bookmarks")!,
+            status: nil
+        )
+
+        state.selectedTab = .bookmarks
+        state.navigate(to: destination)
+
+        #expect(state.bookmarksNavigationPath == [destination])
+        #expect(state.linksNavigationPath.isEmpty == true)
+        #expect(state.exploreNavigationPath.isEmpty == true)
+    }
+
     @Test("navigateBack removes the last explore destination")
     func navigateBackRemovesLastExploreDestination() async {
         let state = AppState()
@@ -125,6 +164,112 @@ struct AppStateTests {
         state.navigateToRoot()
 
         #expect(state.exploreNavigationPath.isEmpty == true)
+    }
+
+    @Test("resolved visible tabs default to home explore messages and profile")
+    func resolvedVisibleTabsUseDefaultConfiguration() async {
+        await withPreservedTabConfiguration {
+            let state = AppState()
+
+            #expect(state.resolvedVisibleTabs() == [.links, .explore, .mentions, .profile])
+        }
+    }
+
+    @Test("setTabVisibility does not hide home")
+    func setTabVisibilityDoesNotHideHome() async {
+        await withPreservedTabConfiguration {
+            let state = AppState()
+
+            state.setTabVisibility(.links, isVisible: false)
+
+            #expect(state.resolvedVisibleTabs().contains(.links))
+            #expect(state.resolvedHiddenTabs().contains(.links) == false)
+        }
+    }
+
+    @Test("setTabVisibility does not hide profile")
+    func setTabVisibilityDoesNotHideProfile() async {
+        await withPreservedTabConfiguration {
+            let state = AppState()
+
+            state.setTabVisibility(.profile, isVisible: false)
+
+            #expect(state.resolvedVisibleTabs().contains(.profile))
+            #expect(state.resolvedHiddenTabs().contains(.profile) == false)
+        }
+    }
+
+    @Test("moveTabs allows home to move away from the first position")
+    func moveTabsAllowsHomeToMoveAwayFromFirstPosition() async {
+        await withPreservedTabConfiguration {
+            let state = AppState()
+
+            state.moveTabs(fromOffsets: IndexSet(integer: 0), toOffset: 2)
+
+            #expect(state.resolvedVisibleTabs() == [.explore, .links, .mentions, .profile])
+        }
+    }
+
+    @Test("moveTabs keeps home and profile ahead of More when all tabs are visible")
+    func moveTabsKeepsHomeAndProfileAheadOfMoreWhenAllTabsAreVisible() async {
+        await withPreservedTabConfiguration {
+            let state = AppState()
+            state.setTabVisibility(.lists, isVisible: true)
+            state.setTabVisibility(.bookmarks, isVisible: true)
+
+            state.moveTabs(fromOffsets: IndexSet(integer: 0), toOffset: 6)
+            state.moveTabs(fromOffsets: IndexSet(integer: 2), toOffset: 6)
+
+            let primaryTabs = Array(state.resolvedVisibleTabs().prefix(4))
+            #expect(primaryTabs.contains(.links))
+            #expect(primaryTabs.contains(.profile))
+        }
+    }
+
+    @Test("moveTabs snaps profile back ahead of More after dragging it to the end")
+    func moveTabsSnapsProfileBackAheadOfMoreAfterDraggingItToTheEnd() async {
+        await withPreservedTabConfiguration {
+            let state = AppState()
+            state.setTabVisibility(.lists, isVisible: true)
+            state.setTabVisibility(.bookmarks, isVisible: true)
+
+            state.moveTabs(fromOffsets: IndexSet(integer: 3), toOffset: 6)
+
+            let primaryTabs = Array(state.resolvedVisibleTabs().prefix(4))
+            #expect(primaryTabs.contains(.profile))
+            #expect(TabOrderSettingsFeatures.tabsBehindMore(in: state.resolvedVisibleTabs()).contains(.profile) == false)
+        }
+    }
+
+    @Test("legacy separate lists setting migrates lists into visible tabs")
+    func legacySeparateListsSettingMigratesIntoVisibleTabs() async {
+        await withPreservedTabConfiguration {
+            let defaults = UserDefaults.standard
+            defaults.removeObject(forKey: "tabConfiguration")
+            defaults.set(true, forKey: AppState.listsInSeparateTabStorageKey)
+
+            let state = AppState()
+
+            #expect(state.resolvedVisibleTabs().contains(.lists))
+            #expect(state.resolvedHiddenTabs().contains(.lists) == false)
+        }
+    }
+
+    @Test("apply default link feed uses the current tab configuration for list tab visibility")
+    func applyDefaultLinkFeedUsesCurrentTabConfigurationForListTabVisibility() async {
+        await withPreservedTabConfiguration {
+            let state = AppState()
+            state.setTabVisibility(.lists, isVisible: true)
+
+            let feedID = state.applyDefaultLinkFeed(
+                defaultListId: "list-2",
+                availableListIDs: ["list-1", "list-2"]
+            )
+
+            #expect(feedID == "list-2")
+            #expect(state.selectedTab == .lists)
+            #expect(state.pendingListNavigationListID == "list-2")
+        }
     }
 
     @Test("resolved default link feed falls back to home when the configured list is unavailable")

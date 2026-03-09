@@ -14,11 +14,16 @@ import os
 final class AppState {
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "AppState")
     static let homeFeedID = "home"
+    static let bookmarksFeedID = "bookmarks"
+    static func hashtagFeedID(_ tagName: String) -> String { "hashtag:\(tagName)" }
     static let defaultListIdStorageKey = "defaultListId"
     static let listsInSeparateTabStorageKey = "listsInSeparateTab"
+    private static let tabConfigurationStorageKey = "tabConfiguration"
     private static let listDisplayPreferencesStorageKeyPrefix = "listDisplayPreferences."
     private static let listDisplayPreferencesEncoder = JSONEncoder()
     private static let listDisplayPreferencesDecoder = JSONDecoder()
+    private static let tabConfigurationEncoder = JSONEncoder()
+    private static let tabConfigurationDecoder = JSONDecoder()
     
     // Services
     let client: MastodonClient
@@ -29,6 +34,7 @@ final class AppState {
     var isLoading = false
     var error: Error?
     var selectedTab: AppTab = .links
+    private(set) var tabConfiguration: TabConfiguration
     var linksScrollToTopRequestID: UInt = 0
     
     // List and filter state
@@ -42,9 +48,12 @@ final class AppState {
     // Navigation state (per-tab so switching tabs shows correct root)
     var linksNavigationPath: [NavigationDestination] = []
     var listsNavigationPath: [NavigationDestination] = []
+    var hashtagsNavigationPath: [NavigationDestination] = []
+    var bookmarksNavigationPath: [NavigationDestination] = []
     var exploreNavigationPath: [NavigationDestination] = []
     var profileNavigationPath: [NavigationDestination] = []
     var mentionsNavigationPath: [NavigationDestination] = []
+    var moreTabPath: [NavigationDestination] = []
     var presentedSheet: SheetDestination?
     var presentedAlert: AlertItem?
     
@@ -53,6 +62,7 @@ final class AppState {
         self.client = MastodonClient()
         self.authService = AuthService(client: client)
         self.emojiService = EmojiService(client: client)
+        self.tabConfiguration = Self.loadTabConfiguration()
     }
     
     // MARK: - Account Helpers
@@ -186,6 +196,64 @@ final class AppState {
         return tabs
     }
 
+    func resolvedVisibleTabs() -> [AppTab] {
+        tabConfiguration.normalized().visibleTabs
+    }
+
+    func resolvedHiddenTabs() -> [AppTab] {
+        tabConfiguration.normalized().hiddenTabs
+    }
+
+    var listsInSeparateTab: Bool {
+        resolvedVisibleTabs().contains(.lists)
+    }
+
+    func setTabVisibility(
+        _ tab: AppTab,
+        isVisible: Bool,
+        defaults: UserDefaults = .standard
+    ) {
+        var normalizedConfiguration = tabConfiguration.normalized()
+
+        if isVisible {
+            normalizedConfiguration.hiddenTabs.removeAll { $0 == tab }
+            if !normalizedConfiguration.visibleTabs.contains(tab) {
+                normalizedConfiguration.visibleTabs.append(tab)
+            }
+        } else {
+            guard tab != .links, tab != .profile else {
+                persistTabConfiguration(normalizedConfiguration, defaults: defaults)
+                return
+            }
+
+            normalizedConfiguration.visibleTabs.removeAll { $0 == tab }
+            if !normalizedConfiguration.hiddenTabs.contains(tab) {
+                normalizedConfiguration.hiddenTabs.append(tab)
+            }
+
+            if selectedTab == tab {
+                selectedTab = .links
+            }
+        }
+
+        persistTabConfiguration(normalizedConfiguration, defaults: defaults)
+    }
+
+    func moveTabs(
+        fromOffsets: IndexSet,
+        toOffset: Int,
+        defaults: UserDefaults = .standard
+    ) {
+        var reorderedVisibleTabs = resolvedVisibleTabs()
+        moveAppTabs(&reorderedVisibleTabs, fromOffsets: fromOffsets, toOffset: toOffset)
+
+        let updatedConfiguration = TabConfiguration(
+            visibleTabs: reorderedVisibleTabs,
+            hiddenTabs: resolvedHiddenTabs()
+        )
+        persistTabConfiguration(updatedConfiguration, defaults: defaults)
+    }
+
     func updateListDisplaySortOrder(
         _ sortOrder: ListDisplaySortOrder,
         rawLists: [MastodonList],
@@ -257,6 +325,51 @@ final class AppState {
         let adjustedOffset = max(0, min(ids.count, toOffset - removedBeforeDestination))
         ids.insert(contentsOf: movingItems, at: adjustedOffset)
     }
+
+    private func moveAppTabs(
+        _ tabs: inout [AppTab],
+        fromOffsets: IndexSet,
+        toOffset: Int
+    ) {
+        let movingItems = fromOffsets.map { tabs[$0] }
+        let removedBeforeDestination = fromOffsets.filter { $0 < toOffset }.count
+        for offset in fromOffsets.sorted(by: >) {
+            tabs.remove(at: offset)
+        }
+        let adjustedOffset = max(0, min(tabs.count, toOffset - removedBeforeDestination))
+        tabs.insert(contentsOf: movingItems, at: adjustedOffset)
+    }
+
+    private func persistTabConfiguration(
+        _ configuration: TabConfiguration,
+        defaults: UserDefaults = .standard
+    ) {
+        let normalizedConfiguration = configuration.normalized()
+        tabConfiguration = normalizedConfiguration
+
+        guard let data = try? Self.tabConfigurationEncoder.encode(normalizedConfiguration) else {
+            Self.logger.error("Failed to encode tab configuration")
+            return
+        }
+
+        defaults.set(data, forKey: Self.tabConfigurationStorageKey)
+    }
+
+    private static func loadTabConfiguration(defaults: UserDefaults = .standard) -> TabConfiguration {
+        if let data = defaults.data(forKey: tabConfigurationStorageKey),
+           let configuration = try? tabConfigurationDecoder.decode(TabConfiguration.self, from: data) {
+            return configuration.normalized()
+        }
+
+        var migratedConfiguration = TabConfiguration.defaultConfiguration
+        if defaults.bool(forKey: listsInSeparateTabStorageKey) {
+            migratedConfiguration.hiddenTabs.removeAll { $0 == .lists }
+            if !migratedConfiguration.visibleTabs.contains(.lists) {
+                migratedConfiguration.visibleTabs.insert(.lists, at: 1)
+            }
+        }
+        return migratedConfiguration.normalized()
+    }
     
     // MARK: - Error Handling
     
@@ -322,6 +435,18 @@ final class AppState {
             } else {
                 listsNavigationPath.append(destination)
             }
+        case .hashtags:
+            if shouldReplaceArticle(path: hashtagsNavigationPath) {
+                hashtagsNavigationPath[hashtagsNavigationPath.count - 1] = destination
+            } else {
+                hashtagsNavigationPath.append(destination)
+            }
+        case .bookmarks:
+            if shouldReplaceArticle(path: bookmarksNavigationPath) {
+                bookmarksNavigationPath[bookmarksNavigationPath.count - 1] = destination
+            } else {
+                bookmarksNavigationPath.append(destination)
+            }
         case .explore:
             if shouldReplaceArticle(path: exploreNavigationPath) {
                 exploreNavigationPath[exploreNavigationPath.count - 1] = destination
@@ -361,6 +486,22 @@ final class AppState {
             } else {
                 Self.logger.debug("Navigate back called but lists navigation path is empty")
             }
+        case .bookmarks:
+            if !bookmarksNavigationPath.isEmpty {
+                let previous = bookmarksNavigationPath.last
+                bookmarksNavigationPath.removeLast()
+                Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
+            } else {
+                Self.logger.debug("Navigate back called but bookmarks navigation path is empty")
+            }
+        case .hashtags:
+            if !hashtagsNavigationPath.isEmpty {
+                let previous = hashtagsNavigationPath.last
+                hashtagsNavigationPath.removeLast()
+                Self.logger.info("Navigating back from: \(String(describing: previous), privacy: .public)")
+            } else {
+                Self.logger.debug("Navigate back called but hashtags navigation path is empty")
+            }
         case .explore:
             if !exploreNavigationPath.isEmpty {
                 let previous = exploreNavigationPath.last
@@ -398,6 +539,14 @@ final class AppState {
             let count = listsNavigationPath.count
             listsNavigationPath.removeAll()
             Self.logger.info("Navigating to root, cleared \(count) list destinations")
+        case .bookmarks:
+            let count = bookmarksNavigationPath.count
+            bookmarksNavigationPath.removeAll()
+            Self.logger.info("Navigating to root, cleared \(count) bookmark destinations")
+        case .hashtags:
+            let count = hashtagsNavigationPath.count
+            hashtagsNavigationPath.removeAll()
+            Self.logger.info("Navigating to root, cleared \(count) hashtag destinations")
         case .explore:
             let count = exploreNavigationPath.count
             exploreNavigationPath.removeAll()
@@ -440,6 +589,18 @@ final class AppState {
     @discardableResult
     func applyDefaultLinkFeed(
         defaultListId: String,
+        availableListIDs: [String]
+    ) -> String {
+        applyDefaultLinkFeed(
+            defaultListId: defaultListId,
+            availableListIDs: availableListIDs,
+            listsInSeparateTab: listsInSeparateTab
+        )
+    }
+
+    @discardableResult
+    func applyDefaultLinkFeed(
+        defaultListId: String,
         availableListIDs: [String],
         listsInSeparateTab: Bool = false
     ) -> String {
@@ -459,12 +620,14 @@ final class AppState {
 
 // MARK: - App Tabs
 
-enum AppTab: String, CaseIterable, Identifiable {
+enum AppTab: String, CaseIterable, Codable, Identifiable, Sendable {
     case links
     case lists
+    case hashtags
     case explore
     case mentions
     case profile
+    case bookmarks
     
     var id: String { rawValue }
     
@@ -472,6 +635,8 @@ enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .links: return "Home"
         case .lists: return "Lists"
+        case .hashtags: return "Hashtags"
+        case .bookmarks: return "Bookmarks"
         case .explore: return "Explore"
         case .mentions: return "Messages"
         case .profile: return "Profile"
@@ -482,6 +647,8 @@ enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .links: return "house"
         case .lists: return "list.bullet"
+        case .hashtags: return "number"
+        case .bookmarks: return "bookmark.fill"
         case .explore: return "globe"
         case .mentions: return "at"
         case .profile: return "person"
@@ -492,14 +659,17 @@ enum AppTab: String, CaseIterable, Identifiable {
 // MARK: - Navigation Destinations
 
 enum NavigationDestination: Hashable {
+    case moreTab(AppTab)
     case status(Status)
     case conversation(GroupedConversation)
     case profile(MastodonAccount)
     case listFeed(MastodonList)
+    case hashtagFeed(Tag)
     case article(url: URL, status: Status?)
     case thread(statusId: String)
     case hashtag(String)
     case settings
+    case tabOrder
     case listDisplay
     case accountSettings
     case readLaterSettings

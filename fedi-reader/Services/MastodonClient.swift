@@ -641,6 +641,23 @@ final class MastodonClient {
         let request = buildRequest(url: url, accessToken: accessToken)
         return try await execute(request)
     }
+
+    func getBookmarks(
+        instance: String,
+        accessToken: String,
+        maxId: String? = nil,
+        limit: Int = Constants.Pagination.defaultLimit
+    ) async throws -> [Status] {
+        Self.logger.info("Fetching bookmarks, limit: \(limit), maxId: \(maxId?.prefix(8) ?? "nil", privacy: .public)")
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let maxId { queryItems.append(URLQueryItem(name: "max_id", value: maxId)) }
+
+        let url = try buildURL(instance: instance, path: Constants.API.bookmarks, queryItems: queryItems)
+        let request = buildRequest(url: url, accessToken: accessToken)
+        let statuses: [Status] = try await execute(request)
+        Self.logger.info("Fetched \(statuses.count) bookmarks")
+        return statuses
+    }
     
     // MARK: - Trending
     
@@ -1007,11 +1024,18 @@ final class MastodonClient {
         return try await getStatus(instance: instance, accessToken: token, id: id)
     }
     
-    func getHashtagTimeline(tag: String, limit: Int = Constants.Pagination.defaultLimit) async throws -> [Status] {
+    func getHashtagTimeline(tag: String, limit: Int = Constants.Pagination.defaultLimit, maxId: String? = nil) async throws -> [Status] {
         guard let instance = currentInstance, let token = currentAccessToken else {
             throw FediReaderError.noActiveAccount
         }
-        return try await getHashtagTimeline(instance: instance, accessToken: token, tag: tag, limit: limit)
+        return try await getHashtagTimeline(instance: instance, accessToken: token, tag: tag, limit: limit, maxId: maxId)
+    }
+
+    func getFollowedTags(limit: Int = Constants.Pagination.defaultLimit, maxId: String? = nil) async throws -> [Tag] {
+        guard let instance = currentInstance, let token = currentAccessToken else {
+            throw FediReaderError.noActiveAccount
+        }
+        return try await getFollowedTags(instance: instance, accessToken: token, limit: limit, maxId: maxId)
     }
     
     nonisolated func searchAccounts(query: String, limit: Int = 10) async throws -> [MastodonAccount] {
@@ -1066,11 +1090,33 @@ final class MastodonClient {
         }
     }
     
-    func getHashtagTimeline(instance: String, accessToken: String, tag: String, limit: Int = Constants.Pagination.defaultLimit) async throws -> [Status] {
+    func getFollowedTags(
+        instance: String,
+        accessToken: String,
+        limit: Int = Constants.Pagination.defaultLimit,
+        maxId: String? = nil
+    ) async throws -> [Tag] {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let maxId { queryItems.append(URLQueryItem(name: "max_id", value: maxId)) }
+        let url = try buildURL(instance: instance, path: Constants.API.followedTags, queryItems: queryItems)
+        let request = buildRequest(url: url, accessToken: accessToken)
+        return try await execute(request)
+    }
+
+    func getHashtagTimeline(
+        instance: String,
+        accessToken: String,
+        tag: String,
+        limit: Int = Constants.Pagination.defaultLimit,
+        maxId: String? = nil
+    ) async throws -> [Status] {
+        let encodedTag = tag.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tag
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let maxId { queryItems.append(URLQueryItem(name: "max_id", value: maxId)) }
         let url = try buildURL(
             instance: instance,
-            path: "/api/v1/timelines/tag/\(tag)",
-            queryItems: [URLQueryItem(name: "limit", value: String(limit))]
+            path: "/api/v1/timelines/tag/\(encodedTag)",
+            queryItems: queryItems
         )
         let request = buildRequest(url: url, accessToken: accessToken)
         return try await execute(request)

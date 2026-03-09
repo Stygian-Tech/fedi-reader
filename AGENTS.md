@@ -24,5 +24,5 @@ Project context lives under [.agents/](.agents/):
 ## Configuration
 
 - **URL scheme**: `fedi-reader://` for OAuth callbacks
-- **Read-later**: Configure in-app (Profile → Read Later Services). Credentials in Keychain; no analytics; HTTPS-only.
+- **Read-later**: Configure in-app (Settings → Read Later Services). Credentials in Keychain; no analytics; HTTPS-only.
 

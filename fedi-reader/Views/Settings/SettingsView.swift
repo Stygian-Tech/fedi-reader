@@ -15,7 +15,6 @@ struct SettingsView: View {
     @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("defaultListId") private var defaultListId = ""
-    @AppStorage(AppState.listsInSeparateTabStorageKey) private var listsInSeparateTab = false
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
 
@@ -59,7 +58,6 @@ struct SettingsView: View {
                     hideTabBarLabels: $hideTabBarLabels,
                     themeColorName: $themeColorName,
                     defaultListId: $defaultListId,
-                    listsInSeparateTab: $listsInSeparateTab,
                     showQuoteBoost: $showQuoteBoost,
                     showHandleInFeed: $showHandleInFeed,
                     lists: lists,
@@ -70,8 +68,8 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
         .tint(selectedThemeColor)
-        .id("settings-theme-\(themeColorName)")
         .onAppear {
             _ = appState.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
         }
@@ -85,12 +83,16 @@ struct SettingsView: View {
     private var settingsListContent: some View {
         List {
             // Display
-            Section("Display") {
+            Section {
                 Toggle("Show Images", isOn: $showImages)
                 Toggle("Auto-play GIFs", isOn: $autoPlayGifs)
                 Toggle("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
                 Toggle("Show Handle in Feed", isOn: $showHandleInFeed)
-                
+
+                NavigationLink(value: NavigationDestination.tabOrder) {
+                    Label("Tab Order", systemImage: "rectangle.3.group")
+                }
+
                 NavigationLink {
                     ThemeColorSelectionView(selection: $themeColorName)
                 } label: {
@@ -103,12 +105,26 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            } header: {
+                Text("Display")
             }
             
+            // Lists
+            Section("Lists") {
+                NavigationLink(value: NavigationDestination.listDisplay) {
+                    Label("List Display", systemImage: "list.bullet.rectangle")
+                }
+            }
+
+            // Read Later
+            Section("Read Later") {
+                NavigationLink(value: NavigationDestination.readLaterSettings) {
+                    Label("Read Later Services", systemImage: "bookmark")
+                }
+            }
+
             // Timeline
             Section("Timeline") {
-                Toggle("Show Lists in Separate Tab", isOn: $listsInSeparateTab)
-
                 Picker("Default Feed", selection: $defaultListId) {
                     Text("Home").tag("")
                     ForEach(lists) { list in
@@ -203,7 +219,6 @@ private struct SettingsTwoColumnView: View {
     @Binding var hideTabBarLabels: Bool
     @Binding var themeColorName: String
     @Binding var defaultListId: String
-    @Binding var listsInSeparateTab: Bool
     @Binding var showQuoteBoost: Bool
     @Binding var showHandleInFeed: Bool
     let lists: [MastodonList]
@@ -222,6 +237,8 @@ private struct SettingsTwoColumnView: View {
 
     enum SettingsSection: String, CaseIterable, Identifiable {
         case display
+        case lists
+        case readLater
         case timeline
         case posting
         case accessibility
@@ -233,6 +250,8 @@ private struct SettingsTwoColumnView: View {
         var title: String {
             switch self {
             case .display: return "Display"
+            case .lists: return "Lists"
+            case .readLater: return "Read Later"
             case .timeline: return "Timeline"
             case .posting: return "Posting"
             case .accessibility: return "Accessibility"
@@ -244,6 +263,8 @@ private struct SettingsTwoColumnView: View {
         var systemImage: String {
             switch self {
             case .display: return "photo"
+            case .lists: return "list.bullet.rectangle"
+            case .readLater: return "bookmark"
             case .timeline: return "list.bullet"
             case .posting: return "square.and.pencil"
             case .accessibility: return "accessibility"
@@ -254,7 +275,7 @@ private struct SettingsTwoColumnView: View {
     }
 
     private var visibleSections: [SettingsSection] {
-        var sections: [SettingsSection] = [.display, .timeline, .posting]
+        var sections: [SettingsSection] = [.display, .lists, .readLater, .timeline, .posting]
         if isCompactDevice {
             sections.append(.accessibility)
         }
@@ -343,6 +364,11 @@ private struct SettingsTwoColumnView: View {
                     settingsToggleRow("Auto-play GIFs", isOn: $autoPlayGifs)
                     settingsToggleRow("Hide Tab Bar Labels", isOn: $hideTabBarLabels)
                     settingsToggleRow("Show Handle in Feed", isOn: $showHandleInFeed)
+                    NavigationLink(value: NavigationDestination.tabOrder) {
+                        Label("Tab Order", systemImage: "rectangle.3.group")
+                            .font(.roundedBody)
+                    }
+                    .listRowInsets(Self.detailRowInsets)
                     NavigationLink {
                         ThemeColorSelectionView(selection: $themeColorName)
                     } label: {
@@ -361,10 +387,34 @@ private struct SettingsTwoColumnView: View {
                     Text("Display").font(.roundedTitle3)
                 }
 
+            case .lists:
+                Section {
+                    NavigationLink {
+                        ListDisplaySettingsView()
+                    } label: {
+                        Label("List Display", systemImage: "list.bullet.rectangle")
+                            .font(.roundedBody)
+                    }
+                    .listRowInsets(Self.detailRowInsets)
+                } header: {
+                    Text("Lists").font(.roundedTitle3)
+                }
+
+            case .readLater:
+                Section {
+                    NavigationLink {
+                        ReadLaterSettingsView()
+                    } label: {
+                        Label("Read Later Services", systemImage: "bookmark")
+                            .font(.roundedBody)
+                    }
+                    .listRowInsets(Self.detailRowInsets)
+                } header: {
+                    Text("Read Later").font(.roundedTitle3)
+                }
+
             case .timeline:
                 Section {
-                    settingsToggleRow("Show Lists in Separate Tab", isOn: $listsInSeparateTab)
-
                     Picker(selection: $defaultListId) {
                         Text("Home").tag("")
                         ForEach(lists) { list in

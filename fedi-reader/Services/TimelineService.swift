@@ -20,6 +20,7 @@ final class TimelineService {
     
     // Timeline state
     var homeTimeline: [Status] = []
+    var bookmarks: [Status] = []
     var exploreStatuses: [Status] = []
     var trendingLinks: [TrendingLink] = []
     var mentions: [MastodonNotification] = []
@@ -30,8 +31,15 @@ final class TimelineService {
     var listTimeline: [Status] = []
     var listAccounts: [MastodonAccount] = []
     
+    // Followed tags state
+    var followedTags: [Tag] = []
+    var hashtagTimeline: [Status] = []
+    private var hashtagTimelineMaxId: String?
+    private var hashtagTimelineTag: String?
+    
     // Loading state
     var isLoadingHome = false
+    var isLoadingBookmarks = false
     var isLoadingExplore = false
     var isLoadingMentions = false
     var isLoadingConversations = false
@@ -39,14 +47,18 @@ final class TimelineService {
     var isLoadingLists = false
     var isLoadingListTimeline = false
     var isLoadingListAccounts = false
+    var isLoadingFollowedTags = false
+    var isLoadingHashtagTimeline = false
     
     // Pagination cursors
     private var homeMaxId: String?
     private var homeMinId: String?
+    private var bookmarksMaxId: String?
     private var exploreMaxId: String?
     private var mentionsMaxId: String?
     private var conversationsMaxId: String?
     private var listTimelineMaxId: String?
+    private var followedTagsMaxId: String?
     private var listAccountsMaxId: String?
     private var listsLastRefreshedAt: Date?
     private var listsLastRefreshedForAccountId: String?
@@ -174,12 +186,103 @@ final class TimelineService {
         await loadHomeTimeline(refresh: true)
     }
 
+    // MARK: - Bookmarks
+
+    func loadBookmarks(refresh: Bool = false) async {
+        guard !isLoadingBookmarks else {
+            Self.logger.debug("Bookmarks load already in progress, skipping")
+            return
+        }
+
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            Self.logger.error("No active account for bookmarks load")
+            error = FediReaderError.noActiveAccount
+            return
+        }
+
+        Self.logger.info("Loading bookmarks, refresh: \(refresh), current count: \(self.bookmarks.count), maxId: \(self.bookmarksMaxId?.prefix(8) ?? "nil", privacy: .public)")
+        isLoadingBookmarks = true
+        error = nil
+
+        do {
+            let statuses = try await client.getBookmarks(
+                instance: account.instance,
+                accessToken: token,
+                maxId: refresh ? nil : bookmarksMaxId,
+                limit: Constants.Pagination.defaultLimit
+            )
+
+            if refresh {
+                bookmarks = statuses
+                Self.logger.info("Bookmarks refreshed: \(statuses.count) statuses")
+            } else {
+                bookmarks.append(contentsOf: statuses)
+                Self.logger.info("Bookmarks loaded more: \(statuses.count) new statuses, total: \(self.bookmarks.count)")
+            }
+
+            if statuses.isEmpty {
+                bookmarksMaxId = nil
+                Self.logger.debug("Bookmarks returned no statuses; reached pagination end")
+            } else if let lastStatus = statuses.last {
+                bookmarksMaxId = lastStatus.id
+                Self.logger.debug("Updated bookmarks maxId: \(lastStatus.id.prefix(8), privacy: .public)")
+            }
+
+            Task {
+                await prefetchFediverseCreators(for: statuses)
+            }
+        } catch let err as FediReaderError where err == .unauthorized {
+            Self.logger.error("Unauthorized error loading bookmarks")
+            self.error = err
+            NotificationCenter.default.post(name: .accountDidChange, object: nil)
+        } catch {
+            Self.logger.error("Error loading bookmarks: \(error.localizedDescription)")
+            self.error = error
+        }
+
+        isLoadingBookmarks = false
+    }
+
+    @discardableResult
+    func loadMoreBookmarks() async -> [Status] {
+        guard !isLoadingMore, bookmarksMaxId != nil else { return [] }
+        let previousCount = bookmarks.count
+
+        isLoadingMore = true
+        await loadBookmarks(refresh: false)
+        isLoadingMore = false
+
+        guard bookmarks.count > previousCount else { return [] }
+        return Array(bookmarks.dropFirst(previousCount))
+    }
+
+    func refreshBookmarks() async {
+        bookmarksMaxId = nil
+        await loadBookmarks(refresh: true)
+    }
+
+    func canLoadMoreBookmarks() -> Bool {
+        bookmarksMaxId != nil
+    }
+
     func loadLinkFeedStatuses(feedId: String, forceRefreshHome: Bool = false) async -> [Status] {
         if feedId == AppState.homeFeedID {
             if forceRefreshHome || homeTimeline.isEmpty {
                 await refreshHomeTimeline()
             }
             return homeTimeline
+        }
+        if feedId == AppState.bookmarksFeedID {
+            if forceRefreshHome || bookmarks.isEmpty {
+                await refreshBookmarks()
+            }
+            return bookmarks
+        }
+        if feedId.hasPrefix("hashtag:") {
+            let tagName = String(feedId.dropFirst("hashtag:".count))
+            await loadHashtagTimeline(tag: tagName, refresh: forceRefreshHome || hashtagTimelineTag != tagName)
+            return hashtagTimelineTag == tagName ? hashtagTimeline : []
         }
 
         await refreshListTimeline(listId: feedId)
@@ -192,6 +295,19 @@ final class TimelineService {
                 await refreshHomeTimeline()
             }
             return homeTimeline
+        }
+        if feedId == AppState.bookmarksFeedID {
+            if bookmarks.isEmpty {
+                await refreshBookmarks()
+            }
+            return bookmarks
+        }
+        if feedId.hasPrefix("hashtag:") {
+            let tagName = String(feedId.dropFirst("hashtag:".count))
+            if hashtagTimelineTag != tagName || hashtagTimeline.isEmpty {
+                await loadHashtagTimeline(tag: tagName, refresh: true)
+            }
+            return hashtagTimelineTag == tagName ? hashtagTimeline : []
         }
 
         return await fetchListTimelineStatuses(listId: feedId)
@@ -908,6 +1024,19 @@ final class TimelineService {
                 exploreStatuses[index] = resolvedStatus
             }
         }
+
+        // Update in bookmarks
+        if let index = bookmarks.firstIndex(where: { $0.displayStatus.id == resolvedStatus.id }) {
+            if resolvedStatus.bookmarked == false {
+                bookmarks.remove(at: index)
+            } else if bookmarks[index].reblog != nil {
+                bookmarks[index] = updatedReblogWrapper(from: bookmarks[index], with: resolvedStatus)
+            } else {
+                bookmarks[index] = resolvedStatus
+            }
+        } else if resolvedStatus.bookmarked == true {
+            bookmarks.insert(resolvedStatus, at: 0)
+        }
         
         // Update in mentions
         if mentions.contains(where: { $0.status?.id == status.id }) {
@@ -968,20 +1097,27 @@ final class TimelineService {
         stopInboxAutoRefresh()
 
         homeTimeline = []
+        bookmarks = []
         exploreStatuses = []
         trendingLinks = []
         mentions = []
         conversations = []
         listTimeline = []
+        followedTags = []
+        hashtagTimeline = []
         listAccounts = []
         
         homeMaxId = nil
         homeMinId = nil
+        bookmarksMaxId = nil
         exploreMaxId = nil
         mentionsMaxId = nil
         conversationsMaxId = nil
         listTimelineMaxId = nil
         listAccountsMaxId = nil
+        hashtagTimelineMaxId = nil
+        hashtagTimelineTag = nil
+        followedTagsMaxId = nil
     }
     
     // MARK: - Lists
@@ -1251,6 +1387,95 @@ final class TimelineService {
     func refreshListTimeline(listId: String) async {
         listTimelineMaxId = nil
         await loadListTimeline(listId: listId, refresh: true)
+    }
+
+    // MARK: - Followed Tags
+
+    func loadFollowedTags(refresh: Bool = false) async {
+        guard !isLoadingFollowedTags else { return }
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            error = FediReaderError.noActiveAccount
+            return
+        }
+        isLoadingFollowedTags = true
+        error = nil
+        defer { isLoadingFollowedTags = false }
+        do {
+            let tags = try await client.getFollowedTags(
+                instance: account.instance,
+                accessToken: token,
+                limit: 80,
+                maxId: refresh ? nil : followedTagsMaxId
+            )
+            if refresh || followedTagsMaxId == nil {
+                followedTags = tags
+            } else {
+                followedTags.append(contentsOf: tags)
+            }
+            followedTagsMaxId = tags.last?.id ?? tags.last?.name
+            if tags.isEmpty { followedTagsMaxId = nil }
+        } catch {
+            Self.logger.error("Error loading followed tags: \(error.localizedDescription)")
+            self.error = error
+        }
+    }
+
+    func loadHashtagTimeline(tag: String, refresh: Bool = false) async {
+        guard !isLoadingHashtagTimeline else { return }
+        let effectiveRefresh = refresh || hashtagTimelineTag != tag
+        guard let account = authService.currentAccount,
+              let token = await authService.getAccessToken(for: account) else {
+            error = FediReaderError.noActiveAccount
+            return
+        }
+        isLoadingHashtagTimeline = true
+        error = nil
+        if effectiveRefresh {
+            hashtagTimelineMaxId = nil
+            hashtagTimelineTag = tag
+        }
+        defer { isLoadingHashtagTimeline = false }
+        do {
+            let statuses = try await client.getHashtagTimeline(
+                instance: account.instance,
+                accessToken: token,
+                tag: tag,
+                limit: Constants.Pagination.defaultLimit,
+                maxId: effectiveRefresh ? nil : hashtagTimelineMaxId
+            )
+            if effectiveRefresh {
+                hashtagTimeline = statuses
+                hashtagTimelineTag = tag
+            } else {
+                hashtagTimeline.append(contentsOf: statuses)
+            }
+            hashtagTimelineMaxId = statuses.isEmpty ? nil : statuses.last?.id
+            Task { await prefetchFediverseCreators(for: statuses) }
+        } catch {
+            Self.logger.error("Error loading hashtag timeline: \(error.localizedDescription)")
+            self.error = error
+        }
+    }
+
+    func canLoadMoreHashtagTimeline(tag: String) -> Bool {
+        hashtagTimelineTag == tag && hashtagTimelineMaxId != nil
+    }
+
+    @discardableResult
+    func loadMoreHashtagTimeline(tag: String) async -> [Status] {
+        guard !isLoadingMore, canLoadMoreHashtagTimeline(tag: tag) else { return [] }
+        let previousCount = hashtagTimeline.count
+        isLoadingMore = true
+        await loadHashtagTimeline(tag: tag, refresh: false)
+        isLoadingMore = false
+        guard hashtagTimeline.count > previousCount else { return [] }
+        return Array(hashtagTimeline.dropFirst(previousCount))
+    }
+
+    func refreshHashtagTimeline(tag: String) async {
+        hashtagTimelineMaxId = nil
+        await loadHashtagTimeline(tag: tag, refresh: true)
     }
     
     func loadListAccounts(listId: String, refresh: Bool = false) async {

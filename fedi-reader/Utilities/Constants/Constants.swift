@@ -35,6 +35,7 @@ enum Constants {
         static let verifyCredentials = "/api/v1/accounts/verify_credentials"
         static let homeTimeline = "/api/v1/timelines/home"
         static let publicTimeline = "/api/v1/timelines/public"
+        static let bookmarks = "/api/v1/bookmarks"
         static let notifications = "/api/v1/notifications"
         static let conversations = "/api/v1/conversations"
         static let conversationRead = "/api/v1/conversations" // Use with /:id/read
@@ -55,6 +56,9 @@ enum Constants {
         // Lists
         static let lists = "/api/v1/lists"
         static let listTimeline = "/api/v1/timelines/list"
+
+        // Followed tags (hashtags)
+        static let followedTags = "/api/v1/followed_tags"
         
         // Rate limiting
         static let defaultRateLimit = 300 // requests per 5 minutes
