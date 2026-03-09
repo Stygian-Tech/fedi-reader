@@ -10,6 +10,7 @@ import SwiftUI
 
 struct LinkFeedTwoColumnView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
 
@@ -21,7 +22,7 @@ struct LinkFeedTwoColumnView: View {
 
     @State private var selectedArticle: (url: URL, status: Status)?
     @AppStorage("linkFeedTwoColumnPostsWidth") private var persistedPostsWidth: Double = 350
-    @AppStorage("useSafariViewer") private var useSafariViewer = false
+    @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
     @State private var postsWidth: Double = 350
 
     private static let minPostsWidth: CGFloat = 280
@@ -95,15 +96,19 @@ struct LinkFeedTwoColumnView: View {
 
             HStack(spacing: 0) {
                 LinkFeedContentView(onArticleSelect: { url, status in
-                    #if os(iOS)
-                    if useSafariViewer {
+                    let pref = ArticleViewerPreference.from(raw: articleViewerPreferenceRaw)
+                    switch pref {
+                    case .externalBrowser:
+                        openURL(url)
+                    case .safari:
+                        #if os(iOS)
                         appState.present(sheet: .safariView(url: url))
-                    } else {
+                        #else
+                        openURL(url)
+                        #endif
+                    case .inApp:
                         selectedArticle = (url, status)
                     }
-                    #else
-                    selectedArticle = (url, status)
-                    #endif
                 }, feedTabsOverride: feedTabsOverride, showsFeedPicker: showsFeedPicker, allowsSwipeNavigation: allowsSwipeNavigation, titleOverride: titleOverride, userFilterToolbarPlacement: userFilterToolbarPlacement)
                 .frame(width: layout.postsWidth)
                 .background(Color(.systemBackground))

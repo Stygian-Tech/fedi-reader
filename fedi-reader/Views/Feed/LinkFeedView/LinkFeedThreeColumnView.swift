@@ -12,6 +12,7 @@ import UIKit
 
 struct LinkFeedThreeColumnView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @Environment(\.layoutMode) private var layoutMode
@@ -19,7 +20,7 @@ struct LinkFeedThreeColumnView: View {
 
     @State private var selectedTabIndex: Int = 0
     @State private var selectedArticle: (url: URL, status: Status)?
-    @AppStorage("useSafariViewer") private var useSafariViewer = false
+    @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
     @State private var scrollProxy: ScrollViewProxy?
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("threeColumnListsWidth") private var persistedListsWidth: Double = 200
@@ -344,15 +345,19 @@ struct LinkFeedThreeColumnView: View {
                     shouldBlockPostTaps: { false },
                     onItemAppear: { checkLoadMore(at: $0, totalCount: $1) },
                     onArticleSelect: { url, status in
-                        #if os(iOS)
-                        if useSafariViewer {
+                        let pref = ArticleViewerPreference.from(raw: articleViewerPreferenceRaw)
+                        switch pref {
+                        case .externalBrowser:
+                            openURL(url)
+                        case .safari:
+                            #if os(iOS)
                             appState.present(sheet: .safariView(url: url))
-                        } else {
+                            #else
+                            openURL(url)
+                            #endif
+                        case .inApp:
                             selectedArticle = (url: url, status: status)
                         }
-                        #else
-                        selectedArticle = (url: url, status: status)
-                        #endif
                     },
                     scrollProxy: $scrollProxy,
                     onFirstVisibleChange: { statusId in
