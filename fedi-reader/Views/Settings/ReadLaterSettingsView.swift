@@ -12,6 +12,7 @@ struct ReadLaterSettingsView: View {
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("themeColor") private var themeColorName = "blue"
 
     var body: some View {
         List {
@@ -48,6 +49,7 @@ struct ReadLaterSettingsView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .tint(ThemeColor.resolved(from: themeColorName).color)
         .navigationTitle("Read Later")
     }
 

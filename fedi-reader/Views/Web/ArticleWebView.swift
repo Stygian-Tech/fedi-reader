@@ -7,6 +7,11 @@
 
 import SwiftUI
 import WebKit
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct ArticleWebView: View {
     let url: URL
@@ -23,25 +28,27 @@ struct ArticleWebView: View {
     @State private var canGoBack = false
     @State private var canGoForward = false
     @State private var webView: WKWebView?
-    
+
     var body: some View {
-        WebViewContainer(
-            url: url,
-            isLoading: $isLoading,
-            pageTitle: $pageTitle,
-            canGoBack: $canGoBack,
-            canGoForward: $canGoForward,
-            webView: $webView
-        )
-        .ignoresSafeArea()
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        GlassEffectContainer {
+            WebViewContainer(
+                url: url,
+                isLoading: $isLoading,
+                pageTitle: $pageTitle,
+                canGoBack: $canGoBack,
+                canGoForward: $canGoForward,
+                webView: $webView
+            )
+            .ignoresSafeArea(.container, edges: [.top, .bottom])
+            .overlay(alignment: .bottom) {
             #if os(macOS)
-            actionToolbar
+            actionToolbarOverlay
             #elseif os(iOS)
             if layoutMode != .compact, status != nil {
-                actionToolbar
+                actionToolbarOverlay
             }
             #endif
+            }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -157,17 +164,25 @@ struct ArticleWebView: View {
     private static let actionToolbarMaxWidth: CGFloat = 480
 
     @ViewBuilder
-    private var actionToolbar: some View {
-        if let status {
-            StatusActionsToolbar(status: status)
-                .glassEffect(.regular, in: Capsule())
-                .clipShape(Capsule())
-                .compositingGroup()
-                .padding(.horizontal, 5)
-                .padding(.vertical, 6)
-                .frame(maxWidth: Self.actionToolbarMaxWidth)
-                .frame(maxWidth: .infinity)
+    private var actionToolbarOverlay: some View {
+        VStack(spacing: 0) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .allowsHitTesting(false)
+            if let status {
+                StatusActionsToolbar(status: status)
+                    .glassEffect(.regular.interactive(), in: Capsule())
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: Self.actionToolbarMaxWidth)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 8)
+            }
         }
+        .allowsHitTesting(true)
+        .zIndex(1)
     }
 }
 

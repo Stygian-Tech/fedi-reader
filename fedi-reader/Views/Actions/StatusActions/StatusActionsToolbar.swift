@@ -221,6 +221,8 @@ struct StatusActionsToolbar: View {
         }
     }
 
+    private static let actionTimeout: UInt64 = 15_000_000_000 // 15 seconds
+
     private func toggleFavorite() async {
         guard let service = timelineWrapper.service else { return }
         
@@ -231,7 +233,18 @@ struct StatusActionsToolbar: View {
         localFavorited = !wasFavorited
         
         do {
-            let updated = try await service.setFavorite(status: status, isFavorited: !wasFavorited)
+            let updated = try await withThrowingTaskGroup(of: Status.self) { group in
+                group.addTask {
+                    try await service.setFavorite(status: status, isFavorited: !wasFavorited)
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: Self.actionTimeout)
+                    throw URLError(.timedOut)
+                }
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
+            }
             localFavorited = updated.favourited
         } catch {
             localFavorited = wasFavorited
@@ -249,7 +262,18 @@ struct StatusActionsToolbar: View {
         localReblogged = !wasReblogged
         
         do {
-            let updated = try await service.setReblog(status: status, isReblogged: !wasReblogged)
+            let updated = try await withThrowingTaskGroup(of: Status.self) { group in
+                group.addTask {
+                    try await service.setReblog(status: status, isReblogged: !wasReblogged)
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: Self.actionTimeout)
+                    throw URLError(.timedOut)
+                }
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
+            }
             localReblogged = updated.displayStatus.reblogged
         } catch {
             localReblogged = wasReblogged
@@ -267,7 +291,18 @@ struct StatusActionsToolbar: View {
         localBookmarked = !wasBookmarked
         
         do {
-            let updated = try await service.bookmark(status: status)
+            let updated = try await withThrowingTaskGroup(of: Status.self) { group in
+                group.addTask {
+                    try await service.bookmark(status: status)
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: Self.actionTimeout)
+                    throw URLError(.timedOut)
+                }
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
+            }
             localBookmarked = updated.bookmarked
         } catch {
             localBookmarked = wasBookmarked

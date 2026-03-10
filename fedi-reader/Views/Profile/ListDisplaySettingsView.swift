@@ -9,6 +9,7 @@ enum ListDisplaySettingsFeatures {
 struct ListDisplaySettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
+    @AppStorage("themeColor") private var themeColorName = "blue"
 
     @State private var isLoading = false
     @State private var editMode: EditMode = .inactive
@@ -54,6 +55,8 @@ struct ListDisplaySettingsView: View {
                 showsVisibleSection: true
             )
         }
+        .id(themeColorName)
+        .tint(ThemeColor.resolved(from: themeColorName).color)
         .navigationTitle("List Display")
         .environment(\.editMode, $editMode)
         .task {
