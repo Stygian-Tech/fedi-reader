@@ -6,6 +6,7 @@ struct WebKitView: View {
     let url: URL
     let coordinator: WebViewCoordinator
     @Binding var webViewBinding: WKWebView?
+    let colorScheme: ColorScheme
 
     var body: some View {
         GeometryReader { geometry in
@@ -13,7 +14,8 @@ struct WebKitView: View {
                 url: url,
                 coordinator: coordinator,
                 webViewBinding: $webViewBinding,
-                size: geometry.size
+                size: geometry.size,
+                colorScheme: colorScheme
             )
         }
     }

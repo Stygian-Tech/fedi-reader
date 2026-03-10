@@ -7,6 +7,11 @@
 
 import SwiftUI
 import WebKit
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct ArticleWebView: View {
     let url: URL
@@ -33,19 +38,19 @@ struct ArticleWebView: View {
             canGoForward: $canGoForward,
             webView: $webView
         )
-        .ignoresSafeArea()
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .ignoresSafeArea(.container, edges: [.top, .bottom])
+        .overlay(alignment: .bottom) {
             #if os(macOS)
-            actionToolbar
+            actionToolbarOverlay
             #elseif os(iOS)
             if layoutMode != .compact, status != nil {
-                actionToolbar
+                actionToolbarOverlay
             }
             #endif
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.white, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             if let onClose {
@@ -157,16 +162,23 @@ struct ArticleWebView: View {
     private static let actionToolbarMaxWidth: CGFloat = 480
 
     @ViewBuilder
-    private var actionToolbar: some View {
-        if let status {
-            StatusActionsToolbar(status: status)
-                .background(.white, in: Capsule())
-                .clipShape(Capsule())
-                .padding(.horizontal, 5)
-                .padding(.vertical, 6)
-                .frame(maxWidth: Self.actionToolbarMaxWidth)
-                .frame(maxWidth: .infinity)
+    private var actionToolbarOverlay: some View {
+        VStack(spacing: 0) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .allowsHitTesting(false)
+            if let status {
+                StatusActionsToolbar(status: status)
+                    .background(.clear)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: Self.actionToolbarMaxWidth)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 8)
+            }
         }
+        .zIndex(1)
     }
 }
 

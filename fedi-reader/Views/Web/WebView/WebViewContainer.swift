@@ -10,13 +10,15 @@ struct WebViewContainer: View {
     @Binding var canGoForward: Bool
     @Binding var webView: WKWebView?
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var coordinator = WebViewCoordinator()
 
     var body: some View {
         WebKitView(
             url: url,
             coordinator: coordinator,
-            webViewBinding: $webView
+            webViewBinding: $webView,
+            colorScheme: colorScheme
         )
         .onReceive(coordinator.$isLoading) { isLoading = $0 }
         .onReceive(coordinator.$pageTitle) { pageTitle = $0 }

@@ -1,12 +1,18 @@
 import SwiftUI
 import WebKit
 import Combine
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct WebViewBridge: View {
     let url: URL
     let coordinator: WebViewCoordinator
     @Binding var webViewBinding: WKWebView?
     let size: CGSize
+    let colorScheme: ColorScheme
 
     @State private var webView: WKWebView?
 
@@ -17,6 +23,9 @@ struct WebViewBridge: View {
             }
             .onChange(of: url) { _, newURL in
                 webView?.load(URLRequest(url: newURL))
+            }
+            .onChange(of: colorScheme) { _, newScheme in
+                applyColorScheme(newScheme, to: webView)
             }
             .overlay {
                 if let webView = webView {
@@ -39,6 +48,22 @@ struct WebViewBridge: View {
         webView = wkWebView
 
         wkWebView.load(URLRequest(url: url))
+        applyColorScheme(colorScheme, to: wkWebView)
+    }
+
+    private func applyColorScheme(_ scheme: ColorScheme, to wk: WKWebView? = nil) {
+        #if os(iOS)
+        let target = wk ?? webView
+        guard let target else { return }
+        switch scheme {
+        case .dark:
+            target.overrideUserInterfaceStyle = .dark
+        case .light:
+            target.overrideUserInterfaceStyle = .light
+        @unknown default:
+            target.overrideUserInterfaceStyle = .unspecified
+        }
+        #endif
     }
 }
 
