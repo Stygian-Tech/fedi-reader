@@ -43,6 +43,11 @@ struct WebViewBridge: View {
         let wkWebView = WKWebView(frame: CGRect(origin: .zero, size: size), configuration: config)
         wkWebView.navigationDelegate = coordinator
         wkWebView.allowsBackForwardNavigationGestures = true
+        #if os(iOS)
+        wkWebView.isOpaque = false
+        wkWebView.backgroundColor = .clear
+        wkWebView.scrollView.backgroundColor = .clear
+        #endif
 
         webViewBinding = wkWebView
         webView = wkWebView

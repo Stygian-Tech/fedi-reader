@@ -30,16 +30,17 @@ struct ArticleWebView: View {
     @State private var webView: WKWebView?
 
     var body: some View {
-        WebViewContainer(
-            url: url,
-            isLoading: $isLoading,
-            pageTitle: $pageTitle,
-            canGoBack: $canGoBack,
-            canGoForward: $canGoForward,
-            webView: $webView
-        )
-        .ignoresSafeArea(.container, edges: [.top, .bottom])
-        .overlay(alignment: .bottom) {
+        GlassEffectContainer {
+            WebViewContainer(
+                url: url,
+                isLoading: $isLoading,
+                pageTitle: $pageTitle,
+                canGoBack: $canGoBack,
+                canGoForward: $canGoForward,
+                webView: $webView
+            )
+            .ignoresSafeArea(.container, edges: [.top, .bottom])
+            .overlay(alignment: .bottom) {
             #if os(macOS)
             actionToolbarOverlay
             #elseif os(iOS)
@@ -47,6 +48,7 @@ struct ArticleWebView: View {
                 actionToolbarOverlay
             }
             #endif
+            }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -170,7 +172,8 @@ struct ArticleWebView: View {
                 .allowsHitTesting(false)
             if let status {
                 StatusActionsToolbar(status: status)
-                    .background(.clear)
+                    .glassEffect(.regular.interactive(), in: Capsule())
+                    .contentShape(Rectangle())
                     .padding(.horizontal, 5)
                     .padding(.vertical, 6)
                     .frame(maxWidth: Self.actionToolbarMaxWidth)
@@ -178,6 +181,7 @@ struct ArticleWebView: View {
                     .padding(.bottom, 8)
             }
         }
+        .allowsHitTesting(true)
         .zIndex(1)
     }
 }

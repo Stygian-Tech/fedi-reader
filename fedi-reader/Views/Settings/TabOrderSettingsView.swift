@@ -83,6 +83,7 @@ enum TabOrderSettingsFeatures {
 
 struct TabOrderSettingsView: View {
     @Environment(AppState.self) private var appState
+    @AppStorage("themeColor") private var themeColorName = "blue"
     @State private var editMode: EditMode = TabOrderSettingsFeatures.defaultEditMode
     @State private var deniedMoveAttempts: [AppTab: Int] = [:]
     @State private var previewVisibleTabs: [AppTab]? = nil
@@ -125,6 +126,7 @@ struct TabOrderSettingsView: View {
                 }
             }
         }
+        .tint(ThemeColor.resolved(from: themeColorName).color)
         .environment(\.editMode, $editMode)
         .navigationTitle("Tab Order")
         .navigationBarTitleDisplayMode(.inline)

@@ -208,6 +208,8 @@ struct SettingsView: View {
             }
             #endif
         }
+        .id(themeColorName)
+        .tint(selectedThemeColor)
         .listStyle(.insetGrouped)
         .contentMargins(.vertical, 16, for: .scrollContent)
         .contentMargins(.horizontal, 20, for: .scrollContent)
@@ -540,6 +542,8 @@ private struct SettingsTwoColumnView: View {
                 #endif
             }
         }
+        .id(themeColorName)
+        .tint(selectedThemeColor)
         .contentMargins(.vertical, Self.detailPanePadding, for: .scrollContent)
         .contentMargins(.horizontal, Self.detailPaneHorizontalPadding, for: .scrollContent)
         #if os(macOS)
