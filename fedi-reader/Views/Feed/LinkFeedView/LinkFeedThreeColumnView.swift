@@ -16,7 +16,6 @@ struct LinkFeedThreeColumnView: View {
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @Environment(\.layoutMode) private var layoutMode
-    @AppStorage("hapticFeedback") private var hapticFeedback = true
 
     @State private var selectedTabIndex: Int = 0
     @State private var selectedArticle: (url: URL, status: Status)?
@@ -419,7 +418,7 @@ struct LinkFeedThreeColumnView: View {
         let isDoubleTap = feedTabSelectionTracker.recordSelection(tab.id)
 
         if isSelected, isDoubleTap {
-            HapticFeedback.play(.medium, enabled: hapticFeedback)
+            HapticFeedback.play(.medium)
             appState.requestLinksScrollToTop()
             return
         }

@@ -87,7 +87,6 @@ enum Constants {
     
     enum UI {
         static let defaultAnimationDuration: Double = 0.3
-        static let hapticFeedbackEnabled = true
         static let maxContentPreviewLines = 6
         static let avatarSize: CGFloat = 40
         static let smallAvatarSize: CGFloat = 28

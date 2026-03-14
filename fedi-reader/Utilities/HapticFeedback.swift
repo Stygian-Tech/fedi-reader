@@ -2,7 +2,8 @@
 //  HapticFeedback.swift
 //  fedi-reader
 //
-//  Haptic feedback utility that respects user settings
+//  Haptic feedback utility. The system automatically respects the user's
+//  Settings > Sounds & Haptics > System Haptics preference.
 //
 
 import SwiftUI
@@ -36,9 +37,7 @@ struct HapticFeedback {
     private static var selectionGenerator: UISelectionFeedbackGenerator?
     #endif
     
-    static func play(_ style: Style, enabled: Bool = true) {
-        guard enabled else { return }
-        
+    static func play(_ style: Style) {
         #if os(iOS)
         switch style {
         case .light:

@@ -10,7 +10,6 @@ struct MainTabView: View {
     @Environment(\.layoutMode) private var layoutMode
 
     @State private var tabTracker = TabSelectionTracker()
-    @AppStorage("hapticFeedback") private var hapticFeedback = true
     @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
 
     private var unreadMentionsCount: Int {
@@ -35,7 +34,7 @@ struct MainTabView: View {
         mainTabView()
             .animation(.easeInOut(duration: 0.25), value: hideTabBarLabels)
             .onChange(of: state.selectedTab) { oldValue, newValue in
-            HapticFeedback.play(.selection, enabled: hapticFeedback && !useSidebarLayout)
+            HapticFeedback.play(.selection)
             let primaryTabs = Array(visibleTabs.prefix(4))
             if primaryTabs.contains(newValue) {
                 state.moreTabPath.removeAll()
@@ -454,7 +453,7 @@ struct MainTabView: View {
                 let isDoubleTap = tabTracker.recordSelection(.links)
                 if isDoubleTap {
                     appState.requestLinksScrollToTop()
-                    HapticFeedback.play(.medium, enabled: hapticFeedback && !useSidebarLayout)
+                    HapticFeedback.play(.medium)
                 }
             } else {
                 tabTracker.reset()

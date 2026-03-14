@@ -87,7 +87,6 @@ struct TabOrderSettingsView: View {
     @State private var editMode: EditMode = TabOrderSettingsFeatures.defaultEditMode
     @State private var deniedMoveAttempts: [AppTab: Int] = [:]
     @State private var previewVisibleTabs: [AppTab]? = nil
-    @AppStorage("hapticFeedback") private var hapticFeedback = true
 
     private var visibleTabs: [AppTab] {
         previewVisibleTabs ?? appState.resolvedVisibleTabs()
@@ -206,7 +205,7 @@ struct TabOrderSettingsView: View {
         let shakeDuration = TabOrderSettingsFeatures.shakeAnimationDuration
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            HapticFeedback.play(.medium, enabled: hapticFeedback)
+            HapticFeedback.play(.medium)
             withAnimation(.easeInOut(duration: shakeDuration)) {
                 for tab in tabs {
                     deniedMoveAttempts[tab, default: 0] += 1
