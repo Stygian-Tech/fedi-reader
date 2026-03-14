@@ -6,7 +6,6 @@ struct StatusRowView: View {
     @Environment(\.openURL) private var openURL
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
-    @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
     @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
     
@@ -22,10 +21,6 @@ struct StatusRowView: View {
         status.displayStatus
     }
     
-    private var themeColor: Color {
-        ThemeColor(rawValue: themeColorName)?.color ?? .blue
-    }
-    
     private var isBookmarked: Bool {
         localBookmarked ?? displayStatus.bookmarked ?? false
     }
@@ -36,9 +31,8 @@ struct StatusRowView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Reblog gradient strip
             if status.isReblog {
-                reblogGradientStrip
+                boostAttributionChip
             }
             
             // Reply indicator (if this is a reply)
@@ -122,55 +116,12 @@ struct StatusRowView: View {
         .buttonStyle(.plain)
     }
     
-    // MARK: - Reblog Gradient Strip
-    
-    private var reblogGradientStrip: some View {
-        Button {
-            appState.navigate(to: .profile(status.account))
-        } label: {
-            HStack(spacing: 8) {
-                ProfileAvatarView(url: status.account.avatarURL, size: 24, placeholderStyle: .light)
+    // MARK: - Boost Attribution
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.2.squarepath")
-                            .font(.roundedCaption2)
-                        
-                        Text("Boosted by")
-                            .font(.roundedCaption)
-                    }
-                    
-                    HStack(spacing: 4) {
-                        EmojiText(text: status.account.displayName, emojis: status.account.emojis, font: .roundedCaption.bold())
-                            .lineLimit(1)
-                        
-                        AccountBadgesView(account: status.account, size: .small)
-                    }
-                }
-                .foregroundStyle(.white)
-                
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                LinearGradient(
-                    colors: [
-                        themeColor.opacity(0.35),
-                        themeColor.opacity(0.20),
-                        themeColor.opacity(0.10),
-                        themeColor.opacity(0.05),
-                        Color.clear
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .contentShape(Rectangle())
+    private var boostAttributionChip: some View {
+        BoostAttributionChip(account: status.account) {
+            appState.navigate(to: .profile(status.account))
         }
-        .buttonStyle(.plain)
     }
     
     // MARK: - Author Header

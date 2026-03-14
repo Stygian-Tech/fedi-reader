@@ -22,7 +22,7 @@ struct StatusDetailRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if status.isReblog {
-                reblogIndicator
+                boostAttributionChip
             }
 
             HStack(spacing: 10) {
@@ -148,34 +148,12 @@ struct StatusDetailRowView: View {
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
     }
     
-    // MARK: - Reblog Indicator
-    
-    private var reblogIndicator: some View {
-        Button {
-            appState.navigate(to: .profile(status.account))
-        } label: {
-            HStack(spacing: 8) {
-                ProfileAvatarView(url: status.account.avatarURL, size: 24)
+    // MARK: - Boost Attribution
 
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.2.squarepath")
-                        .font(.roundedCaption2)
-                    
-                    Text("Boosted by")
-                        .font(.roundedCaption)
-                    
-                    EmojiText(text: status.account.displayName, emojis: status.account.emojis, font: .roundedCaption.bold())
-                        .lineLimit(1)
-                    
-                    AccountBadgesView(account: status.account, size: .small)
-                }
-                .foregroundStyle(.secondary)
-                
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private var boostAttributionChip: some View {
+        BoostAttributionChip(account: status.account) {
+            appState.navigate(to: .profile(status.account))
         }
-        .buttonStyle(.plain)
     }
 
     private func currentAuthorURL(for card: PreviewCard) -> URL? {
