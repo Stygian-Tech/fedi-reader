@@ -28,9 +28,11 @@ struct ProfileLinksListView: View {
                             openURL(destinationURL)
                         }
                     } label: {
-                        row(field: field, destinationURL: destinationURL)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
+                        row(
+                            field: field,
+                            destinationURL: destinationURL,
+                            containerPosition: containerPosition(for: index)
+                        )
                     }
                     .buttonStyle(.plain)
                     .disabled(destinationURL == nil)
@@ -46,35 +48,29 @@ struct ProfileLinksListView: View {
         }
     }
 
-    private func row(field: Field, destinationURL: URL?) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(field.decodedName)
-                        .font(.roundedCaption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+    private func row(
+        field: Field,
+        destinationURL: URL?,
+        containerPosition: ProfileLinkItemView.ContainerPosition
+    ) -> some View {
+        ProfileLinkItemView(
+            field: field,
+            destinationURL: destinationURL,
+            variant: .listRow,
+            containerPosition: containerPosition
+        )
+    }
 
-                    if field.verifiedAt != nil {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.roundedCaption2)
-                            .foregroundStyle(.green)
-                    }
-                }
-
-                Text(field.decodedValue.htmlStripped)
-                    .font(.roundedSubheadline)
-                    .foregroundStyle(destinationURL == nil ? .secondary : .primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer(minLength: 8)
-
-            Image(systemName: destinationURL == nil ? "link.slash" : "arrow.up.right.square")
-                .font(.roundedCaption)
-                .foregroundStyle(.tertiary)
+    private func containerPosition(for index: Int) -> ProfileLinkItemView.ContainerPosition {
+        if fields.count == 1 {
+            return .single
         }
-        .contentShape(Rectangle())
+        if index == 0 {
+            return .top
+        }
+        if index == fields.count - 1 {
+            return .bottom
+        }
+        return .middle
     }
 }
