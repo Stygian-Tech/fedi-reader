@@ -24,7 +24,6 @@ struct LinkStatusRow: View {
     @Environment(\.openURL) private var openURL
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
-    @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
     @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
 
@@ -36,10 +35,6 @@ struct LinkStatusRow: View {
     @State private var localBookmarked: Bool?
     @State private var isManagingLists = false
 
-    private var themeColor: Color {
-        ThemeColor(rawValue: themeColorName)?.color ?? .blue
-    }
-    
     private var isBookmarked: Bool {
         localBookmarked ?? linkStatus.status.displayStatus.bookmarked ?? false
     }
@@ -59,7 +54,7 @@ struct LinkStatusRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if linkStatus.status.isReblog {
-                reblogGradientStrip
+                boostAttributionChip
             }
 
             authorHeader
@@ -115,49 +110,12 @@ struct LinkStatusRow: View {
         }
     }
 
-    private var reblogGradientStrip: some View {
-        let reblogger = linkStatus.status.account
-        return HStack(spacing: 8) {
-            ProfileAvatarView(url: reblogger.avatarURL, size: 24, placeholderStyle: .light)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.2.squarepath")
-                        .font(.roundedCaption2)
-
-                    Text("Boosted by")
-                        .font(.roundedCaption)
-                }
-
-                HStack(spacing: 4) {
-                    EmojiText(text: reblogger.displayName, emojis: reblogger.emojis, font: .roundedCaption.bold())
-                        .lineLimit(1)
-
-                    AccountBadgesView(account: reblogger, size: .small)
-                }
+    private var boostAttributionChip: some View {
+        BoostAttributionChip(account: linkStatus.status.account) {
+            deferPostNavigation {
+                appState.navigate(to: .profile(linkStatus.status.account))
             }
-            .foregroundStyle(.white)
-
-            Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            LinearGradient(
-                colors: [
-                    themeColor.opacity(0.35),
-                    themeColor.opacity(0.20),
-                    themeColor.opacity(0.10),
-                    themeColor.opacity(0.05),
-                    Color.clear
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .contentShape(Rectangle())
     }
 
     private var authorHeader: some View {
