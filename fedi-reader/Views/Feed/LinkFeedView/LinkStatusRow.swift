@@ -324,88 +324,39 @@ struct LinkStatusRow: View {
                 ?? effectiveAuthorAttribution?.preferredName
                 ?? "Author"
             let profilePictureURL = effectiveAuthorAttribution?.profilePictureURL.flatMap { URL(string: $0) }
-            if authorURL != nil {
+            let isMastodon = effectiveAuthorAttribution?.mastodonHandle != nil
+                || effectiveAuthorAttribution?.mastodonProfileURL != nil
+            let showNav = authorURL != nil || effectiveAuthorAttribution?.mastodonHandle != nil
+
+            if showNav {
                 Button {
                     deferPostNavigation {
                         handleAuthorAttributionNavigation()
                     }
                 } label: {
-                    authorAttributionContent(
+                    AuthorAttributionView(
                         authorName: authorName,
-                        profilePictureURL: profilePictureURL,
-                        mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
-                        showNavigationIcon: true
-                    )
-                }
-                .buttonStyle(.plain)
-            } else if effectiveAuthorAttribution?.mastodonHandle != nil {
-                Button {
-                    deferPostNavigation {
-                        handleAuthorAttributionNavigation()
-                    }
-                } label: {
-                    authorAttributionContent(
-                        authorName: authorName,
-                        profilePictureURL: profilePictureURL,
-                        mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
-                        showNavigationIcon: true
+                        isMastodonAttribution: isMastodon,
+                        style: .block(
+                            profilePictureURL: profilePictureURL,
+                            mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
+                            showNavigationIcon: true
+                        )
                     )
                 }
                 .buttonStyle(.plain)
             } else {
-                authorAttributionContent(
+                AuthorAttributionView(
                     authorName: authorName,
-                    profilePictureURL: profilePictureURL,
-                    mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
-                    showNavigationIcon: false
+                    isMastodonAttribution: isMastodon,
+                    style: .block(
+                        profilePictureURL: profilePictureURL,
+                        mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
+                        showNavigationIcon: false
+                    )
                 )
             }
         }
-    }
-    
-    private func authorAttributionContent(
-        authorName: String,
-        profilePictureURL: URL?,
-        mastodonHandle: String?,
-        showNavigationIcon: Bool
-    ) -> some View {
-        HStack(spacing: 10) {
-            // Profile picture or fallback icon
-            if let profilePictureURL {
-                ProfileAvatarView(url: profilePictureURL, size: 36, usePersonIconForFallback: true)
-            } else {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(.secondary)
-            }
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Author")
-                    .font(.roundedCaption2)
-                    .foregroundStyle(.secondary)
-                
-                Text(authorName)
-                    .font(.roundedSubheadline.bold())
-                    .lineLimit(1)
-                
-                if let mastodonHandle {
-                    Text(mastodonHandle)
-                        .font(.roundedCaption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
-            
-            Spacer()
-            
-            if showNavigationIcon {
-                Image(systemName: "arrow.up.right.square")
-                    .font(.roundedSubheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(12)
-        .background(Color(.secondarySystemBackground).opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var authorURL: URL? {

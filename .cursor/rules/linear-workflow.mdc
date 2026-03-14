@@ -1,8 +1,6 @@
 ---
-description: Always check for linked Linear issue and follow conventions
+description: Agent instructions — Linear workflow and conventions
 alwaysApply: true
 ---
 
-**First action on any coding request:** Run `git branch --show-current`. If branch contains a Linear ID (e.g. FED-123), use Linear MCP to set issue In Progress and add comments. Do this BEFORE any code edits.
-
-@.agents/rules/linear-workflow.md
+@AGENTS.md

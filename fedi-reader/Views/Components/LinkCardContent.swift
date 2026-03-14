@@ -15,6 +15,7 @@ struct LinkCardContent: View {
     let providerDisplay: String
     let authorName: String?
     let authorURL: URL?
+    var isMastodonAttribution: Bool = false
     var showLinkIcon: Bool = false
 
     var body: some View {
@@ -71,16 +72,11 @@ struct LinkCardContent: View {
 
                         if let authorURL {
                             Link(destination: authorURL) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "person.crop.circle")
-                                        .font(.roundedCaption2)
-                                    Text(authorName)
-                                        .font(.roundedCaption)
-                                        .lineLimit(1)
-                                }
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color(.tertiarySystemBackground), in: Capsule())
+                                AuthorAttributionView(
+                                    authorName: authorName,
+                                    isMastodonAttribution: isMastodonAttribution,
+                                    style: .chip
+                                )
                             }
                             .buttonStyle(.plain)
                         } else {
@@ -110,6 +106,7 @@ extension LinkCardContent {
         providerDisplay = link.decodedProviderName ?? link.url
         authorName = link.decodedAuthorName
         authorURL = link.authorUrl.flatMap { URL(string: $0) }
+        isMastodonAttribution = false
         showLinkIcon = false
     }
 
@@ -132,6 +129,8 @@ extension LinkCardContent {
             authorName = nil
             authorURL = nil
         }
+        isMastodonAttribution = authorAttribution?.mastodonHandle != nil
+            || authorAttribution?.mastodonProfileURL != nil
         showLinkIcon = true
     }
 }

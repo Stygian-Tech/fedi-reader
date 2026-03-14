@@ -403,21 +403,17 @@ struct StatusRowView: View {
                             ?? authorAttribution?.preferredName
                             ?? card.decodedAuthorName
                             ?? (authorLink != nil ? "Author" : nil)
+                        let isMastodonAuthor = authorAttribution?.mastodonHandle != nil
+                            || authorAttribution?.mastodonProfileURL != nil
+                            || authorLink.flatMap { MastodonProfileReference.acct(from: $0) } != nil
 
                         if let authorURL = authorLink {
                             Link(destination: authorURL) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "person.crop.circle")
-                                        .font(.roundedCaption)
-                                    
-                                    Text(authorDisplayName ?? "Author")
-                                        .font(.roundedCaption)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.8)
-                                }
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color(.tertiarySystemBackground), in: Capsule())
+                                AuthorAttributionView(
+                                    authorName: authorDisplayName ?? "Author",
+                                    isMastodonAttribution: isMastodonAuthor,
+                                    style: .chip
+                                )
                             }
                             .buttonStyle(.plain)
                             .environment(\.openURL, authorLinkOpenURLAction)
