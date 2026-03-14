@@ -361,7 +361,7 @@ struct LinkFeedContentView: View {
             }
             return currentTab.isHome
                 ? (timelineService?.canLoadMoreHomeTimeline() ?? false)
-                : (timelineService?.canLoadMoreListTimeline() ?? false)
+                : (timelineService?.canLoadMoreListTimeline(listId: currentTab.id) ?? false)
         }()
         return LinkFeedPostList(
             statuses: statuses,
@@ -544,15 +544,7 @@ struct LinkFeedContentView: View {
         guard !isPaginating, !service.isLoadingMore else { return }
 
         let tab = currentTab
-        let canLoadMore: Bool = {
-            if tab.id == AppState.bookmarksFeedID { return service.canLoadMoreBookmarks() }
-            if tab.id.hasPrefix("hashtag:") {
-                let tagName = String(tab.id.dropFirst("hashtag:".count))
-                return service.canLoadMoreHashtagTimeline(tag: tagName)
-            }
-            return tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
-        }()
-        guard canLoadMore else { return }
+        guard canLoadMore(for: tab, using: service) else { return }
 
         isPaginating = true
         Task {
@@ -597,7 +589,8 @@ struct LinkFeedContentView: View {
         syncAppStateSelectionToCurrentTab()
         linkFilterService.switchToFeed(currentTab.id)
 
-        if linkFilterService.hasCachedContent(for: currentTab.id) {
+        let hasPreparedFeedState = service.hasPreparedLinkFeedState(feedId: currentTab.id)
+        if linkFilterService.hasCachedContent(for: currentTab.id) && hasPreparedFeedState {
             Task {
                 await linkFilterService.enrichWithAttributions()
             }
@@ -617,14 +610,22 @@ struct LinkFeedContentView: View {
 
         linkFilterService.switchToFeed(tab.id)
         let statuses = await service.loadLinkFeedStatuses(feedId: tab.id, forceRefreshHome: forceRefresh)
-        _ = await linkFilterService.processStatuses(statuses, for: tab.id)
+        _ = await linkFilterService.processStatusesEnsuringVisibleContent(
+            statuses,
+            for: tab.id,
+            canLoadMore: { canLoadMore(for: tab, using: service) },
+            loadMoreStatuses: { await loadMoreStatuses(for: tab, using: service) }
+        )
         Task {
             await linkFilterService.enrichWithAttributions()
         }
     }
 
     private func loadContentForTabIfNeeded(_ tab: FeedTabItem) async {
-        guard !linkFilterService.hasCachedContent(for: tab.id) else { return }
+        guard let service = timelineService else { return }
+        let hasCachedContent = linkFilterService.hasCachedContent(for: tab.id)
+        let hasPreparedFeedState = service.hasPreparedLinkFeedState(feedId: tab.id)
+        guard !hasCachedContent || !hasPreparedFeedState else { return }
         await loadContentForTab(tab)
     }
 
@@ -640,21 +641,29 @@ struct LinkFeedContentView: View {
     private func refreshCurrentFeed() async {
         guard let service = timelineService else { return }
         let tab = currentTab
+        let statuses: [Status]
 
         if tab.id == AppState.bookmarksFeedID {
             await service.refreshBookmarks()
-            _ = await linkFilterService.processStatuses(service.bookmarks, for: tab.id)
+            statuses = service.bookmarks
         } else if tab.id.hasPrefix("hashtag:") {
             let tagName = String(tab.id.dropFirst("hashtag:".count))
             await service.refreshHashtagTimeline(tag: tagName)
-            _ = await linkFilterService.processStatuses(service.hashtagTimeline, for: tab.id)
+            statuses = service.hashtagTimeline
         } else if tab.isHome {
             await service.refreshHomeTimeline()
-            _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
+            statuses = service.homeTimeline
         } else {
             await service.refreshListTimeline(listId: tab.id)
-            _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
+            statuses = service.listTimeline
         }
+
+        _ = await linkFilterService.processStatusesEnsuringVisibleContent(
+            statuses,
+            for: tab.id,
+            canLoadMore: { canLoadMore(for: tab, using: service) },
+            loadMoreStatuses: { await loadMoreStatuses(for: tab, using: service) }
+        )
         Task {
             await linkFilterService.enrichWithAttributions()
         }
@@ -674,39 +683,40 @@ struct LinkFeedContentView: View {
     private func loadMoreForCurrentTab(_ tab: FeedTabItem, using service: TimelineService) async {
         defer { isPaginating = false }
 
-        let loadMore: () async -> [Status] = {
-            if tab.id == AppState.bookmarksFeedID {
-                return await service.loadMoreBookmarks()
-            }
-            if tab.id.hasPrefix("hashtag:") {
-                let tagName = String(tab.id.dropFirst("hashtag:".count))
-                return await service.loadMoreHashtagTimeline(tag: tagName)
-            }
-            if tab.isHome {
-                return await service.loadMoreHomeTimeline()
-            }
-            return await service.loadMoreListTimeline(listId: tab.id)
-        }
-        let canLoadMore: () -> Bool = {
-            if tab.id == AppState.bookmarksFeedID { return service.canLoadMoreBookmarks() }
-            if tab.id.hasPrefix("hashtag:") {
-                let tagName = String(tab.id.dropFirst("hashtag:".count))
-                return service.canLoadMoreHashtagTimeline(tag: tagName)
-            }
-            return tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
-        }
+        let newStatuses = await loadMoreStatuses(for: tab, using: service)
+        guard !newStatuses.isEmpty else { return }
 
-        // Keep fetching until we add link posts or exhaust the API (link feed can get batches with 0 links)
-        var previousLinkCount = linkFilterService.getCachedContent(for: tab.id).count
-        while canLoadMore() {
-            let newStatuses = await loadMore()
-            guard !newStatuses.isEmpty else { break }
+        _ = await linkFilterService.appendStatusesEnsuringAdditionalContent(
+            newStatuses,
+            for: tab.id,
+            canLoadMore: { canLoadMore(for: tab, using: service) },
+            loadMoreStatuses: { await loadMoreStatuses(for: tab, using: service) }
+        )
+    }
 
-            _ = await linkFilterService.appendStatuses(newStatuses, for: tab.id)
-            let newLinkCount = linkFilterService.getCachedContent(for: tab.id).count
-            if newLinkCount > previousLinkCount { break }
-            previousLinkCount = newLinkCount
+    private func canLoadMore(for tab: FeedTabItem, using service: TimelineService) -> Bool {
+        if tab.id == AppState.bookmarksFeedID {
+            return service.canLoadMoreBookmarks()
         }
+        if tab.id.hasPrefix("hashtag:") {
+            let tagName = String(tab.id.dropFirst("hashtag:".count))
+            return service.canLoadMoreHashtagTimeline(tag: tagName)
+        }
+        return tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline(listId: tab.id)
+    }
+
+    private func loadMoreStatuses(for tab: FeedTabItem, using service: TimelineService) async -> [Status] {
+        if tab.id == AppState.bookmarksFeedID {
+            return await service.loadMoreBookmarks()
+        }
+        if tab.id.hasPrefix("hashtag:") {
+            let tagName = String(tab.id.dropFirst("hashtag:".count))
+            return await service.loadMoreHashtagTimeline(tag: tagName)
+        }
+        if tab.isHome {
+            return await service.loadMoreHomeTimeline()
+        }
+        return await service.loadMoreListTimeline(listId: tab.id)
     }
 
     // MARK: - Scroll Position Preservation

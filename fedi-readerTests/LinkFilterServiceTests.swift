@@ -71,6 +71,65 @@ struct LinkFilterServiceTests {
         #expect(filtered.count == 1)
         #expect(filtered.first?.id == "1")
     }
+
+    @Test("Includes external preview cards regardless of card type")
+    func includesExternalPreviewCardsRegardlessOfCardType() async {
+        let photoCard = MockStatusFactory.makeStatus(
+            id: "photo-card",
+            hasCard: true,
+            cardURL: "https://example.com/photo-story",
+            cardType: .photo
+        )
+        let richCard = MockStatusFactory.makeStatus(
+            id: "rich-card",
+            hasCard: true,
+            cardURL: "https://example.com/rich-story",
+            cardType: .rich
+        )
+
+        let linkStatuses = await service.processStatuses([photoCard, richCard])
+
+        #expect(linkStatuses.count == 2)
+        #expect(linkStatuses.contains { $0.id == "photo-card" && $0.primaryURL.absoluteString == "https://example.com/photo-story" })
+        #expect(linkStatuses.contains { $0.id == "rich-card" && $0.primaryURL.absoluteString == "https://example.com/rich-story" })
+    }
+
+    @Test("Falls back to plain text links when no anchor tags exist")
+    func fallsBackToPlainTextLinksWhenNoAnchorTagsExist() async {
+        let status = MockStatusFactory.makeStatus(
+            id: "plain-text-url",
+            content: "<p>Read this next: https://example.com/plain-text-story</p>"
+        )
+
+        let linkStatuses = await service.processStatuses([status])
+
+        #expect(linkStatuses.count == 1)
+        #expect(linkStatuses.first?.id == "plain-text-url")
+        #expect(linkStatuses.first?.primaryURL.absoluteString == "https://example.com/plain-text-story")
+    }
+
+    @Test("Excludes statuses that only contain internal Mastodon URLs")
+    func excludesStatusesThatOnlyContainInternalMastodonURLs() async {
+        let internalCardStatus = MockStatusFactory.makeStatus(
+            id: "internal-card",
+            hasCard: true,
+            cardURL: "https://mastodon.social/@testuser/123456"
+        )
+        let internalContentStatus = MockStatusFactory.makeStatus(
+            id: "internal-content",
+            content: """
+            <p>
+            <a href="https://mastodon.social/@someone">profile</a>
+            <a href="https://mastodon.social/tags/swift">tag</a>
+            <a href="https://mastodon.social/@someone/999">status</a>
+            </p>
+            """
+        )
+
+        let linkStatuses = await service.processStatuses([internalCardStatus, internalContentStatus])
+
+        #expect(linkStatuses.isEmpty)
+    }
     
     // MARK: - Quote Post Detection
     
@@ -109,6 +168,23 @@ struct LinkFilterServiceTests {
         #expect(links.count == 2)
         #expect(links.contains { $0.absoluteString == "https://example.com/article1" })
         #expect(links.contains { $0.absoluteString == "https://other.com/article2" })
+    }
+
+    @Test("Plain text fallback only runs when anchor links are absent")
+    func plainTextFallbackOnlyRunsWhenAnchorLinksAreAbsent() async {
+        let status = MockStatusFactory.makeStatus(
+            content: """
+            <p>
+            Anchor first <a href="https://example.com/anchor-story">story</a>
+            then https://example.com/plain-text-story
+            </p>
+            """
+        )
+
+        let links = service.extractExternalLinks(from: status)
+
+        #expect(links.count == 1)
+        #expect(links.first?.absoluteString == "https://example.com/anchor-story")
     }
     
     // MARK: - Processing
@@ -370,6 +446,96 @@ struct LinkFilterServiceTests {
         #expect(linkStatuses.count == 1)
         #expect(linkStatuses.first?.id == "article")
         #expect(linkStatuses.first?.primaryURL.absoluteString == "https://example.com/article")
+    }
+
+    @Test("Processes list batches with retrievable links even when no cards are typed as link")
+    func processesListBatchesWithRetrievableLinksWhenNoCardsAreTypedAsLink() async {
+        let statuses = [
+            MockStatusFactory.makeStatus(
+                id: "photo-card",
+                hasCard: true,
+                cardURL: "https://example.com/photo-story",
+                cardType: .photo
+            ),
+            MockStatusFactory.makeStatus(
+                id: "rich-card",
+                hasCard: true,
+                cardURL: "https://example.com/rich-story",
+                cardType: .rich
+            ),
+            MockStatusFactory.makeStatus(
+                id: "plain-text",
+                content: "<p>Context https://example.com/plain-text-story</p>"
+            )
+        ]
+
+        let linkStatuses = await service.processStatuses(statuses, for: "list-3")
+
+        #expect(linkStatuses.count == 3)
+        #expect(linkStatuses.map(\.id) == ["photo-card", "rich-card", "plain-text"])
+    }
+
+    @Test("Processes older pages until empty feeds gain visible content")
+    func processesOlderPagesUntilEmptyFeedsGainVisibleContent() async {
+        let initialStatuses = [
+            MockStatusFactory.makeStatus(id: "no-link-1", content: "<p>No external links here</p>")
+        ]
+        let olderStatuses = [
+            MockStatusFactory.makeStatus(
+                id: "older-link",
+                hasCard: true,
+                cardURL: "https://example.com/older-story"
+            )
+        ]
+        var remainingPages = [olderStatuses]
+
+        let linkStatuses = await service.processStatusesEnsuringVisibleContent(
+            initialStatuses,
+            for: "list-older",
+            canLoadMore: { !remainingPages.isEmpty },
+            loadMoreStatuses: { remainingPages.removeFirst() }
+        )
+
+        #expect(linkStatuses.count == 1)
+        #expect(linkStatuses.first?.id == "older-link")
+        #expect(remainingPages.isEmpty)
+    }
+
+    @Test("Appends older pages until pagination yields additional visible content")
+    func appendsOlderPagesUntilPaginationYieldsAdditionalVisibleContent() async {
+        _ = await service.processStatuses(
+            [
+                MockStatusFactory.makeStatus(
+                    id: "existing-link",
+                    hasCard: true,
+                    cardURL: "https://example.com/existing-story"
+                )
+            ],
+            for: "list-pagination"
+        )
+
+        let firstPaginationBatch = [
+            MockStatusFactory.makeStatus(id: "no-link-page", content: "<p>Still no links</p>")
+        ]
+        let olderStatuses = [
+            MockStatusFactory.makeStatus(
+                id: "older-link",
+                hasCard: true,
+                cardURL: "https://example.com/older-story"
+            )
+        ]
+        var remainingPages = [olderStatuses]
+
+        let linkStatuses = await service.appendStatusesEnsuringAdditionalContent(
+            firstPaginationBatch,
+            for: "list-pagination",
+            canLoadMore: { !remainingPages.isEmpty },
+            loadMoreStatuses: { remainingPages.removeFirst() }
+        )
+
+        #expect(linkStatuses.count == 2)
+        #expect(linkStatuses.map(\.id) == ["existing-link", "older-link"])
+        #expect(remainingPages.isEmpty)
     }
 
     @Test("Excludes Threads and Instagram subdomains and bare domains")

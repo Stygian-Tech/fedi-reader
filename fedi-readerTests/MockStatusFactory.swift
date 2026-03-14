@@ -7,6 +7,7 @@ enum MockStatusFactory {
         content: String = "<p>Test post content</p>",
         hasCard: Bool = false,
         cardURL: String? = nil,
+        cardType: CardType = .link,
         cardTitle: String? = nil,
         uri: String? = nil,
         url: String? = nil,
@@ -29,7 +30,7 @@ enum MockStatusFactory {
                 url: url,
                 title: cardTitle ?? "Test Article",
                 description: "Test description",
-                type: .link,
+                type: cardType,
                 authorName: "Test Author",
                 authorUrl: nil,
                 providerName: "test.com",
@@ -185,6 +186,7 @@ class MockURLProtocol: URLProtocol {
     static var mockResponses: [String: (Data, HTTPURLResponse)] = [:]
     static var queuedResponses: [String: [(Data, HTTPURLResponse)]] = [:]
     static var mockErrors: [String: Error] = [:]
+    static var responseDelays: [String: TimeInterval] = [:]
     static var requestCounts: [String: Int] = [:]
     static var lastRequest: URLRequest?
     private static let lock = NSLock()
@@ -218,7 +220,12 @@ class MockURLProtocol: URLProtocol {
             }
         }
         let mockResponse = queuedResponse ?? Self.mockResponses[url]
+        let responseDelay = Self.responseDelays[url] ?? 0
         Self.lock.unlock()
+
+        if responseDelay > 0 {
+            Thread.sleep(forTimeInterval: responseDelay)
+        }
         
         if let error {
             client?.urlProtocol(self, didFailWithError: error)
@@ -241,6 +248,7 @@ class MockURLProtocol: URLProtocol {
         mockResponses.removeAll()
         queuedResponses.removeAll()
         mockErrors.removeAll()
+        responseDelays.removeAll()
         requestCounts.removeAll()
         lastRequest = nil
     }
@@ -287,6 +295,12 @@ class MockURLProtocol: URLProtocol {
         lock.lock()
         defer { lock.unlock() }
         mockErrors[url] = error
+    }
+
+    static func setResponseDelay(for url: String, seconds: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        responseDelays[url] = seconds
     }
 
     static func requestCount(for url: String) -> Int {

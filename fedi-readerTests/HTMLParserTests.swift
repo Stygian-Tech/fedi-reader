@@ -112,6 +112,19 @@ struct HTMLParserTests {
         #expect(links.count == 1)
         #expect(links.first?.host == "external.com")
     }
+
+    @Test("Extracts plain text links after stripping HTML")
+    func extractsPlainTextLinksAfterStrippingHTML() {
+        let html = """
+        <p>Read https://example.com/story and https://other.com/deep-dive for more.</p>
+        """
+
+        let links = HTMLParser.extractPlainTextLinks(from: html)
+
+        #expect(links.count == 2)
+        #expect(links.contains { $0.absoluteString == "https://example.com/story" })
+        #expect(links.contains { $0.absoluteString == "https://other.com/deep-dive" })
+    }
     
     // MARK: - HTML Stripping
     

@@ -202,7 +202,7 @@ struct Status: Codable, Identifiable, Hashable, Sendable {
     }
     
     nonisolated var hasLinkCard: Bool {
-        card?.type == .link
+        card?.linkURL != nil
     }
     
     nonisolated var cardURL: URL? {
@@ -212,4 +212,3 @@ struct Status: Codable, Identifiable, Hashable, Sendable {
 }
 
 // MARK: - IndirectStatus wrapper for recursive Status references
-

@@ -95,6 +95,21 @@ struct HTMLParser: Sendable {
             return true
         }
     }
+
+    /// Extracts HTTP(S) URLs that appear as plain text after HTML tags are stripped.
+    nonisolated static func extractPlainTextLinks(from html: String) -> [URL] {
+        let plainText = stripHTML(html)
+        guard !plainText.isEmpty,
+              let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+            return []
+        }
+
+        let range = NSRange(plainText.startIndex..., in: plainText)
+        return detector.matches(in: plainText, options: [], range: range).compactMap { match in
+            guard let url = match.url, isExternalURL(url) else { return nil }
+            return url
+        }
+    }
     
     // MARK: - HTML to Plain Text
     

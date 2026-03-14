@@ -111,38 +111,38 @@ struct LinkStatusRow: View {
     }
 
     private var boostAttributionChip: some View {
-        BoostAttributionChip(account: linkStatus.status.account) {
-            deferPostNavigation {
-                appState.navigate(to: .profile(linkStatus.status.account))
-            }
+        NavigationLink(value: NavigationDestination.profile(linkStatus.status.account)) {
+            BoostAttributionChip(account: linkStatus.status.account)
         }
+        .buttonStyle(.plain)
+        .allowsHitTesting(!shouldIgnoreTap())
     }
 
     private var authorHeader: some View {
         HStack(spacing: 10) {
-            Button {
-                deferPostNavigation {
-                    appState.navigate(to: .profile(linkStatus.status.displayStatus.account))
+            NavigationLink(value: NavigationDestination.profile(linkStatus.status.displayStatus.account)) {
+                HStack(spacing: 10) {
+                    ProfileAvatarView(url: linkStatus.status.displayStatus.account.avatarURL, size: Constants.UI.avatarSize)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            EmojiText(text: linkStatus.status.displayStatus.account.displayName, emojis: linkStatus.status.displayStatus.account.emojis, font: .roundedSubheadline.bold())
+                                .lineLimit(1)
+
+                            AccountBadgesView(account: linkStatus.status.displayStatus.account, size: .small)
+                        }
+                        if showHandleInFeed {
+                            Text("@\(linkStatus.status.displayStatus.account.acct)")
+                                .font(.roundedCaption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
                 }
-            } label: {
-                ProfileAvatarView(url: linkStatus.status.displayStatus.account.avatarURL, size: Constants.UI.avatarSize)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    EmojiText(text: linkStatus.status.displayStatus.account.displayName, emojis: linkStatus.status.displayStatus.account.emojis, font: .roundedSubheadline.bold())
-                        .lineLimit(1)
-
-                    AccountBadgesView(account: linkStatus.status.displayStatus.account, size: .small)
-                }
-                if showHandleInFeed {
-                    Text("@\(linkStatus.status.displayStatus.account.acct)")
-                        .font(.roundedCaption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
+            .allowsHitTesting(!shouldIgnoreTap())
 
             Spacer()
 
@@ -287,22 +287,11 @@ struct LinkStatusRow: View {
             let showNav = authorURL != nil || effectiveAuthorAttribution?.mastodonHandle != nil
 
             if showNav {
-                Button {
-                    deferPostNavigation {
-                        handleAuthorAttributionNavigation()
-                    }
-                } label: {
-                    AuthorAttributionView(
-                        authorName: authorName,
-                        isMastodonAttribution: isMastodon,
-                        style: .block(
-                            profilePictureURL: profilePictureURL,
-                            mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
-                            showNavigationIcon: true
-                        )
-                    )
-                }
-                .buttonStyle(.plain)
+                authorAttributionNavigationView(
+                    authorName: authorName,
+                    profilePictureURL: profilePictureURL,
+                    isMastodon: isMastodon
+                )
             } else {
                 AuthorAttributionView(
                     authorName: authorName,
@@ -371,6 +360,83 @@ struct LinkStatusRow: View {
                     openURL(authorURL)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func authorAttributionNavigationView(
+        authorName: String,
+        profilePictureURL: URL?,
+        isMastodon: Bool
+    ) -> some View {
+        let attributionView = AuthorAttributionView(
+            authorName: authorName,
+            isMastodonAttribution: isMastodon,
+            style: .block(
+                profilePictureURL: profilePictureURL,
+                mastodonHandle: effectiveAuthorAttribution?.mastodonHandle,
+                showNavigationIcon: true
+            )
+        )
+
+        if let authorURL {
+            Link(destination: authorURL) {
+                attributionView
+            }
+            .buttonStyle(.plain)
+            .environment(\.openURL, authorLinkOpenURLAction)
+            .allowsHitTesting(!shouldIgnoreTap())
+        } else {
+            Button {
+                guard !shouldIgnoreTap() else { return }
+                deferPostNavigation {
+                    handleAuthorAttributionNavigation()
+                }
+            } label: {
+                attributionView
+            }
+            .buttonStyle(.plain)
+            .allowsHitTesting(!shouldIgnoreTap())
+        }
+    }
+
+    private var authorLinkOpenURLAction: OpenURLAction {
+        OpenURLAction { url in
+            guard !shouldIgnoreTap() else {
+                return .handled
+            }
+
+            guard MastodonProfileReference.acct(handle: effectiveAuthorAttribution?.mastodonHandle, profileURL: url) != nil else {
+                return .systemAction(url)
+            }
+
+            Task {
+                let account = if let resolvedMastodonAccount {
+                    resolvedMastodonAccount
+                } else {
+                    await appState.client.resolveProfileAccount(
+                        handle: effectiveAuthorAttribution?.mastodonHandle,
+                        profileURL: url
+                    )
+                }
+
+                if let account {
+                    await MainActor.run {
+                        resolvedMastodonAccount = account
+                        deferPostNavigation {
+                            appState.navigate(to: .profile(account))
+                        }
+                    }
+                } else {
+                    await MainActor.run {
+                        deferPostNavigation {
+                            openURL(url)
+                        }
+                    }
+                }
+            }
+
+            return .handled
         }
     }
 

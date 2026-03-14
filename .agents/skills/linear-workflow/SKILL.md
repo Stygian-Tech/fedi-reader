@@ -5,7 +5,7 @@ description: ALWAYS check for linked Linear issue and follow conventions before 
 
 # Linear Workflow
 
-**MANDATORY:** Linear is the source of truth, not GitHub. Check for a linked Linear issue before starting work. Linear–GitHub integration depends on correct branch names and issue updates.
+**MANDATORY:** Linear is the source of truth for planning, implementation status, blockers, and verification, not GitHub. Check for a linked Linear issue before starting work, and keep it current throughout the task. Linear–GitHub integration depends on correct branch names and issue updates.
 
 ## When to Use (invoke this skill FIRST)
 
@@ -32,7 +32,13 @@ description: ALWAYS check for linked Linear issue and follow conventions before 
 
 7. **Add comments as you work** via `save_comment`—implementations, decisions, blockers.
 
-8. **Do not mark Done**—let Linear–GitHub integration set Done when the PR is merged.
+8. **Keep Linear current continuously**. If scope, status, blockers, implementation details, or verification results change, update the issue before continuing.
+
+9. **Handle newly discovered bugs explicitly**. If the current branch introduced the regression, keep the fix on the current parent issue and document it there. If the bug was not introduced by the current branch, create a Linear sub-issue under the current issue and note that split on the parent issue before continuing. If the issue was discovered by an agent while working another task, apply the `Source/Agent` label.
+
+10. **If work is tracked in a sub-issue, comment there**. Put the plan, implementation progress, blockers, verification notes, and completion summary on the sub-issue itself. Use the parent issue only for the split note and high-level coordination.
+
+11. **Do not mark Done**—let Linear–GitHub integration set Done when the PR is merged.
 
 If no Linear issue exists (e.g. branch is `main` or doesn’t match patterns), proceed without Linear updates—but **always check first**.
 

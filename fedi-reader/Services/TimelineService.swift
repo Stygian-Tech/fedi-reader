@@ -36,6 +36,7 @@ final class TimelineService {
     var hashtagTimeline: [Status] = []
     private var hashtagTimelineMaxId: String?
     private var hashtagTimelineTag: String?
+    private var loadingHashtagTimelineTag: String?
     
     // Loading state
     var isLoadingHome = false
@@ -58,11 +59,15 @@ final class TimelineService {
     private var mentionsMaxId: String?
     private var conversationsMaxId: String?
     private var listTimelineMaxId: String?
+    private var listTimelineFeedId: String?
     private var followedTagsMaxId: String?
     private var listAccountsMaxId: String?
     private var listsLastRefreshedAt: Date?
     private var listsLastRefreshedForAccountId: String?
     private var listLoadWaiters: [CheckedContinuation<Void, Never>] = []
+    private var listTimelineLoadWaiters: [CheckedContinuation<Void, Never>] = []
+    private var hashtagTimelineLoadWaiters: [CheckedContinuation<Void, Never>] = []
+    private var loadingListTimelineFeedId: String?
     
     /// Polling tasks for async refresh, keyed by status ID. Cancelled when starting a new refresh for same status or via cancelAsyncRefreshPolling.
     private var asyncRefreshPollingTasks: [String: Task<Void, Never>] = [:]
@@ -266,6 +271,17 @@ final class TimelineService {
         bookmarksMaxId != nil
     }
 
+    func hasPreparedLinkFeedState(feedId: String) -> Bool {
+        if feedId == AppState.homeFeedID || feedId == AppState.bookmarksFeedID {
+            return true
+        }
+        if feedId.hasPrefix("hashtag:") {
+            let tagName = String(feedId.dropFirst("hashtag:".count))
+            return hashtagTimelineTag == tagName
+        }
+        return listTimelineFeedId == feedId
+    }
+
     func loadLinkFeedStatuses(feedId: String, forceRefreshHome: Bool = false) async -> [Status] {
         if feedId == AppState.homeFeedID {
             if forceRefreshHome || homeTimeline.isEmpty {
@@ -286,7 +302,7 @@ final class TimelineService {
         }
 
         await refreshListTimeline(listId: feedId)
-        return listTimeline
+        return listTimelineFeedId == feedId ? listTimeline : []
     }
 
     func prefetchLinkFeedStatuses(feedId: String) async -> [Status] {
@@ -1114,9 +1130,12 @@ final class TimelineService {
         mentionsMaxId = nil
         conversationsMaxId = nil
         listTimelineMaxId = nil
+        listTimelineFeedId = nil
+        loadingListTimelineFeedId = nil
         listAccountsMaxId = nil
         hashtagTimelineMaxId = nil
         hashtagTimelineTag = nil
+        loadingHashtagTimelineTag = nil
         followedTagsMaxId = nil
     }
     
@@ -1134,6 +1153,40 @@ final class TimelineService {
         guard !listLoadWaiters.isEmpty else { return }
         let waiters = listLoadWaiters
         listLoadWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    private func waitForInFlightListTimelineLoad() async {
+        guard isLoadingListTimeline else { return }
+
+        await withCheckedContinuation { continuation in
+            listTimelineLoadWaiters.append(continuation)
+        }
+    }
+
+    private func resumeListTimelineLoadWaiters() {
+        guard !listTimelineLoadWaiters.isEmpty else { return }
+        let waiters = listTimelineLoadWaiters
+        listTimelineLoadWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    private func waitForInFlightHashtagTimelineLoad() async {
+        guard isLoadingHashtagTimeline else { return }
+
+        await withCheckedContinuation { continuation in
+            hashtagTimelineLoadWaiters.append(continuation)
+        }
+    }
+
+    private func resumeHashtagTimelineLoadWaiters() {
+        guard !hashtagTimelineLoadWaiters.isEmpty else { return }
+        let waiters = hashtagTimelineLoadWaiters
+        hashtagTimelineLoadWaiters.removeAll()
         for waiter in waiters {
             waiter.resume()
         }
@@ -1311,9 +1364,14 @@ final class TimelineService {
     }
     
     func loadListTimeline(listId: String, refresh: Bool = false) async {
-        guard !isLoadingListTimeline else {
-            Self.logger.debug("List timeline load already in progress, skipping")
-            return
+        while isLoadingListTimeline {
+            let currentlyLoadingFeedId = loadingListTimelineFeedId
+            Self.logger.debug("List timeline load already in progress, waiting")
+            await waitForInFlightListTimelineLoad()
+
+            if currentlyLoadingFeedId == listId {
+                return
+            }
         }
         
         guard let account = authService.currentAccount,
@@ -1325,7 +1383,13 @@ final class TimelineService {
         
         Self.logger.info("Loading list timeline \(listId.prefix(8), privacy: .public), refresh: \(refresh), current count: \(self.listTimeline.count), maxId: \(self.listTimelineMaxId?.prefix(8) ?? "nil", privacy: .public)")
         isLoadingListTimeline = true
+        loadingListTimelineFeedId = listId
         error = nil
+        defer {
+            isLoadingListTimeline = false
+            loadingListTimelineFeedId = nil
+            resumeListTimelineLoadWaiters()
+        }
         
         do {
             let statuses = try await client.getListTimeline(
@@ -1336,11 +1400,13 @@ final class TimelineService {
                 limit: Constants.Pagination.defaultLimit
             )
             
-            if refresh {
+            if refresh || listTimelineFeedId != listId {
                 listTimeline = statuses
+                listTimelineFeedId = listId
                 Self.logger.info("List timeline refreshed: \(statuses.count) statuses")
             } else {
                 listTimeline.append(contentsOf: statuses)
+                listTimelineFeedId = listId
                 Self.logger.info("List timeline loaded more: \(statuses.count) new statuses, total: \(self.listTimeline.count)")
             }
             
@@ -1363,17 +1429,23 @@ final class TimelineService {
             Self.logger.error("Error loading list timeline: \(error.localizedDescription)")
             self.error = error
         }
-        
-        isLoadingListTimeline = false
     }
     
-    func canLoadMoreListTimeline() -> Bool {
-        listTimelineMaxId != nil
+    func canLoadMoreListTimeline(listId: String? = nil) -> Bool {
+        if let listId {
+            return listTimelineFeedId == listId && listTimelineMaxId != nil
+        }
+        return listTimelineMaxId != nil
     }
     
     @discardableResult
     func loadMoreListTimeline(listId: String) async -> [Status] {
-        guard !isLoadingMore, canLoadMoreListTimeline() else { return [] }
+        if listTimelineFeedId != listId {
+            await refreshListTimeline(listId: listId)
+            return listTimelineFeedId == listId ? listTimeline : []
+        }
+
+        guard !isLoadingMore, canLoadMoreListTimeline(listId: listId) else { return [] }
         let previousCount = listTimeline.count
         
         isLoadingMore = true
@@ -1422,7 +1494,15 @@ final class TimelineService {
     }
 
     func loadHashtagTimeline(tag: String, refresh: Bool = false) async {
-        guard !isLoadingHashtagTimeline else { return }
+        while isLoadingHashtagTimeline {
+            let currentlyLoadingTag = loadingHashtagTimelineTag
+            await waitForInFlightHashtagTimelineLoad()
+
+            if currentlyLoadingTag == tag {
+                return
+            }
+        }
+
         let effectiveRefresh = refresh || hashtagTimelineTag != tag
         guard let account = authService.currentAccount,
               let token = await authService.getAccessToken(for: account) else {
@@ -1430,12 +1510,16 @@ final class TimelineService {
             return
         }
         isLoadingHashtagTimeline = true
+        loadingHashtagTimelineTag = tag
         error = nil
         if effectiveRefresh {
             hashtagTimelineMaxId = nil
-            hashtagTimelineTag = tag
         }
-        defer { isLoadingHashtagTimeline = false }
+        defer {
+            isLoadingHashtagTimeline = false
+            loadingHashtagTimelineTag = nil
+            resumeHashtagTimelineLoadWaiters()
+        }
         do {
             let statuses = try await client.getHashtagTimeline(
                 instance: account.instance,
@@ -1545,6 +1629,7 @@ final class TimelineService {
         listTimeline = []
         listAccounts = []
         listTimelineMaxId = nil
+        listTimelineFeedId = nil
         listAccountsMaxId = nil
     }
     
