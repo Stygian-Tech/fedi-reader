@@ -34,9 +34,11 @@ struct MastodonTypesTests {
     @Test("Status correctly identifies link card")
     func statusIdentifiesLinkCard() {
         let withCard = MockStatusFactory.makeStatus(hasCard: true, cardURL: "https://example.com")
+        let withRichCard = MockStatusFactory.makeStatus(hasCard: true, cardURL: "https://example.com/embed", cardType: .rich)
         let withoutCard = MockStatusFactory.makeStatus(hasCard: false)
         
         #expect(withCard.hasLinkCard == true)
+        #expect(withRichCard.hasLinkCard == true)
         #expect(withoutCard.hasLinkCard == false)
     }
     

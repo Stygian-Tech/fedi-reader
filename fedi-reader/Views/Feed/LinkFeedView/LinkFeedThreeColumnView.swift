@@ -334,7 +334,7 @@ struct LinkFeedThreeColumnView: View {
             } else {
                 let canLoadMore = currentTab.isHome
                     ? (timelineService?.canLoadMoreHomeTimeline() ?? false)
-                    : (timelineService?.canLoadMoreListTimeline() ?? false)
+                    : (timelineService?.canLoadMoreListTimeline(listId: currentTab.id) ?? false)
                 LinkFeedPostList(
                     statuses: statuses,
                     isLoading: FeedScopedLinkData.isLoading(in: linkFilterService, feedId: currentTab.id),
@@ -471,8 +471,7 @@ struct LinkFeedThreeColumnView: View {
         guard !isPaginating, !service.isLoadingMore else { return }
 
         let tab = currentTab
-        let canLoadMore = tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
-        guard canLoadMore else { return }
+        guard canLoadMore(for: tab, using: service) else { return }
 
         isPaginating = true
         Task {
@@ -517,7 +516,8 @@ struct LinkFeedThreeColumnView: View {
 
         linkFilterService.switchToFeed(currentTab.id)
 
-        if linkFilterService.hasCachedContent(for: currentTab.id) {
+        let hasPreparedFeedState = service.hasPreparedLinkFeedState(feedId: currentTab.id)
+        if linkFilterService.hasCachedContent(for: currentTab.id) && hasPreparedFeedState {
             Task {
                 await linkFilterService.enrichWithAttributions()
             }
@@ -537,28 +537,44 @@ struct LinkFeedThreeColumnView: View {
 
         linkFilterService.switchToFeed(tab.id)
         let statuses = await service.loadLinkFeedStatuses(feedId: tab.id, forceRefreshHome: forceRefresh)
-        _ = await linkFilterService.processStatuses(statuses, for: tab.id)
+        _ = await linkFilterService.processStatusesEnsuringVisibleContent(
+            statuses,
+            for: tab.id,
+            canLoadMore: { canLoadMore(for: tab, using: service) },
+            loadMoreStatuses: { await loadMoreStatuses(for: tab, using: service) }
+        )
         Task {
             await linkFilterService.enrichWithAttributions()
         }
     }
 
     private func loadContentForTabIfNeeded(_ tab: FeedTabItem) async {
-        guard !linkFilterService.hasCachedContent(for: tab.id) else { return }
+        guard let service = timelineService else { return }
+        let hasCachedContent = linkFilterService.hasCachedContent(for: tab.id)
+        let hasPreparedFeedState = service.hasPreparedLinkFeedState(feedId: tab.id)
+        guard !hasCachedContent || !hasPreparedFeedState else { return }
         await loadContentForTab(tab)
     }
 
     private func refreshCurrentFeed() async {
         guard let service = timelineService else { return }
         let tab = currentTab
+        let statuses: [Status]
 
         if tab.isHome {
             await service.refreshHomeTimeline()
-            _ = await linkFilterService.processStatuses(service.homeTimeline, for: tab.id)
+            statuses = service.homeTimeline
         } else {
             await service.refreshListTimeline(listId: tab.id)
-            _ = await linkFilterService.processStatuses(service.listTimeline, for: tab.id)
+            statuses = service.listTimeline
         }
+
+        _ = await linkFilterService.processStatusesEnsuringVisibleContent(
+            statuses,
+            for: tab.id,
+            canLoadMore: { canLoadMore(for: tab, using: service) },
+            loadMoreStatuses: { await loadMoreStatuses(for: tab, using: service) }
+        )
         Task {
             await linkFilterService.enrichWithAttributions()
         }
@@ -578,28 +594,26 @@ struct LinkFeedThreeColumnView: View {
     private func loadMoreForCurrentTab(_ tab: FeedTabItem, using service: TimelineService) async {
         defer { isPaginating = false }
 
-        let loadMore: () async -> [Status] = {
-            if tab.isHome {
-                return await service.loadMoreHomeTimeline()
-            } else {
-                return await service.loadMoreListTimeline(listId: tab.id)
-            }
-        }
-        let canLoadMore: () -> Bool = {
-            tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline()
-        }
+        let newStatuses = await loadMoreStatuses(for: tab, using: service)
+        guard !newStatuses.isEmpty else { return }
 
-        // Keep fetching until we add link posts or exhaust the API (link feed can get batches with 0 links)
-        var previousLinkCount = linkFilterService.getCachedContent(for: tab.id).count
-        while canLoadMore() {
-            let newStatuses = await loadMore()
-            guard !newStatuses.isEmpty else { break }
+        _ = await linkFilterService.appendStatusesEnsuringAdditionalContent(
+            newStatuses,
+            for: tab.id,
+            canLoadMore: { canLoadMore(for: tab, using: service) },
+            loadMoreStatuses: { await loadMoreStatuses(for: tab, using: service) }
+        )
+    }
 
-            _ = await linkFilterService.appendStatuses(newStatuses, for: tab.id)
-            let newLinkCount = linkFilterService.getCachedContent(for: tab.id).count
-            if newLinkCount > previousLinkCount { break }
-            previousLinkCount = newLinkCount
+    private func canLoadMore(for tab: FeedTabItem, using service: TimelineService) -> Bool {
+        tab.isHome ? service.canLoadMoreHomeTimeline() : service.canLoadMoreListTimeline(listId: tab.id)
+    }
+
+    private func loadMoreStatuses(for tab: FeedTabItem, using service: TimelineService) async -> [Status] {
+        if tab.isHome {
+            return await service.loadMoreHomeTimeline()
         }
+        return await service.loadMoreListTimeline(listId: tab.id)
     }
 
     private func attemptRestoreScrollIfNeeded() {

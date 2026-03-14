@@ -105,17 +105,11 @@ final class LinkFilterService {
                 return false
             }
             
-            // Check for link card (exclude social post URLs: Threads, Instagram, Bluesky)
-            if targetStatus.hasLinkCard,
-               let cardURL = targetStatus.card?.linkURL,
-               !Self.isSocialPostURL(cardURL) {
+            if Self.usablePreviewCardURL(from: targetStatus) != nil {
                 return true
             }
             
-            // Check for links in content (exclude social post URLs)
-            let links = Self.extractExternalLinks(from: targetStatus)
-            let validLinks = links.filter { !Self.isSocialPostURL($0) }
-            return !validLinks.isEmpty
+            return !Self.extractExternalLinks(from: targetStatus).isEmpty
         }
         Self.logger.debug("Filtered to \(filtered.count) link statuses (\(filtered.count * 100 / max(statuses.count, 1))%)")
         return filtered
@@ -141,6 +135,24 @@ final class LinkFilterService {
     /// Processes statuses into LinkStatus objects (uses active feed)
     func processStatuses(_ statuses: [Status]) async -> [LinkStatus] {
         await processStatuses(statuses, for: activeFeedId)
+    }
+
+    /// Processes a feed and keeps requesting older pages until visible link content appears or pagination is exhausted.
+    func processStatusesEnsuringVisibleContent(
+        _ statuses: [Status],
+        for feedId: String,
+        canLoadMore: () -> Bool,
+        loadMoreStatuses: () async -> [Status]
+    ) async -> [LinkStatus] {
+        let processedStatuses = await processStatuses(statuses, for: feedId)
+        guard processedStatuses.isEmpty else { return processedStatuses }
+
+        return await continueLoadingOlderPages(
+            for: feedId,
+            targetLinkCount: 0,
+            canLoadMore: canLoadMore,
+            loadMoreStatuses: loadMoreStatuses
+        )
     }
 
     /// Incrementally appends newly fetched statuses to an existing feed cache.
@@ -173,6 +185,25 @@ final class LinkFilterService {
 
         feedCache[feedId] = merged
         return merged
+    }
+
+    /// Appends statuses and keeps requesting older pages until new link content appears or pagination is exhausted.
+    func appendStatusesEnsuringAdditionalContent(
+        _ statuses: [Status],
+        for feedId: String,
+        canLoadMore: () -> Bool,
+        loadMoreStatuses: () async -> [Status]
+    ) async -> [LinkStatus] {
+        let previousLinkCount = getCachedContent(for: feedId).count
+        let mergedStatuses = await appendStatuses(statuses, for: feedId)
+        guard mergedStatuses.count == previousLinkCount else { return mergedStatuses }
+
+        return await continueLoadingOlderPages(
+            for: feedId,
+            targetLinkCount: previousLinkCount,
+            canLoadMore: canLoadMore,
+            loadMoreStatuses: loadMoreStatuses
+        )
     }
     
     /// Enriches link statuses with author attribution from HEAD requests
@@ -296,16 +327,18 @@ final class LinkFilterService {
     
     /// Extracts external links from a status
     private nonisolated static func extractExternalLinks(from status: Status) -> [URL] {
-        // Get the instance domain to exclude internal links
-        var excludeDomains: [String] = []
-        if let host = URL(string: status.uri)?.host {
-            excludeDomains.append(host)
+        let excludeDomains = excludedDomains(for: status)
+        let anchorLinks = HTMLParser.extractLinks(from: status.content).filter {
+            isUsableExternalURL($0, excludingDomains: excludeDomains)
         }
-        
-        // Also exclude common Mastodon instances for mentions
-        excludeDomains.append(contentsOf: ["mastodon.social", "mastodon.online"])
-        
-        return HTMLParser.extractExternalLinks(from: status.content, excludingDomains: excludeDomains)
+
+        if !anchorLinks.isEmpty {
+            return anchorLinks
+        }
+
+        return HTMLParser.extractPlainTextLinks(from: status.content).filter {
+            isUsableExternalURL($0, excludingDomains: excludeDomains)
+        }
     }
     
     /// Checks if a status is a quote post
@@ -358,9 +391,7 @@ final class LinkFilterService {
             let tags = TagExtractor.extractTags(from: targetStatus)
             
             if let card = targetStatus.card,
-               card.type == .link,
-               let cardURL = card.linkURL {
-                guard !isSocialPostURL(cardURL) else { continue }
+               let cardURL = usablePreviewCardURL(from: targetStatus) {
                 
                 linkStatuses.append(
                     LinkStatus(
@@ -398,6 +429,40 @@ final class LinkFilterService {
             cardCount: cardCount,
             contentLinkCount: contentLinkCount
         )
+    }
+
+    private nonisolated static func usablePreviewCardURL(from status: Status) -> URL? {
+        guard let cardURL = status.card?.linkURL,
+              isUsableExternalURL(cardURL, excludingDomains: excludedDomains(for: status)) else {
+            return nil
+        }
+
+        return cardURL
+    }
+
+    private nonisolated static func excludedDomains(for status: Status) -> [String] {
+        var domains: [String] = []
+        if let host = URL(string: status.uri)?.host {
+            domains.append(host)
+        }
+
+        domains.append(contentsOf: ["mastodon.social", "mastodon.online"])
+        return domains
+    }
+
+    private nonisolated static func isUsableExternalURL(_ url: URL, excludingDomains domains: [String]) -> Bool {
+        guard HTMLParser.isExternalURL(url),
+              !isSocialPostURL(url),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        let path = url.path.lowercased()
+        if path.hasPrefix("/@") || path.hasPrefix("/tags/") {
+            return false
+        }
+
+        return !domains.contains { host.contains($0.lowercased()) }
     }
     
     // MARK: - Filtering Options
@@ -467,6 +532,23 @@ final class LinkFilterService {
         let count = linkStatuses.count
         linkStatuses = []
         Self.logger.info("Cleared link statuses: \(count) items removed")
+    }
+
+    private func continueLoadingOlderPages(
+        for feedId: String,
+        targetLinkCount: Int,
+        canLoadMore: () -> Bool,
+        loadMoreStatuses: () async -> [Status]
+    ) async -> [LinkStatus] {
+        var cachedStatuses = getCachedContent(for: feedId)
+        while cachedStatuses.count == targetLinkCount && canLoadMore() {
+            let olderStatuses = await loadMoreStatuses()
+            guard !olderStatuses.isEmpty else { break }
+
+            cachedStatuses = await appendStatuses(olderStatuses, for: feedId)
+        }
+
+        return cachedStatuses
     }
 
     private nonisolated static func mergeExistingMetadata(

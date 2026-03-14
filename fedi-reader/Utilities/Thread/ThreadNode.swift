@@ -5,14 +5,14 @@ struct ThreadNode: Identifiable, Sendable {
     let status: Status
     var children: [ThreadNode]
     
-    init(status: Status, children: [ThreadNode] = []) {
+    nonisolated init(status: Status, children: [ThreadNode] = []) {
         self.id = status.id
         self.status = status
         self.children = children
     }
     
     /// Calculates the depth of this node in the tree (0 for root)
-    var depth: Int {
+    nonisolated var depth: Int {
         if children.isEmpty {
             return 0
         }
@@ -20,7 +20,7 @@ struct ThreadNode: Identifiable, Sendable {
     }
     
     /// Flattens the tree into a depth-first list of statuses
-    func flattened() -> [Status] {
+    nonisolated func flattened() -> [Status] {
         var result = [status]
         for child in children.sorted(by: { $0.status.createdAt < $1.status.createdAt }) {
             result.append(contentsOf: child.flattened())
@@ -29,7 +29,7 @@ struct ThreadNode: Identifiable, Sendable {
     }
     
     /// Flattens the tree into a list of ThreadNodes in depth-first order
-    func flattenedNodes() -> [ThreadNode] {
+    nonisolated func flattenedNodes() -> [ThreadNode] {
         var result = [self]
         for child in children.sorted(by: { $0.status.createdAt < $1.status.createdAt }) {
             result.append(contentsOf: child.flattenedNodes())
@@ -38,7 +38,7 @@ struct ThreadNode: Identifiable, Sendable {
     }
     
     /// Finds a node with the given status ID in this subtree
-    func findNode(withId statusId: String) -> ThreadNode? {
+    nonisolated func findNode(withId statusId: String) -> ThreadNode? {
         if id == statusId {
             return self
         }
@@ -51,7 +51,7 @@ struct ThreadNode: Identifiable, Sendable {
     }
     
     /// Gets the path from root to this node (including this node)
-    func pathToRoot() -> [Status] {
+    nonisolated func pathToRoot() -> [Status] {
         let path = [status]
         // Note: This assumes we have parent references, but we don't.
         // For now, this just returns the current status.
@@ -60,15 +60,14 @@ struct ThreadNode: Identifiable, Sendable {
     }
     
     /// Counts total number of replies in this subtree (including self)
-    var totalReplies: Int {
+    nonisolated var totalReplies: Int {
         1 + children.reduce(0) { $0 + $1.totalReplies }
     }
     
     /// Checks if this node has any children
-    var hasReplies: Bool {
+    nonisolated var hasReplies: Bool {
         !children.isEmpty
     }
 }
 
 /// Helper for building thread trees from flat status arrays
-
