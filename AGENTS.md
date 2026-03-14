@@ -6,9 +6,10 @@
 
 **Linear is the source of truth, not GitHub.** Before any code edits or plan creation:
 
-1. Run `git branch --show-current`. Parse for Linear ID (e.g. `FED-123`). Valid patterns: `FED-123-feature-name`, `sam/FED-456-fix`.
+1. Run `git branch --show-current`. Parse for Linear ID (e.g. `FEDI-123`). Valid patterns: `FEDI-123-feature-name`, `sam/FEDI-456-fix`, `CountableNewt/issue92-...`.
 2. **If Linear ID found**: Use Linear MCP `get_issue` to confirm, then `save_issue` with `state: "In Progress"` before touching code or creating plans.
-3. **If no Linear ID** (e.g. `main`): Proceed without Linear updates.
+3. **If no Linear ID but branch has GitHub issue** (e.g. `issue92`, `CountableNewt/issue92-haptic-feedback`): Every GitHub issue has a Linear comment linking the issue. Use Linear MCP `list_issues` with a `query` matching the branch/task (e.g. "haptic feedback") to find the linked Linear issue, then proceed as above.
+4. **If no Linear ID** (e.g. `main`): Proceed without Linear updates.
 
 Apply in **both plan mode and implementation**—do not skip because you are "only planning."
 

@@ -132,7 +132,6 @@ struct LinkFeedContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
-    @AppStorage("hapticFeedback") private var hapticFeedback = true
 
     @State private var selectedTabIndex: Int = 0
     @State private var scrollProxy: ScrollViewProxy?
@@ -492,7 +491,7 @@ struct LinkFeedContentView: View {
         let isDoubleTap = feedTabSelectionTracker.recordSelection(tab.id)
 
         if isSelected, isDoubleTap {
-            HapticFeedback.play(.medium, enabled: hapticFeedback)
+            HapticFeedback.play(.medium)
             appState.requestLinksScrollToTop()
             return
         }

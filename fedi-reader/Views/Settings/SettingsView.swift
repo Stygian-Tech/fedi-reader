@@ -11,7 +11,6 @@ struct SettingsView: View {
     @AppStorage("showImages") private var showImages = true
     @AppStorage("autoPlayGifs") private var autoPlayGifs = false
     @AppStorage("defaultVisibility") private var defaultVisibility = "public"
-    @AppStorage("hapticFeedback") private var hapticFeedback = true
     @AppStorage("hideTabBarLabels") private var hideTabBarLabels = false
     @AppStorage("themeColor") private var themeColorName = "blue"
     @AppStorage("defaultListId") private var defaultListId = ""
@@ -55,7 +54,6 @@ struct SettingsView: View {
                     showImages: $showImages,
                     autoPlayGifs: $autoPlayGifs,
                     defaultVisibility: $defaultVisibility,
-                    hapticFeedback: $hapticFeedback,
                     hideTabBarLabels: $hideTabBarLabels,
                     themeColorName: $themeColorName,
                     defaultListId: $defaultListId,
@@ -160,13 +158,6 @@ struct SettingsView: View {
                 Toggle("Show Quote Boost Option", isOn: $showQuoteBoost)
             }
             
-            // Accessibility
-            if isCompactDevice {
-                Section("Accessibility") {
-                    Toggle("Haptic Feedback", isOn: $hapticFeedback)
-                }
-            }
-            
             // About
             Section("About") {
                 HStack {
@@ -225,7 +216,6 @@ private struct SettingsTwoColumnView: View {
     @Binding var showImages: Bool
     @Binding var autoPlayGifs: Bool
     @Binding var defaultVisibility: String
-    @Binding var hapticFeedback: Bool
     @Binding var hideTabBarLabels: Bool
     @Binding var themeColorName: String
     @Binding var defaultListId: String
@@ -252,7 +242,6 @@ private struct SettingsTwoColumnView: View {
         case readLater
         case timeline
         case posting
-        case accessibility
         case about
         case debug
 
@@ -265,7 +254,6 @@ private struct SettingsTwoColumnView: View {
             case .readLater: return "Read Later"
             case .timeline: return "Timeline"
             case .posting: return "Posting"
-            case .accessibility: return "Accessibility"
             case .about: return "About"
             case .debug: return "Debug"
             }
@@ -278,7 +266,6 @@ private struct SettingsTwoColumnView: View {
             case .readLater: return "bookmark"
             case .timeline: return "list.bullet"
             case .posting: return "square.and.pencil"
-            case .accessibility: return "accessibility"
             case .about: return "info.circle"
             case .debug: return "ant"
             }
@@ -287,9 +274,6 @@ private struct SettingsTwoColumnView: View {
 
     private var visibleSections: [SettingsSection] {
         var sections: [SettingsSection] = [.display, .lists, .readLater, .timeline, .posting]
-        if isCompactDevice {
-            sections.append(.accessibility)
-        }
         sections.append(.about)
         #if DEBUG
         sections.append(.debug)
@@ -476,13 +460,6 @@ private struct SettingsTwoColumnView: View {
                     settingsToggleRow("Show Quote Boost Option", isOn: $showQuoteBoost)
                 } header: {
                     Text("Posting").font(.roundedTitle3)
-                }
-
-            case .accessibility:
-                Section {
-                    settingsToggleRow("Haptic Feedback", isOn: $hapticFeedback)
-                } header: {
-                    Text("Accessibility").font(.roundedTitle3)
                 }
 
             case .about:
