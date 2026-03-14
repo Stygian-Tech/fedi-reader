@@ -8,6 +8,6 @@ This directory holds project-specific context for AI agents. Structure follows t
 | `context/` | Static reference (architecture, conventions, file layout) |
 | `skills/` | Executable capabilities ([agentskills.io](https://agentskills.io) compliant) |
 
-**Entry point:** Root `AGENTS.md` routes agents here. Read it first.
+**Entry point:** Root [AGENTS.md](../AGENTS.md) is the single source of truth for all agents. Read it first.
 
-**Cursor compatibility:** `.cursor/rules/` mirrors or references `.agents/rules/` for rules that must apply to Cursor sessions.
+**Cursor compatibility:** `.cursor/rules/` references AGENTS.md for always-apply rules.
