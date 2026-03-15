@@ -371,6 +371,8 @@ struct LinkFeedContentView: View {
             isLoading: FeedScopedLinkData.isLoading(in: linkFilterService, feedId: currentTab.id),
             shouldShowPaginationLoading: shouldShowPaginationLoadingRow(for: statuses),
             canLoadMore: canLoadMore,
+            showsFollowedHashtagAttribution: currentTab.isHome,
+            followedTags: currentTab.isHome ? (timelineService?.followedTags ?? []) : [],
             deferPostNavigation: { action in
                 guard !shouldBlockPostTaps else { return }
                 action()
@@ -590,6 +592,7 @@ struct LinkFeedContentView: View {
             selectedTabIndex = index
         }
 
+        await ensureHomeFollowedTagsLoadedIfNeeded(for: currentTab, using: service)
         syncAppStateSelectionToCurrentTab()
         linkFilterService.switchToFeed(currentTab.id)
 
@@ -612,6 +615,7 @@ struct LinkFeedContentView: View {
     private func loadContentForTab(_ tab: FeedTabItem, forceRefresh: Bool = false) async {
         guard let service = timelineService else { return }
 
+        await ensureHomeFollowedTagsLoadedIfNeeded(for: tab, using: service)
         linkFilterService.switchToFeed(tab.id)
         let statuses = await service.loadLinkFeedStatuses(feedId: tab.id, forceRefreshHome: forceRefresh)
         _ = await linkFilterService.processStatusesEnsuringVisibleContent(
@@ -646,6 +650,8 @@ struct LinkFeedContentView: View {
         guard let service = timelineService else { return }
         let tab = currentTab
         let statuses: [Status]
+
+        await ensureHomeFollowedTagsLoadedIfNeeded(for: tab, using: service)
 
         if tab.id == AppState.bookmarksFeedID {
             await service.refreshBookmarks()
@@ -721,6 +727,11 @@ struct LinkFeedContentView: View {
             return await service.loadMoreHomeTimeline()
         }
         return await service.loadMoreListTimeline(listId: tab.id)
+    }
+
+    private func ensureHomeFollowedTagsLoadedIfNeeded(for tab: FeedTabItem, using service: TimelineService) async {
+        guard tab.isHome, service.followedTags.isEmpty else { return }
+        await service.loadFollowedTags(refresh: true)
     }
 
     // MARK: - Scroll Position Preservation

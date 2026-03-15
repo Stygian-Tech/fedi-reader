@@ -16,6 +16,7 @@ struct LinkStatusRow: View {
     let linkStatus: LinkStatus
     let deferPostNavigation: (@escaping () -> Void) -> Void
     let shouldIgnoreTap: () -> Bool
+    let followedHashtag: String?
     /// When provided, tapping the link card calls this instead of navigating. Used for 3-column layout.
     var onArticleSelect: ((URL, Status) -> Void)?
 
@@ -43,16 +44,22 @@ struct LinkStatusRow: View {
         linkStatus: LinkStatus,
         deferPostNavigation: @escaping (@escaping () -> Void) -> Void = { action in action() },
         shouldIgnoreTap: @escaping () -> Bool = { false },
+        followedHashtag: String? = nil,
         onArticleSelect: ((URL, Status) -> Void)? = nil
     ) {
         self.linkStatus = linkStatus
         self.deferPostNavigation = deferPostNavigation
         self.shouldIgnoreTap = shouldIgnoreTap
+        self.followedHashtag = followedHashtag
         self.onArticleSelect = onArticleSelect
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if let followedHashtag {
+                followedHashtagAttributionChip(for: followedHashtag)
+            }
+
             if linkStatus.status.isReblog {
                 boostAttributionChip
             }
@@ -121,6 +128,20 @@ struct LinkStatusRow: View {
             }
         } label: {
             BoostAttributionChip(account: linkStatus.status.account)
+        }
+        .buttonStyle(.plain)
+        .allowsHitTesting(!shouldIgnoreTap())
+    }
+
+    private func followedHashtagAttributionChip(for hashtag: String) -> some View {
+        Button {
+            guard !shouldIgnoreTap() else { return }
+            HapticFeedback.play(.navigation)
+            deferPostNavigation {
+                appState.navigate(to: .hashtag(hashtag))
+            }
+        } label: {
+            FollowedHashtagAttributionChip(hashtag: hashtag)
         }
         .buttonStyle(.plain)
         .allowsHitTesting(!shouldIgnoreTap())

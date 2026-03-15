@@ -12,6 +12,8 @@ struct LinkFeedPostList: View {
     let isLoading: Bool
     let shouldShowPaginationLoading: Bool
     let canLoadMore: Bool
+    let showsFollowedHashtagAttribution: Bool
+    let followedTags: [Tag]
     let deferPostNavigation: (@escaping () -> Void) -> Void
     let shouldBlockPostTaps: () -> Bool
     let onItemAppear: (Int, Int) -> Void
@@ -32,6 +34,8 @@ struct LinkFeedPostList: View {
         isLoading: Bool,
         shouldShowPaginationLoading: Bool,
         canLoadMore: Bool = false,
+        showsFollowedHashtagAttribution: Bool = false,
+        followedTags: [Tag] = [],
         deferPostNavigation: @escaping ((@escaping () -> Void) -> Void),
         shouldBlockPostTaps: @escaping (() -> Bool),
         onItemAppear: @escaping (Int, Int) -> Void,
@@ -45,6 +49,8 @@ struct LinkFeedPostList: View {
         self.isLoading = isLoading
         self.shouldShowPaginationLoading = shouldShowPaginationLoading
         self.canLoadMore = canLoadMore
+        self.showsFollowedHashtagAttribution = showsFollowedHashtagAttribution
+        self.followedTags = followedTags
         self.deferPostNavigation = deferPostNavigation
         self.shouldBlockPostTaps = shouldBlockPostTaps
         self.onItemAppear = onItemAppear
@@ -65,6 +71,9 @@ struct LinkFeedPostList: View {
                                 linkStatus: linkStatus,
                                 deferPostNavigation: deferPostNavigation,
                                 shouldIgnoreTap: shouldBlockPostTaps,
+                                followedHashtag: showsFollowedHashtagAttribution
+                                    ? linkStatus.status.matchedFollowedTagName(in: followedTags)
+                                    : nil,
                                 onArticleSelect: onArticleSelect
                             )
                             .id(linkStatus.id)

@@ -200,6 +200,27 @@ struct Status: Codable, Identifiable, Hashable, Sendable {
     nonisolated var isQuotePost: Bool {
         quote != nil
     }
+
+    nonisolated func matchedFollowedTagName(in followedTags: [Tag]) -> String? {
+        if let directlyFollowedTag = displayStatus.tags.first(where: { $0.following == true })?.name {
+            return directlyFollowedTag
+        }
+
+        guard !followedTags.isEmpty else { return nil }
+
+        let followedTagNamesByNormalizedName = Dictionary(
+            followedTags.map { (Self.normalizedHashtagName($0.name), $0.name) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        for tag in displayStatus.tags {
+            if let matchedName = followedTagNamesByNormalizedName[Self.normalizedHashtagName(tag.name)] {
+                return matchedName
+            }
+        }
+
+        return nil
+    }
     
     nonisolated var hasLinkCard: Bool {
         card?.linkURL != nil
@@ -208,6 +229,12 @@ struct Status: Codable, Identifiable, Hashable, Sendable {
     nonisolated var cardURL: URL? {
         guard let urlString = card?.url else { return nil }
         return URL(string: urlString)
+    }
+
+    private nonisolated static func normalizedHashtagName(_ name: String) -> String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let unprefixedName = trimmedName.hasPrefix("#") ? String(trimmedName.dropFirst()) : trimmedName
+        return unprefixedName.lowercased()
     }
 }
 
