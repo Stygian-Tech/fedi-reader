@@ -3,7 +3,25 @@ import os
 
 struct GroupedConversationRow: View {
     let groupedConversation: GroupedConversation
+    @Environment(AppState.self) private var appState
     @AppStorage("themeColor") private var themeColorName = "blue"
+
+    private var hiddenMentionHandles: Set<String> {
+        var accounts = groupedConversation.participants
+        if let currentAccount = appState.currentAccount?.mastodonAccount {
+            accounts.append(currentAccount)
+        }
+
+        return DirectMessageMentionFormatter.hiddenHandles(for: accounts)
+    }
+
+    private var messagePreview: String {
+        guard let lastStatus = groupedConversation.lastStatus else { return "" }
+        return DirectMessageMentionFormatter.stripLeadingMentions(
+            from: lastStatus.content.htmlToPlainText,
+            hiddenHandles: hiddenMentionHandles
+        )
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -43,7 +61,7 @@ struct GroupedConversationRow: View {
                         .foregroundStyle(.secondary)
                 }
                 
-                Text(groupedConversation.lastStatus?.content.htmlToPlainText ?? "")
+                Text(messagePreview)
                     .font(.roundedSubheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -69,5 +87,4 @@ struct GroupedConversationRow: View {
 }
 
 // MARK: - Group Avatar View
-
 

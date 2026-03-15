@@ -3,6 +3,7 @@ import os
 
 struct ChatMessageGroup: View {
     let group: GroupedMessage
+    let hiddenMentionHandles: Set<String>
     @Environment(AppState.self) private var appState
     
     var body: some View {
@@ -15,7 +16,12 @@ struct ChatMessageGroup: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     // Chat bubbles
                     ForEach(group.messages) { message in
-                        ChatBubble(message: message, account: group.account, isSent: true)
+                        ChatBubble(
+                            message: message,
+                            account: group.account,
+                            isSent: true,
+                            hiddenMentionHandles: hiddenMentionHandles
+                        )
                     }
                 }
                 
@@ -76,7 +82,12 @@ struct ChatMessageGroup: View {
                     
                     // Chat bubbles
                     ForEach(group.messages) { message in
-                        ChatBubble(message: message, account: group.account, isSent: false)
+                        ChatBubble(
+                            message: message,
+                            account: group.account,
+                            isSent: false,
+                            hiddenMentionHandles: hiddenMentionHandles
+                        )
                     }
                 }
                 
@@ -88,5 +99,4 @@ struct ChatMessageGroup: View {
 }
 
 // MARK: - Chat Bubble
-
 

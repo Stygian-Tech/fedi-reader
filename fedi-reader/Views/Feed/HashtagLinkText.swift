@@ -16,6 +16,7 @@ struct HashtagLinkText: View {
     let onHashtagTap: (String) -> Void
     /// When provided (e.g. from status.emojis), used for emoji replacement; otherwise uses current instance's cached emoji.
     var emojiLookup: [String: CustomEmoji]? = nil
+    var hiddenMentionHandles: Set<String> = []
     @Environment(AppState.self) private var appState
     
     var body: some View {
@@ -42,10 +43,14 @@ struct HashtagLinkText: View {
             }
             return url
         }, emojiLookup: resolvedLookup)
+        let displayString = DirectMessageMentionFormatter.stripLeadingMentions(
+            from: attributedString,
+            hiddenHandles: hiddenMentionHandles
+        )
         
         #if os(iOS)
         if #available(iOS 16.0, *) {
-            Text(attributedString)
+            Text(displayString)
                 .accessibilityLabel("Post content with hashtags")
                 .accessibilityHint("Double tap hashtags to view related posts")
                 .environment(\.openURL, OpenURLAction { url in
@@ -63,7 +68,7 @@ struct HashtagLinkText: View {
                 })
         } else {
             // For iOS 15, use a simpler approach
-            Text(attributedString)
+            Text(displayString)
                 .accessibilityLabel("Post content with hashtags")
                 .accessibilityHint("Double tap hashtags to view related posts")
                 .onTapGesture {
@@ -72,7 +77,7 @@ struct HashtagLinkText: View {
                 }
         }
         #else
-        Text(attributedString)
+        Text(displayString)
             .accessibilityLabel("Post content with hashtags")
             .accessibilityHint("Double tap hashtags to view related posts")
         #endif
