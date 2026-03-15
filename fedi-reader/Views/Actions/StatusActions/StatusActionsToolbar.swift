@@ -42,7 +42,8 @@ struct StatusActionsToolbar: View {
                 icon: "arrowshape.turn.up.left",
                 label: "Reply",
                 isActive: false,
-                activeColor: themeColor
+                activeColor: themeColor,
+                hapticEvent: .action
             ) {
                 appState.present(sheet: .compose(replyTo: displayStatus))
             }
@@ -55,7 +56,8 @@ struct StatusActionsToolbar: View {
                 icon: isFavorited ? "star.fill" : "star",
                 label: "Star",
                 isActive: isFavorited,
-                activeColor: themeColor
+                activeColor: themeColor,
+                hapticEvent: .confirmation
             ) {
                 await toggleFavorite()
             }
@@ -65,7 +67,8 @@ struct StatusActionsToolbar: View {
                 icon: isBookmarked ? "bookmark.fill" : "bookmark",
                 label: "Bookmark",
                 isActive: isBookmarked,
-                activeColor: themeColor
+                activeColor: themeColor,
+                hapticEvent: .confirmation
             ) {
                 await toggleBookmark()
             }
@@ -76,6 +79,7 @@ struct StatusActionsToolbar: View {
                     ForEach(readLaterManager.configuredServices) { config in
                         if let serviceType = config.service {
                             Button {
+                                HapticFeedback.play(.confirmation)
                                 Task {
                                     try? await readLaterManager.save(
                                         url: url,
@@ -103,7 +107,7 @@ struct StatusActionsToolbar: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 8)
         .controlSize(.regular)
-        .disabled(isProcessing)
+        .allowsHitTesting(!isProcessing)
         .onReceive(NotificationCenter.default.publisher(for: .statusDidUpdate)) { notification in
             guard let updated = notification.object as? Status else { return }
             applyUpdatedStatus(updated)
@@ -116,10 +120,12 @@ struct StatusActionsToolbar: View {
         label: String,
         isActive: Bool,
         activeColor: Color,
+        hapticEvent: HapticFeedback.Event,
         action: @escaping () async -> Void
     ) -> some View {
         Button {
             guard !isProcessing else { return }
+            HapticFeedback.play(hapticEvent)
             Task {
                 await action()
             }
@@ -165,6 +171,7 @@ struct StatusActionsToolbar: View {
             // Already boosted - show menu with Unboost option
             Menu {
                 Button {
+                    HapticFeedback.play(.confirmation)
                     Task {
                         await toggleReblog()
                     }
@@ -186,6 +193,7 @@ struct StatusActionsToolbar: View {
             // Not boosted and quote boost enabled - show menu with both options
             Menu {
                 Button {
+                    HapticFeedback.play(.confirmation)
                     Task {
                         await toggleReblog()
                     }
@@ -194,6 +202,7 @@ struct StatusActionsToolbar: View {
                 }
                 
                 Button {
+                    HapticFeedback.play(.action)
                     appState.present(sheet: .compose(quote: status))
                 } label: {
                     Label("Quote Boost", systemImage: "quote.bubble")
@@ -214,7 +223,8 @@ struct StatusActionsToolbar: View {
                 icon: "arrow.2.squarepath",
                 label: "Boost",
                 isActive: false,
-                activeColor: themeColor
+                activeColor: themeColor,
+                hapticEvent: .confirmation
             ) {
                 await toggleReblog()
             }
