@@ -36,6 +36,19 @@ enum DirectMessageMentionFormatter {
         return String(text.dropFirst(prefix.count))
     }
 
+    static func conversationPreview(for status: Status, hiddenHandles: Set<String>) -> String {
+        let strippedText = stripLeadingMentions(
+            from: status.content.htmlToPlainText,
+            hiddenHandles: hiddenHandles
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !strippedText.isEmpty {
+            return strippedText
+        }
+
+        return attachmentPreview(for: status.mediaAttachments)
+    }
+
     @available(iOS 15.0, macOS 12.0, *)
     static func stripLeadingMentions(
         from attributedString: AttributedString,
@@ -100,5 +113,25 @@ enum DirectMessageMentionFormatter {
 
         guard matchedMention else { return nil }
         return String(text[..<index])
+    }
+
+    private static func attachmentPreview(for attachments: [MediaAttachment]) -> String {
+        guard !attachments.isEmpty else { return "" }
+
+        let attachmentTypes = Set(attachments.map(\.type))
+
+        if attachmentTypes == [.image] {
+            return "Sent an image"
+        }
+
+        if attachmentTypes.isSubset(of: [.video, .gifv]) {
+            return "Sent a video"
+        }
+
+        if attachmentTypes == [.audio] {
+            return "Sent an audio attachment"
+        }
+
+        return "Sent an attachment"
     }
 }

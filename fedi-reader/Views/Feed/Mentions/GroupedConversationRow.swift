@@ -17,8 +17,8 @@ struct GroupedConversationRow: View {
 
     private var messagePreview: String {
         guard let lastStatus = groupedConversation.lastStatus else { return "" }
-        return DirectMessageMentionFormatter.stripLeadingMentions(
-            from: lastStatus.content.htmlToPlainText,
+        return DirectMessageMentionFormatter.conversationPreview(
+            for: lastStatus,
             hiddenHandles: hiddenMentionHandles
         )
     }
@@ -87,4 +87,3 @@ struct GroupedConversationRow: View {
 }
 
 // MARK: - Group Avatar View
-
