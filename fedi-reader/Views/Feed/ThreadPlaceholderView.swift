@@ -25,12 +25,15 @@ struct ThreadPlaceholderView: View {
             }
         }
         .navigationTitle("Thread")
-        .task {
+        .task(id: statusId) {
             await loadStatus()
         }
     }
 
     private func loadStatus() async {
+        status = nil
+        isLoading = true
+
         let client = appState.client
 
         do {

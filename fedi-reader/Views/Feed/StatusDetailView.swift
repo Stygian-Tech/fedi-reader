@@ -2,7 +2,6 @@ import SwiftUI
 
 struct StatusDetailView: View {
     let status: Status
-    @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
 
     @State private var context: StatusContext?
@@ -10,12 +9,18 @@ struct StatusDetailView: View {
     @State private var isLoading = true
     @State private var isLoadingRemoteReplies = false
 
+    private let threadingService = ThreadingService.shared
+
     private var threadStatus: Status {
         status.displayStatus
     }
 
     private var parentStatus: Status? {
         context?.parentStatus(for: status)
+    }
+
+    private var replyTreeSource: [Status] {
+        context?.descendants ?? []
     }
 
     var body: some View {
@@ -149,11 +154,11 @@ struct StatusDetailView: View {
         }
         .navigationTitle("Post")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .task(id: threadStatus.id) {
             await loadContext()
         }
-        .onChange(of: context?.descendants) { _, descendants in
-            buildReplyTrees(descendants: descendants ?? [])
+        .task(id: replyTreeSource) {
+            await rebuildReplyTrees(from: replyTreeSource)
         }
         .refreshable {
             await refreshReplies()
@@ -165,13 +170,16 @@ struct StatusDetailView: View {
             if let payload = notification.object as? StatusContextUpdatePayload,
                payload.statusId == threadStatus.id {
                 context = payload.context
-                buildReplyTrees(descendants: payload.context.descendants)
                 isLoadingRemoteReplies = false
             }
         }
     }
 
     private func loadContext() async {
+        context = nil
+        isLoading = true
+        isLoadingRemoteReplies = false
+
         guard let service = timelineWrapper.service else {
             isLoading = false
             return
@@ -180,7 +188,6 @@ struct StatusDetailView: View {
         do {
             let loadedContext = try await service.getStatusContext(for: threadStatus)
             context = loadedContext
-            buildReplyTrees(descendants: loadedContext.descendants)
             isLoading = false
             isLoadingRemoteReplies = false
         } catch {
@@ -189,18 +196,15 @@ struct StatusDetailView: View {
         }
     }
 
-    /// Builds thread tree off main thread to avoid UI hangs with large reply counts
-    private func buildReplyTrees(descendants: [Status]) {
+    private func rebuildReplyTrees(from descendants: [Status]) async {
         if descendants.isEmpty {
             replyTrees = []
             return
         }
-        Task.detached(priority: .userInitiated) { [descendants] in
-            let trees = ThreadBuilder.buildThreadTree(from: descendants)
-            await MainActor.run {
-                replyTrees = trees
-            }
-        }
+
+        let trees = await threadingService.buildThreadTree(from: descendants)
+        guard !Task.isCancelled else { return }
+        replyTrees = trees
     }
     
     private func shouldFetchRemoteReplies(context: StatusContext) -> Bool {
