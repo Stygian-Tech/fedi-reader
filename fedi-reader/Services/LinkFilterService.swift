@@ -16,13 +16,27 @@ enum FeedScopedLinkData {
     static func filteredStatuses(
         in service: LinkFilterService,
         feedId: String,
-        userFilterAccountId: String?
+        userFilterAccountId: String?,
+        filterPrivateMentionsFromFeeds: Bool
     ) -> [LinkStatus] {
-        service.filter(linkStatuses: statuses(in: service, feedId: feedId), byAccountId: userFilterAccountId)
+        service.filter(
+            linkStatuses: statuses(in: service, feedId: feedId),
+            byAccountId: userFilterAccountId,
+            filterPrivateMentionsFromFeeds: filterPrivateMentionsFromFeeds
+        )
     }
 
-    static func accounts(in service: LinkFilterService, feedId: String) -> [MastodonAccount] {
-        service.uniqueAccounts(in: statuses(in: service, feedId: feedId))
+    static func accounts(
+        in service: LinkFilterService,
+        feedId: String,
+        filterPrivateMentionsFromFeeds: Bool
+    ) -> [MastodonAccount] {
+        let visibleStatuses = service.filter(
+            linkStatuses: statuses(in: service, feedId: feedId),
+            byAccountId: nil,
+            filterPrivateMentionsFromFeeds: filterPrivateMentionsFromFeeds
+        )
+        return service.uniqueAccounts(in: visibleStatuses)
     }
 
     static func isLoading(in service: LinkFilterService, feedId: String) -> Bool {
@@ -468,9 +482,22 @@ final class LinkFilterService {
     // MARK: - Filtering Options
     
     /// Filters link statuses by author account ID. Returns all when `accountId` is nil.
-    func filter(linkStatuses: [LinkStatus], byAccountId accountId: String?) -> [LinkStatus] {
-        guard let accountId = accountId else { return linkStatuses }
-        return linkStatuses.filter { $0.status.displayStatus.account.id == accountId }
+    func filter(
+        linkStatuses: [LinkStatus],
+        byAccountId accountId: String?,
+        filterPrivateMentionsFromFeeds: Bool = PrivateMentionsFeedFilter.defaultValue
+    ) -> [LinkStatus] {
+        let statusesAfterPrivacyFilter: [LinkStatus]
+        if filterPrivateMentionsFromFeeds {
+            statusesAfterPrivacyFilter = linkStatuses.filter {
+                !PrivateMentionsFeedFilter.isPrivateMention($0.status)
+            }
+        } else {
+            statusesAfterPrivacyFilter = linkStatuses
+        }
+
+        guard let accountId = accountId else { return statusesAfterPrivacyFilter }
+        return statusesAfterPrivacyFilter.filter { $0.status.displayStatus.account.id == accountId }
     }
 
     /// Returns unique author accounts present in the provided link statuses.

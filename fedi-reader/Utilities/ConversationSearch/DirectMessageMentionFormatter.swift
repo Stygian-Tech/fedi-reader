@@ -1,7 +1,7 @@
 import Foundation
 
 enum DirectMessageMentionFormatter {
-    static func mentionPrefix(for recipients: [MastodonAccount]) -> String {
+    nonisolated static func mentionPrefix(for recipients: [MastodonAccount]) -> String {
         var mentions: [String] = []
         var seenHandles = Set<String>()
 
@@ -14,7 +14,7 @@ enum DirectMessageMentionFormatter {
         return mentions.joined(separator: " ")
     }
 
-    static func hiddenHandles(for accounts: [MastodonAccount]) -> Set<String> {
+    nonisolated static func hiddenHandles(for accounts: [MastodonAccount]) -> Set<String> {
         var handles = Set<String>()
 
         for account in accounts {
@@ -25,7 +25,7 @@ enum DirectMessageMentionFormatter {
         return handles
     }
 
-    static func stripLeadingMentions(from text: String, hiddenHandles: Set<String>) -> String {
+    nonisolated static func stripLeadingMentions(from text: String, hiddenHandles: Set<String>) -> String {
         guard
             !hiddenHandles.isEmpty,
             let prefix = leadingMentionPrefix(in: text, hiddenHandles: hiddenHandles)
@@ -36,7 +36,7 @@ enum DirectMessageMentionFormatter {
         return String(text.dropFirst(prefix.count))
     }
 
-    static func conversationPreview(for status: Status, hiddenHandles: Set<String>) -> String {
+    nonisolated static func conversationPreview(for status: Status, hiddenHandles: Set<String>) -> String {
         let strippedText = stripLeadingMentions(
             from: status.content.htmlToPlainText,
             hiddenHandles: hiddenHandles
@@ -50,7 +50,7 @@ enum DirectMessageMentionFormatter {
     }
 
     @available(iOS 15.0, macOS 12.0, *)
-    static func stripLeadingMentions(
+    nonisolated static func stripLeadingMentions(
         from attributedString: AttributedString,
         hiddenHandles: Set<String>
     ) -> AttributedString {
@@ -71,7 +71,7 @@ enum DirectMessageMentionFormatter {
         return stripped
     }
 
-    private static func insertHandleVariants(from rawHandle: String, into handles: inout Set<String>) {
+    private nonisolated static func insertHandleVariants(from rawHandle: String, into handles: inout Set<String>) {
         guard let normalized = HandleInputParser.normalizeHandle(rawHandle) else { return }
         handles.insert(normalized)
 
@@ -80,7 +80,7 @@ enum DirectMessageMentionFormatter {
         }
     }
 
-    private static func leadingMentionPrefix(in text: String, hiddenHandles: Set<String>) -> String? {
+    private nonisolated static func leadingMentionPrefix(in text: String, hiddenHandles: Set<String>) -> String? {
         var index = text.startIndex
         while index < text.endIndex, text[index].isWhitespace {
             index = text.index(after: index)
@@ -115,7 +115,7 @@ enum DirectMessageMentionFormatter {
         return String(text[..<index])
     }
 
-    private static func attachmentPreview(for attachments: [MediaAttachment]) -> String {
+    private nonisolated static func attachmentPreview(for attachments: [MediaAttachment]) -> String {
         guard !attachments.isEmpty else { return "" }
 
         let attachmentTypes = Set(attachments.map(\.type))

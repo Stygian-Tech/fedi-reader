@@ -16,6 +16,8 @@ struct LinkFeedThreeColumnView: View {
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @Environment(\.layoutMode) private var layoutMode
+    @AppStorage(PrivateMentionsFeedFilter.storageKey)
+    private var filterPrivateMentionsFromFeeds = PrivateMentionsFeedFilter.defaultValue
 
     @State private var selectedTabIndex: Int = 0
     @State private var selectedArticle: (url: URL, status: Status)?
@@ -83,7 +85,11 @@ struct LinkFeedThreeColumnView: View {
     }
 
     private var currentAccounts: [MastodonAccount] {
-        FeedScopedLinkData.accounts(in: linkFilterService, feedId: currentTab.id)
+        FeedScopedLinkData.accounts(
+            in: linkFilterService,
+            feedId: currentTab.id,
+            filterPrivateMentionsFromFeeds: filterPrivateMentionsFromFeeds
+        )
     }
 
     private var currentUserFilter: String? {
@@ -94,7 +100,8 @@ struct LinkFeedThreeColumnView: View {
         FeedScopedLinkData.filteredStatuses(
             in: linkFilterService,
             feedId: currentTab.id,
-            userFilterAccountId: currentUserFilter
+            userFilterAccountId: currentUserFilter,
+            filterPrivateMentionsFromFeeds: filterPrivateMentionsFromFeeds
         )
     }
 

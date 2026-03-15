@@ -17,6 +17,8 @@ struct SettingsView: View {
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
     @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
+    @AppStorage(PrivateMentionsFeedFilter.storageKey)
+    private var filterPrivateMentionsFromFeeds = PrivateMentionsFeedFilter.defaultValue
 
     private var accountID: String? {
         appState.currentAccount?.id
@@ -60,6 +62,7 @@ struct SettingsView: View {
                     showQuoteBoost: $showQuoteBoost,
                     showHandleInFeed: $showHandleInFeed,
                     articleViewerPreferenceRaw: $articleViewerPreferenceRaw,
+                    filterPrivateMentionsFromFeeds: $filterPrivateMentionsFromFeeds,
                     lists: lists,
                     isCompactDevice: isCompactDevice
                 )
@@ -145,6 +148,8 @@ struct SettingsView: View {
                     Text("15 minutes").tag(15)
                     Text("30 minutes").tag(30)
                 }
+
+                Toggle("Filter Private Mentions From Feeds", isOn: $filterPrivateMentionsFromFeeds)
             }
             
             // Posting
@@ -222,6 +227,7 @@ private struct SettingsTwoColumnView: View {
     @Binding var showQuoteBoost: Bool
     @Binding var showHandleInFeed: Bool
     @Binding var articleViewerPreferenceRaw: String
+    @Binding var filterPrivateMentionsFromFeeds: Bool
     let lists: [MastodonList]
     let isCompactDevice: Bool
 
@@ -441,6 +447,11 @@ private struct SettingsTwoColumnView: View {
                     }
                     .pickerStyle(.menu)
                     .listRowInsets(Self.detailRowInsets)
+
+                    settingsToggleRow(
+                        "Filter Private Mentions From Feeds",
+                        isOn: $filterPrivateMentionsFromFeeds
+                    )
                 } header: {
                     Text("Timeline").font(.roundedTitle3)
                 }

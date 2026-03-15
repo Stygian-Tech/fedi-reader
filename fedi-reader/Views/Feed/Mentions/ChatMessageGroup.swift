@@ -6,11 +6,13 @@ struct ChatMessageGroup: View {
     let hiddenMentionHandles: Set<String>
     @Environment(AppState.self) private var appState
     
+    private let opposingSideMinimumSpace: CGFloat = 16
+    
     var body: some View {
         if group.isSent {
             // Sent messages (right-aligned)
-            HStack(alignment: .bottom, spacing: 8) {
-                Spacer(minLength: 60)
+            HStack(alignment: .bottom, spacing: 6) {
+                Spacer(minLength: opposingSideMinimumSpace)
                 
                 // Messages
                 VStack(alignment: .trailing, spacing: 4) {
@@ -24,6 +26,7 @@ struct ChatMessageGroup: View {
                         )
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .trailing)
                 
                 // Avatar (only shown for first message in group)
                 if group.messages.first != nil {
@@ -32,33 +35,33 @@ struct ChatMessageGroup: View {
                             appState.navigate(to: .profile(currentAccount))
                         }
                     } label: {
-                        ProfileAvatarView(url: group.account.avatarURL, size: 32)
+                        ProfileAvatarView(url: group.account.avatarURL, size: 28)
                     }
                     .buttonStyle(.plain)
                 } else {
                     // Spacer to align messages
                     Circle()
                         .fill(Color.clear)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 28, height: 28)
                 }
             }
             .padding(.vertical, 4)
         } else {
             // Received messages (left-aligned)
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 6) {
                 // Avatar (only shown for first message in group)
                 if group.messages.first != nil {
                     Button {
                         appState.navigate(to: .profile(group.account))
                     } label: {
-                        ProfileAvatarView(url: group.account.avatarURL, size: 32)
+                        ProfileAvatarView(url: group.account.avatarURL, size: 28)
                     }
                     .buttonStyle(.plain)
                 } else {
                     // Spacer to align messages
                     Circle()
                         .fill(Color.clear)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 28, height: 28)
                 }
                 
                 // Messages
@@ -90,8 +93,9 @@ struct ChatMessageGroup: View {
                         )
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 
-                Spacer(minLength: 60)
+                Spacer(minLength: opposingSideMinimumSpace)
             }
             .padding(.vertical, 4)
         }
@@ -99,4 +103,3 @@ struct ChatMessageGroup: View {
 }
 
 // MARK: - Chat Bubble
-
