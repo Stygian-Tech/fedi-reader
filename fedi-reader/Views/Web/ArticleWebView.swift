@@ -19,6 +19,7 @@ struct ArticleWebView: View {
     var onClose: (() -> Void)?
     
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @Environment(\.layoutMode) private var layoutMode
@@ -58,6 +59,7 @@ struct ArticleWebView: View {
             if let onClose {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        HapticFeedback.play(.action)
                         onClose()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -72,6 +74,7 @@ struct ArticleWebView: View {
                 // Navigation
                 HStack(spacing: 16) {
                     Button {
+                        HapticFeedback.play(.action)
                         webView?.goBack()
                     } label: {
                         Image(systemName: "chevron.left")
@@ -81,6 +84,7 @@ struct ArticleWebView: View {
                     .accessibilityHint(!canGoBack ? "Back button disabled" : "Returns to previous page")
 
                     Button {
+                        HapticFeedback.play(.action)
                         webView?.goForward()
                     } label: {
                         Image(systemName: "chevron.right")
@@ -94,6 +98,7 @@ struct ArticleWebView: View {
                             .accessibilityLabel("Loading")
                     } else {
                         Button {
+                            HapticFeedback.play(.action)
                             webView?.reload()
                         } label: {
                             Image(systemName: "arrow.clockwise")
@@ -105,15 +110,20 @@ struct ArticleWebView: View {
                 
                 // More options
                 Menu {
-                    Link(destination: url) {
+                    Button {
+                        HapticFeedback.play(.action)
+                        openURL(url)
+                    } label: {
                         Label("Open in Safari", systemImage: "safari")
                     }
                     
                     ShareLink(item: url) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
+                    .hapticTap(.action)
                     
                     Button {
+                        HapticFeedback.play(.action)
                         #if os(iOS)
                         UIPasteboard.general.url = url
                         #elseif os(macOS)
@@ -130,6 +140,7 @@ struct ArticleWebView: View {
                         ForEach(readLaterManager.configuredServices, id: \.id) { config in
                             if let serviceType = config.service {
                                 Button {
+                                    HapticFeedback.play(.action)
                                     Task {
                                         try? await readLaterManager.save(
                                             url: url,

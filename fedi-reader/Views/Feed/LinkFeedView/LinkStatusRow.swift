@@ -64,6 +64,7 @@ struct LinkStatusRow: View {
             let tags = linkStatus.tags
             if !tags.isEmpty {
                 TagView(tags: tags) { tag in
+                    HapticFeedback.play(.navigation)
                     deferPostNavigation {
                         appState.navigate(to: .hashtag(tag))
                     }
@@ -83,6 +84,7 @@ struct LinkStatusRow: View {
         .contentShape(Rectangle())
         .onTapGesture {
             guard !shouldIgnoreTap() else { return }
+            HapticFeedback.play(.navigation)
             deferPostNavigation {
                 appState.navigate(to: .status(linkStatus.status))
             }
@@ -111,7 +113,13 @@ struct LinkStatusRow: View {
     }
 
     private var boostAttributionChip: some View {
-        NavigationLink(value: NavigationDestination.profile(linkStatus.status.account)) {
+        Button {
+            guard !shouldIgnoreTap() else { return }
+            HapticFeedback.play(.navigation)
+            deferPostNavigation {
+                appState.navigate(to: .profile(linkStatus.status.account))
+            }
+        } label: {
             BoostAttributionChip(account: linkStatus.status.account)
         }
         .buttonStyle(.plain)
@@ -120,7 +128,13 @@ struct LinkStatusRow: View {
 
     private var authorHeader: some View {
         HStack(spacing: 10) {
-            NavigationLink(value: NavigationDestination.profile(linkStatus.status.displayStatus.account)) {
+            Button {
+                guard !shouldIgnoreTap() else { return }
+                HapticFeedback.play(.navigation)
+                deferPostNavigation {
+                    appState.navigate(to: .profile(linkStatus.status.displayStatus.account))
+                }
+            } label: {
                 HStack(spacing: 10) {
                     ProfileAvatarView(url: linkStatus.status.displayStatus.account.avatarURL, size: Constants.UI.avatarSize)
 
@@ -171,6 +185,8 @@ struct LinkStatusRow: View {
 
     private var linkCard: some View {
         Button {
+            guard !shouldIgnoreTap() else { return }
+            HapticFeedback.play(.navigation)
             deferPostNavigation {
                 if let onArticleSelect {
                     onArticleSelect(linkStatus.primaryURL, linkStatus.status)
@@ -342,6 +358,7 @@ struct LinkStatusRow: View {
     }
 
     private func handleAuthorAttributionNavigation() {
+        HapticFeedback.play(.navigation)
         if let account = resolvedMastodonAccount {
             appState.navigate(to: .profile(account))
             return
@@ -407,9 +424,11 @@ struct LinkStatusRow: View {
             }
 
             guard MastodonProfileReference.acct(handle: effectiveAuthorAttribution?.mastodonHandle, profileURL: url) != nil else {
+                HapticFeedback.play(.navigation)
                 return .systemAction(url)
             }
 
+            HapticFeedback.play(.navigation)
             Task {
                 let account = if let resolvedMastodonAccount {
                     resolvedMastodonAccount
@@ -477,15 +496,20 @@ struct LinkStatusRow: View {
 
     @ViewBuilder
     private var contextMenuContent: some View {
-        Link(destination: linkStatus.primaryURL) {
+        Button {
+            HapticFeedback.play(.action)
+            openURL(linkStatus.primaryURL)
+        } label: {
             Label("Open in Browser", systemImage: "safari")
         }
 
         ShareLink(item: linkStatus.primaryURL) {
             Label("Share Link", systemImage: "square.and.arrow.up")
         }
+        .hapticTap(.action)
 
         Button {
+            HapticFeedback.play(.action)
             #if os(iOS)
             UIPasteboard.general.url = linkStatus.primaryURL
             #elseif os(macOS)
@@ -500,6 +524,7 @@ struct LinkStatusRow: View {
         
         // Bookmark
         Button {
+            HapticFeedback.play(.stateChange)
             Task {
                 await toggleBookmark()
             }
@@ -513,6 +538,7 @@ struct LinkStatusRow: View {
         if readLaterManager.hasConfiguredServices {
             if let primary = readLaterManager.primaryService, let serviceType = primary.service {
                 Button {
+                    HapticFeedback.play(.stateChange)
                     Task {
                         try? await readLaterManager.save(
                             url: linkStatus.primaryURL,
@@ -528,6 +554,7 @@ struct LinkStatusRow: View {
             Menu {
                 ForEach(readLaterManager.configuredServices, id: \.id) { config in
                     Button {
+                        HapticFeedback.play(.stateChange)
                         Task {
                             try? await readLaterManager.save(
                                 url: linkStatus.primaryURL,
@@ -547,18 +574,21 @@ struct LinkStatusRow: View {
         Divider()
 
         Button {
+            HapticFeedback.play(.action)
             appState.present(sheet: .compose(replyTo: linkStatus.status))
         } label: {
             Label("Reply", systemImage: "arrowshape.turn.up.left")
         }
 
         Button {
+            HapticFeedback.play(.action)
             appState.present(sheet: .compose(quote: linkStatus.status))
         } label: {
             Label("Quote", systemImage: "quote.bubble")
         }
 
         Button {
+            HapticFeedback.play(.action)
             isManagingLists = true
         } label: {
             Label("Manage Lists", systemImage: "list.bullet")

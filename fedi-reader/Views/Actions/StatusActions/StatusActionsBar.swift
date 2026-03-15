@@ -67,7 +67,7 @@ struct StatusActionsBar: View {
     
     var body: some View {
         actionsRow
-            .disabled(isProcessing)
+            .allowsHitTesting(!isProcessing)
             .onReceive(NotificationCenter.default.publisher(for: .statusDidUpdate)) { notification in
                 guard let updated = notification.object as? Status else { return }
                 applyUpdatedStatus(updated)
@@ -86,10 +86,12 @@ struct StatusActionsBar: View {
         isActive: Bool,
         activeColor: Color,
         accessibilityLabel: String,
+        hapticEvent: HapticFeedback.Event,
         action: @escaping () async -> Void
     ) -> some View {
         Button {
             guard !isProcessing, !isTapSuppressed else { return }
+            HapticFeedback.play(hapticEvent)
             Task {
                 await action()
             }
@@ -155,7 +157,8 @@ struct StatusActionsBar: View {
                 count: replyCount,
                 isActive: false,
                 activeColor: .accentColor,
-                accessibilityLabel: "Reply"
+                accessibilityLabel: "Reply",
+                hapticEvent: .action
             ) {
                 appState.present(sheet: .compose(replyTo: displayStatus))
             }
@@ -169,7 +172,8 @@ struct StatusActionsBar: View {
                 count: favoriteCount,
                 isActive: isFavorited,
                 activeColor: .yellow,
-                accessibilityLabel: "Favorite"
+                accessibilityLabel: "Favorite",
+                hapticEvent: .confirmation
             ) {
                 await toggleFavorite()
             }
@@ -184,6 +188,7 @@ struct StatusActionsBar: View {
             Menu {
                 Button {
                     guard !isTapSuppressed else { return }
+                    HapticFeedback.play(.confirmation)
                     Task {
                         await toggleReblog()
                     }
@@ -212,6 +217,7 @@ struct StatusActionsBar: View {
             Menu {
                 Button {
                     guard !isTapSuppressed else { return }
+                    HapticFeedback.play(.confirmation)
                     Task {
                         await toggleReblog()
                     }
@@ -221,6 +227,7 @@ struct StatusActionsBar: View {
                 
                 Button {
                     guard !isTapSuppressed else { return }
+                    HapticFeedback.play(.action)
                     appState.present(sheet: .compose(quote: status))
                 } label: {
                     Label("Quote Boost", systemImage: "quote.bubble")
@@ -249,7 +256,8 @@ struct StatusActionsBar: View {
                 count: reblogCount,
                 isActive: false,
                 activeColor: .green,
-                accessibilityLabel: "Boost"
+                accessibilityLabel: "Boost",
+                hapticEvent: .confirmation
             ) {
                 await toggleReblog()
             }
@@ -264,7 +272,8 @@ struct StatusActionsBar: View {
                 count: nil,
                 isActive: isBookmarked,
                 activeColor: .orange,
-                accessibilityLabel: "Bookmark"
+                accessibilityLabel: "Bookmark",
+                hapticEvent: .confirmation
             ) {
                 await toggleBookmark()
             }
@@ -275,6 +284,7 @@ struct StatusActionsBar: View {
                     if let primary = readLaterManager.primaryService, let serviceType = primary.service {
                         Button {
                             guard !isTapSuppressed else { return }
+                            HapticFeedback.play(.confirmation)
                             Task {
                                 try? await readLaterManager.save(
                                     url: url,
@@ -292,6 +302,7 @@ struct StatusActionsBar: View {
                             if let serviceType = config.service {
                                 Button {
                                     guard !isTapSuppressed else { return }
+                                    HapticFeedback.play(.confirmation)
                                     Task {
                                         try? await readLaterManager.save(
                                             url: url,
@@ -323,6 +334,7 @@ struct StatusActionsBar: View {
                     .font(iconFont)
                     .foregroundStyle(.secondary)
             }
+            .hapticTap(.action)
             .buttonStyle(.plain)
         }
         .layoutPriority(0)

@@ -34,7 +34,7 @@ struct MainTabView: View {
         mainTabView()
             .animation(.easeInOut(duration: 0.25), value: hideTabBarLabels)
             .onChange(of: state.selectedTab) { oldValue, newValue in
-            HapticFeedback.play(.selection)
+            HapticFeedback.play(.navigation)
             let primaryTabs = Array(visibleTabs.prefix(4))
             if primaryTabs.contains(newValue) {
                 state.moreTabPath.removeAll()
@@ -453,7 +453,7 @@ struct MainTabView: View {
                 let isDoubleTap = tabTracker.recordSelection(.links)
                 if isDoubleTap {
                     appState.requestLinksScrollToTop()
-                    HapticFeedback.play(.medium)
+                    HapticFeedback.play(.navigation)
                 }
             } else {
                 tabTracker.reset()
@@ -591,4 +591,3 @@ private struct ConditionalTabViewStyle: ViewModifier {
         }
     }
 }
-

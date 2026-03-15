@@ -27,6 +27,7 @@ struct StatusDetailRowView: View {
 
             HStack(spacing: 10) {
                 Button {
+                    HapticFeedback.play(.navigation)
                     appState.navigate(to: .profile(displayStatus.account))
                 } label: {
                     ProfileAvatarView(url: displayStatus.account.avatarURL, size: Constants.UI.avatarSize)
@@ -69,7 +70,10 @@ struct StatusDetailRowView: View {
             if #available(iOS 15.0, macOS 12.0, *) {
                 HashtagLinkText(
                     content: displayStatus.content,
-                    onHashtagTap: { appState.navigate(to: .hashtag($0)) },
+                    onHashtagTap: {
+                        HapticFeedback.play(.navigation)
+                        appState.navigate(to: .hashtag($0))
+                    },
                     emojiLookup: Dictionary(uniqueKeysWithValues: displayStatus.emojis.map { ($0.shortcode, $0) })
                 )
                 .font(.roundedBody)
@@ -100,6 +104,7 @@ struct StatusDetailRowView: View {
             if let card = displayStatus.card, card.type == .link {
                 Button {
                     if let url = card.linkURL {
+                        HapticFeedback.play(.navigation)
                         let pref = ArticleViewerPreference.from(raw: articleViewerPreferenceRaw)
                         switch pref {
                         case .externalBrowser:
@@ -152,6 +157,7 @@ struct StatusDetailRowView: View {
 
     private var boostAttributionChip: some View {
         BoostAttributionChip(account: status.account) {
+            HapticFeedback.play(.navigation)
             appState.navigate(to: .profile(status.account))
         }
     }
@@ -163,9 +169,11 @@ struct StatusDetailRowView: View {
     private var authorLinkOpenURLAction: OpenURLAction {
         OpenURLAction { url in
             guard MastodonProfileReference.acct(handle: authorAttribution?.mastodonHandle, profileURL: url) != nil else {
+                HapticFeedback.play(.navigation)
                 return .systemAction(url)
             }
 
+            HapticFeedback.play(.navigation)
             Task {
                 let account = if let resolvedAuthorAccount {
                     resolvedAuthorAccount

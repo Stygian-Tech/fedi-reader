@@ -418,11 +418,12 @@ struct LinkFeedThreeColumnView: View {
         let isDoubleTap = feedTabSelectionTracker.recordSelection(tab.id)
 
         if isSelected, isDoubleTap {
-            HapticFeedback.play(.medium)
+            HapticFeedback.play(.navigation)
             appState.requestLinksScrollToTop()
             return
         }
 
+        HapticFeedback.play(.navigation)
         selectTab(at: index)
     }
 
@@ -449,7 +450,7 @@ struct LinkFeedThreeColumnView: View {
 
     private func scrollToTop() {
         guard let proxy = scrollProxy, !filteredStatuses.isEmpty else { return }
-        HapticFeedback.prepare(.medium)
+        HapticFeedback.prepare(.navigation)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             if let firstStatus = filteredStatuses.first {
                 proxy.scrollTo(firstStatus.id, anchor: .top)
