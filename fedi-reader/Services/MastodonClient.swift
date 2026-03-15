@@ -554,6 +554,20 @@ final class MastodonClient {
         let request = buildRequest(url: url, accessToken: accessToken)
         return try await execute(request)
     }
+
+    func followAccount(instance: String, accessToken: String, accountId: String) async throws -> Relationship {
+        Self.logger.info("Following account: \(accountId.prefix(8), privacy: .public)")
+        let url = try buildURL(instance: instance, path: "\(Constants.API.accounts)/\(accountId)/follow")
+        let request = buildRequest(url: url, method: "POST", accessToken: accessToken)
+        return try await execute(request)
+    }
+
+    func unfollowAccount(instance: String, accessToken: String, accountId: String) async throws -> Relationship {
+        Self.logger.info("Unfollowing account: \(accountId.prefix(8), privacy: .public)")
+        let url = try buildURL(instance: instance, path: "\(Constants.API.accounts)/\(accountId)/unfollow")
+        let request = buildRequest(url: url, method: "POST", accessToken: accessToken)
+        return try await execute(request)
+    }
     
     func getAccountFollowers(
         instance: String,
