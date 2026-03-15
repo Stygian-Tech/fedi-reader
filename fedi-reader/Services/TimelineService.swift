@@ -17,6 +17,7 @@ final class TimelineService {
     private let client: MastodonClient
     private let authService: AuthService
     private let remoteReplyService: RemoteReplyService
+    private let statusContextRefreshCoordinator: StatusContextRefreshCoordinator
     
     // Timeline state
     var homeTimeline: [Status] = []
@@ -69,8 +70,6 @@ final class TimelineService {
     private var hashtagTimelineLoadWaiters: [CheckedContinuation<Void, Never>] = []
     private var loadingListTimelineFeedId: String?
     
-    /// Polling tasks for async refresh, keyed by status ID. Cancelled when starting a new refresh for same status or via cancelAsyncRefreshPolling.
-    private var asyncRefreshPollingTasks: [String: Task<Void, Never>] = [:]
     private var inboxAutoRefreshTask: Task<Void, Never>?
     
     // Error state
@@ -85,6 +84,11 @@ final class TimelineService {
         self.client = client
         self.authService = authService
         self.remoteReplyService = RemoteReplyService(client: client, authService: authService)
+        self.statusContextRefreshCoordinator = StatusContextRefreshCoordinator(
+            client: client,
+            authService: authService,
+            remoteReplyService: self.remoteReplyService
+        )
     }
     
     // MARK: - Home Timeline
@@ -649,19 +653,30 @@ final class TimelineService {
         
         if let header = buildAsyncRefreshHeader(from: contextWithRefresh) {
             Self.logger.info("Async refresh available on refresh for status \(status.id.prefix(8), privacy: .public), starting polling")
-            startAsyncRefreshPolling(status: status, header: header, instance: session.instance, token: session.accessToken)
+            await statusContextRefreshCoordinator.scheduleAsyncRefreshPolling(
+                for: status,
+                header: header,
+                instance: session.instance,
+                token: session.accessToken,
+                publish: Self.publishStatusContextUpdate
+            )
         } else if shouldFetchRemoteReplies(context: context, status: status) {
-            startFallbackRemoteReplyFetch(status: status, context: context)
+            await statusContextRefreshCoordinator.scheduleFallbackRemoteReplyFetch(
+                for: status,
+                context: context,
+                publish: Self.publishStatusContextUpdate
+            )
         } else {
             let payload = StatusContextUpdatePayload(statusId: status.id, context: context)
             NotificationCenter.default.post(name: .statusContextDidUpdate, object: payload)
         }
     }
     
-    /// Cancels any active async-refresh polling for the given status. Call when leaving thread or starting a new refresh.
+    /// Cancels any active reply-context refresh work for the given status.
     func cancelAsyncRefreshPolling(forStatusId statusId: String) {
-        asyncRefreshPollingTasks[statusId]?.cancel()
-        asyncRefreshPollingTasks.removeValue(forKey: statusId)
+        Task(priority: .utility) { [statusContextRefreshCoordinator] in
+            await statusContextRefreshCoordinator.cancelRefresh(forStatusId: statusId)
+        }
     }
     
     private func buildAsyncRefreshHeader(from contextWithRefresh: MastodonClient.StatusContextWithRefresh) -> AsyncRefreshHeader? {
@@ -683,62 +698,6 @@ final class TimelineService {
         )
     }
     
-    private func startAsyncRefreshPolling(status: Status, header: AsyncRefreshHeader, instance: String, token: String) {
-        asyncRefreshPollingTasks[status.id]?.cancel()
-        asyncRefreshPollingTasks.removeValue(forKey: status.id)
-        
-        let task = Task { [weak self] in
-            guard let self else { return }
-            var attempts = 0
-            let maxAttempts = Constants.RemoteReplies.asyncRefreshMaxPollAttempts
-            
-            while !Task.isCancelled, attempts < maxAttempts {
-                do {
-                    let refresh = try await self.client.getAsyncRefreshInBackground(
-                        instance: instance,
-                        accessToken: token,
-                        id: header.id
-                    )
-                    if refresh.status == "finished" {
-                        Self.logger.info("Async refresh finished for status \(status.id.prefix(8), privacy: .public)")
-                        break
-                    }
-                } catch let err as FediReaderError {
-                    if case .serverError(404, _) = err {
-                        Self.logger.debug("Async refresh 404 for id \(header.id.prefix(12), privacy: .public), stopping poll")
-                        break
-                    }
-                    Self.logger.debug("Async refresh poll error: \(err.localizedDescription)")
-                } catch {
-                    Self.logger.debug("Async refresh poll error: \(error.localizedDescription)")
-                }
-                
-                attempts += 1
-                if Task.isCancelled { return }
-                try? await Task.sleep(nanoseconds: UInt64(header.retrySeconds) * 1_000_000_000)
-            }
-            
-            if Task.isCancelled { return }
-            
-            do {
-                guard let session = await self.authService.activeSessionSnapshot() else { return }
-                let ctxWithRefresh = try await self.client.getStatusContextWithRefreshInBackground(
-                    instance: session.instance,
-                    accessToken: session.accessToken,
-                    id: status.id
-                )
-                let payload = StatusContextUpdatePayload(statusId: status.id, context: ctxWithRefresh.context)
-                NotificationCenter.default.post(name: .statusContextDidUpdate, object: payload)
-            } catch {
-                Self.logger.error("Failed to re-fetch context after async refresh: \(error.localizedDescription)")
-            }
-            
-            self.asyncRefreshPollingTasks.removeValue(forKey: status.id)
-        }
-        
-        asyncRefreshPollingTasks[status.id] = task
-    }
-    
     /// Fetches remote replies for a status and returns updated context
     func fetchRemoteReplies(for status: Status) async throws -> [Status] {
         let context = await remoteReplyService.fetchRemoteReplyContext(for: status)
@@ -751,19 +710,8 @@ final class TimelineService {
         return context.needsRemoteReplyFetch(for: status, localInstance: localInstance)
     }
 
-    private func startFallbackRemoteReplyFetch(status: Status, context: StatusContext) {
-        Self.logger.info("Attempting fallback remote reply fetch for status: \(status.id.prefix(8), privacy: .public)")
-
-        Task { [weak self] in
-            guard let self else { return }
-            guard let updatedContext = await self.remoteReplyService.fetchRemoteReplyContext(
-                for: status,
-                initialContext: context
-            ) else {
-                return
-            }
-
-            let payload = StatusContextUpdatePayload(statusId: status.id, context: updatedContext)
+    nonisolated private static func publishStatusContextUpdate(_ payload: StatusContextUpdatePayload) async {
+        await MainActor.run {
             NotificationCenter.default.post(name: .statusContextDidUpdate, object: payload)
         }
     }
