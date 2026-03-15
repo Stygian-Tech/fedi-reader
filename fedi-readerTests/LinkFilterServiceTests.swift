@@ -660,12 +660,118 @@ struct LinkFilterServiceTests {
         let scopedStatuses = FeedScopedLinkData.filteredStatuses(
             in: service,
             feedId: "list-1",
-            userFilterAccountId: nil
+            userFilterAccountId: nil,
+            filterPrivateMentionsFromFeeds: false
         )
-        let scopedAccounts = FeedScopedLinkData.accounts(in: service, feedId: "list-1")
+        let scopedAccounts = FeedScopedLinkData.accounts(
+            in: service,
+            feedId: "list-1",
+            filterPrivateMentionsFromFeeds: false
+        )
 
         #expect(scopedStatuses.map(\.id) == ["list-1"])
         #expect(scopedAccounts.map(\.id) == ["acct-list"])
+    }
+
+    @Test("Private mention feed filter defaults to enabled")
+    func privateMentionFeedFilterDefaultsToEnabled() {
+        #expect(PrivateMentionsFeedFilter.defaultValue)
+    }
+
+    @Test("Feed-scoped data filters private mentions when enabled")
+    func feedScopedDataFiltersPrivateMentionsWhenEnabled() async {
+        let publicAuthor = MockStatusFactory.makeAccount(id: "acct-public", username: "public")
+        let privateAuthor = MockStatusFactory.makeAccount(id: "acct-private", username: "private")
+        let directAuthor = MockStatusFactory.makeAccount(id: "acct-direct", username: "direct")
+
+        let statuses = [
+            MockStatusFactory.makeStatus(
+                id: "public-link",
+                hasCard: true,
+                cardURL: "https://example.com/public",
+                account: publicAuthor,
+                visibility: .public
+            ),
+            MockStatusFactory.makeStatus(
+                id: "private-link",
+                hasCard: true,
+                cardURL: "https://example.com/private",
+                account: privateAuthor,
+                visibility: .private
+            ),
+            MockStatusFactory.makeStatus(
+                id: "direct-link",
+                hasCard: true,
+                cardURL: "https://example.com/direct",
+                account: directAuthor,
+                visibility: .direct
+            )
+        ]
+
+        _ = await service.processStatuses(statuses, for: AppState.homeFeedID)
+
+        let scopedStatuses = FeedScopedLinkData.filteredStatuses(
+            in: service,
+            feedId: AppState.homeFeedID,
+            userFilterAccountId: nil,
+            filterPrivateMentionsFromFeeds: true
+        )
+        let scopedAccounts = FeedScopedLinkData.accounts(
+            in: service,
+            feedId: AppState.homeFeedID,
+            filterPrivateMentionsFromFeeds: true
+        )
+
+        #expect(scopedStatuses.map(\.id) == ["public-link"])
+        #expect(scopedAccounts.map(\.id) == ["acct-public"])
+    }
+
+    @Test("Feed-scoped data can include private mentions when disabled")
+    func feedScopedDataCanIncludePrivateMentionsWhenDisabled() async {
+        let publicAuthor = MockStatusFactory.makeAccount(id: "acct-public", username: "public")
+        let privateAuthor = MockStatusFactory.makeAccount(id: "acct-private", username: "private")
+        let directAuthor = MockStatusFactory.makeAccount(id: "acct-direct", username: "direct")
+
+        let statuses = [
+            MockStatusFactory.makeStatus(
+                id: "public-link",
+                hasCard: true,
+                cardURL: "https://example.com/public",
+                account: publicAuthor,
+                visibility: .public
+            ),
+            MockStatusFactory.makeStatus(
+                id: "private-link",
+                hasCard: true,
+                cardURL: "https://example.com/private",
+                account: privateAuthor,
+                visibility: .private
+            ),
+            MockStatusFactory.makeStatus(
+                id: "direct-link",
+                hasCard: true,
+                cardURL: "https://example.com/direct",
+                account: directAuthor,
+                visibility: .direct
+            )
+        ]
+
+        _ = await service.processStatuses(statuses, for: AppState.homeFeedID)
+
+        let scopedStatuses = FeedScopedLinkData.filteredStatuses(
+            in: service,
+            feedId: AppState.homeFeedID,
+            userFilterAccountId: nil,
+            filterPrivateMentionsFromFeeds: false
+        )
+        let scopedAccounts = FeedScopedLinkData.accounts(
+            in: service,
+            feedId: AppState.homeFeedID,
+            filterPrivateMentionsFromFeeds: false
+        )
+
+        #expect(scopedStatuses.map(\.id) == ["public-link", "private-link", "direct-link"])
+        #expect(Set(scopedAccounts.map(\.id)) == Set(["acct-public", "acct-private", "acct-direct"]))
     }
     
     // MARK: - Filter by Account

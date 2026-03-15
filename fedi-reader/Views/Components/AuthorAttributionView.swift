@@ -107,6 +107,7 @@ struct AuthorAttributionView: View {
             Text(authorName)
                 .font(.roundedCaption)
                 .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)

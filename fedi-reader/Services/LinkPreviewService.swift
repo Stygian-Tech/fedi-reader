@@ -11,6 +11,7 @@ import os
 actor LinkPreviewService {
     static let shared = LinkPreviewService()
     private static let logger = Logger(subsystem: "app.fedi-reader", category: "LinkPreviewService")
+    private static let previewRangeByteLimit = 65_535
 
     // MARK: - Types
     struct LinkPreview: Hashable, Sendable {
@@ -36,6 +37,36 @@ actor LinkPreviewService {
         let imageURL: URL?
         let siteName: String?
         let fediverseCreator: String?
+
+        var isEmpty: Bool {
+            title?.isEmpty != false
+                && description?.isEmpty != false
+                && imageURL == nil
+                && siteName?.isEmpty != false
+                && fediverseCreator?.isEmpty != false
+        }
+
+        var isMissingImportantPreviewMetadata: Bool {
+            title?.isEmpty != false
+                || imageURL == nil
+                || siteName?.isEmpty != false
+        }
+
+        func merging(_ other: ParsedPreviewMetadata) -> ParsedPreviewMetadata {
+            ParsedPreviewMetadata(
+                title: title ?? other.title,
+                description: description ?? other.description,
+                imageURL: imageURL ?? other.imageURL,
+                siteName: siteName ?? other.siteName,
+                fediverseCreator: fediverseCreator ?? other.fediverseCreator
+            )
+        }
+    }
+
+    private struct FetchedHTML: Sendable {
+        let html: String
+        let statusCode: Int
+        let usedRangeRequest: Bool
     }
 
     // MARK: - State
@@ -94,11 +125,21 @@ actor LinkPreviewService {
             return preview
         }
 
-        // Step 2: GET first bytes (head) of the document
-        let html = await fetchHeadHTML(from: finalURL)
-        let parsed = await Task.detached(priority: .utility) {
-            Self.parseHTML(html, baseURL: finalURL)
+        // Step 2: GET first bytes of the document, then fall back to the full HTML
+        // only when the head slice has no usable preview metadata.
+        let fetchedHeadHTML = await fetchHTML(from: finalURL, useRangeRequest: true)
+        var parsed = await Task.detached(priority: .utility) {
+            Self.parseHTML(fetchedHeadHTML.html, baseURL: finalURL)
         }.value
+        if Self.shouldFetchFullHTML(after: fetchedHeadHTML, parsed: parsed) {
+            let fullHTML = await fetchHTML(from: finalURL, useRangeRequest: false)
+            let fullParsed = await Task.detached(priority: .utility) {
+                Self.parseHTML(fullHTML.html, baseURL: finalURL)
+            }.value
+            if !fullParsed.isEmpty {
+                parsed = parsed.merging(fullParsed)
+            }
+        }
         let creator = Self.normalizeFediverseCreator(parsed.fediverseCreator)
         let preview = LinkPreview(
             url: url,
@@ -181,22 +222,48 @@ actor LinkPreviewService {
         }
     }
 
-    private func fetchHeadHTML(from url: URL) async -> String {
+    private func fetchHTML(from url: URL, useRangeRequest: Bool) async -> FetchedHTML {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        // Request only the first ~32KB; meta tags typically live in <head>
-        request.setValue("bytes=0-32767", forHTTPHeaderField: "Range")
+        if useRangeRequest {
+            // Request only the first ~64KB; most preview metadata lives in <head>.
+            request.setValue("bytes=0-\(Self.previewRangeByteLimit)", forHTTPHeaderField: "Range")
+        }
         do {
             let (data, response) = try await session.data(for: request)
             let http = response as? HTTPURLResponse
             let statusCode = http?.statusCode ?? 0
             let html = String(data: data, encoding: .utf8) ?? ""
-            Self.logger.debug("Fetched HTML head: \(url.absoluteString, privacy: .public) -> \(statusCode), size: \(data.count) bytes, html length: \(html.count)")
-            return html
+            let fetchKind = useRangeRequest ? "head" : "full"
+            Self.logger.debug("Fetched HTML \(fetchKind, privacy: .public): \(url.absoluteString, privacy: .public) -> \(statusCode), size: \(data.count) bytes, html length: \(html.count)")
+            return FetchedHTML(
+                html: html,
+                statusCode: statusCode,
+                usedRangeRequest: useRangeRequest
+            )
         } catch {
-            Self.logger.error("Failed to fetch HTML head for \(url.absoluteString, privacy: .public): \(error.localizedDescription)")
-            return ""
+            let fetchKind = useRangeRequest ? "head" : "full"
+            Self.logger.error("Failed to fetch HTML \(fetchKind, privacy: .public) for \(url.absoluteString, privacy: .public): \(error.localizedDescription)")
+            return FetchedHTML(
+                html: "",
+                statusCode: 0,
+                usedRangeRequest: useRangeRequest
+            )
         }
+    }
+
+    private nonisolated static func shouldFetchFullHTML(
+        after fetchedHTML: FetchedHTML,
+        parsed: ParsedPreviewMetadata
+    ) -> Bool {
+        guard fetchedHTML.usedRangeRequest else {
+            return false
+        }
+
+        let partialResponseLikelyIncomplete = fetchedHTML.statusCode == 206
+            || fetchedHTML.html.utf8.count >= previewRangeByteLimit
+
+        return parsed.isEmpty || (partialResponseLikelyIncomplete && parsed.isMissingImportantPreviewMetadata)
     }
 
     // MARK: - Parsing

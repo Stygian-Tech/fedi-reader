@@ -109,7 +109,7 @@ struct GroupedConversationDetailView: View {
                             .id(group.id)
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 6)
                 .padding(.vertical, 8)
             }
             .scrollContentBackground(.hidden)
@@ -364,4 +364,3 @@ struct GroupedConversationDetailView: View {
 }
 
 // MARK: - Grouped Message
-

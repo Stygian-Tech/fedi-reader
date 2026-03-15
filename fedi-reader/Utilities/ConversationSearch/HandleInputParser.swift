@@ -1,9 +1,9 @@
 import Foundation
 
 enum HandleInputParser {
-    private static let delimiters = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ","))
+    private nonisolated static let delimiters = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ","))
 
-    static func tokenize(_ input: String) -> HandleInputTokens {
+    nonisolated static func tokenize(_ input: String) -> HandleInputTokens {
         let tokens = input
             .components(separatedBy: delimiters)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -24,7 +24,7 @@ enum HandleInputParser {
         )
     }
 
-    static func normalizeHandle(_ raw: String) -> String? {
+    nonisolated static func normalizeHandle(_ raw: String) -> String? {
         var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return nil }
 
@@ -38,7 +38,7 @@ enum HandleInputParser {
         return cleaned.lowercased()
     }
 
-    static func searchQueryVariants(for rawToken: String) -> [String] {
+    nonisolated static func searchQueryVariants(for rawToken: String) -> [String] {
         let trimmed = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
@@ -68,5 +68,4 @@ enum HandleInputParser {
         return variants
     }
 }
-
 
