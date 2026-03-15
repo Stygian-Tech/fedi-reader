@@ -340,6 +340,8 @@ struct LinkFeedThreeColumnView: View {
                     isLoading: FeedScopedLinkData.isLoading(in: linkFilterService, feedId: currentTab.id),
                     shouldShowPaginationLoading: shouldShowPaginationLoadingRow(for: statuses),
                     canLoadMore: canLoadMore,
+                    showsFollowedHashtagAttribution: currentTab.isHome,
+                    followedTags: currentTab.isHome ? (timelineService?.followedTags ?? []) : [],
                     deferPostNavigation: { action in action() },
                     shouldBlockPostTaps: { false },
                     onItemAppear: { checkLoadMore(at: $0, totalCount: $1) },
@@ -515,6 +517,7 @@ struct LinkFeedThreeColumnView: View {
             selectedTabIndex = index
         }
 
+        await ensureHomeFollowedTagsLoadedIfNeeded(for: currentTab, using: service)
         linkFilterService.switchToFeed(currentTab.id)
 
         let hasPreparedFeedState = service.hasPreparedLinkFeedState(feedId: currentTab.id)
@@ -536,6 +539,7 @@ struct LinkFeedThreeColumnView: View {
     private func loadContentForTab(_ tab: FeedTabItem, forceRefresh: Bool = false) async {
         guard let service = timelineService else { return }
 
+        await ensureHomeFollowedTagsLoadedIfNeeded(for: tab, using: service)
         linkFilterService.switchToFeed(tab.id)
         let statuses = await service.loadLinkFeedStatuses(feedId: tab.id, forceRefreshHome: forceRefresh)
         _ = await linkFilterService.processStatusesEnsuringVisibleContent(
@@ -561,6 +565,8 @@ struct LinkFeedThreeColumnView: View {
         guard let service = timelineService else { return }
         let tab = currentTab
         let statuses: [Status]
+
+        await ensureHomeFollowedTagsLoadedIfNeeded(for: tab, using: service)
 
         if tab.isHome {
             await service.refreshHomeTimeline()
@@ -615,6 +621,11 @@ struct LinkFeedThreeColumnView: View {
             return await service.loadMoreHomeTimeline()
         }
         return await service.loadMoreListTimeline(listId: tab.id)
+    }
+
+    private func ensureHomeFollowedTagsLoadedIfNeeded(for tab: FeedTabItem, using service: TimelineService) async {
+        guard tab.isHome, service.followedTags.isEmpty else { return }
+        await service.loadFollowedTags(refresh: true)
     }
 
     private func attemptRestoreScrollIfNeeded() {

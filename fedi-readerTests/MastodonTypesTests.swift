@@ -50,6 +50,35 @@ struct MastodonTypesTests {
         #expect(status.displayStatus.id == status.id)
     }
 
+    @Test("Status matchedFollowedTagName prefers tag entities already marked as followed")
+    func statusMatchedFollowedTagNamePrefersDirectFollowedTag() {
+        let status = MockStatusFactory.makeStatus(
+            tags: [
+                Tag(name: "news", url: "https://mastodon.social/tags/news", following: false),
+                Tag(name: "Swift", url: "https://mastodon.social/tags/swift", following: true)
+            ]
+        )
+
+        #expect(status.matchedFollowedTagName(in: []) == "Swift")
+    }
+
+    @Test("Status matchedFollowedTagName falls back to the followed tag list case insensitively")
+    func statusMatchedFollowedTagNameFallsBackToFollowedTagList() {
+        let status = MockStatusFactory.makeStatus(
+            tags: [
+                Tag(name: "News", url: "https://mastodon.social/tags/news"),
+                Tag(name: "SwiftLang", url: "https://mastodon.social/tags/swiftlang")
+            ]
+        )
+
+        let followedTags = [
+            Tag(name: "swiftlang", url: "https://mastodon.social/tags/swiftlang"),
+            Tag(name: "ios", url: "https://mastodon.social/tags/ios")
+        ]
+
+        #expect(status.matchedFollowedTagName(in: followedTags) == "swiftlang")
+    }
+
     @Test("StatusContext returns immediate parent for replies")
     func statusContextReturnsImmediateParent() {
         let root = MockStatusFactory.makeStatus(id: "root")

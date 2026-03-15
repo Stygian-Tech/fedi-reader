@@ -1,10 +1,18 @@
 import SwiftUI
 
-struct BoostAttributionChip: View {
-    let account: MastodonAccount
+struct AttributionChipContainer<Content: View>: View {
     var action: (() -> Void)? = nil
+    private let content: Content
 
     @AppStorage("themeColor") private var themeColorName = "blue"
+
+    init(
+        action: (() -> Void)? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.action = action
+        self.content = content()
+    }
 
     private var themeColor: Color {
         ThemeColor.resolved(from: themeColorName).color
@@ -22,6 +30,41 @@ struct BoostAttributionChip: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var chipContent: some View {
+        content
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background {
+                ZStack {
+                    Color(.secondarySystemBackground).opacity(0.65)
+                    themeColor.opacity(0.10)
+                }
+            }
+            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(themeColor.opacity(0.25), lineWidth: 1)
+            }
+            .contentShape(Capsule())
+    }
+}
+
+struct BoostAttributionChip: View {
+    let account: MastodonAccount
+    var action: (() -> Void)? = nil
+
+    @AppStorage("themeColor") private var themeColorName = "blue"
+
+    private var themeColor: Color {
+        ThemeColor.resolved(from: themeColorName).color
+    }
+
+    var body: some View {
+        AttributionChipContainer(action: action) {
+            chipContent
+        }
     }
 
     private var chipContent: some View {
@@ -43,19 +86,36 @@ struct BoostAttributionChip: View {
 
             AccountBadgesView(account: account, size: .small)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background {
-            ZStack {
-                Color(.secondarySystemBackground).opacity(0.65)
-                themeColor.opacity(0.10)
+    }
+}
+
+struct FollowedHashtagAttributionChip: View {
+    let hashtag: String
+    var action: (() -> Void)? = nil
+
+    @AppStorage("themeColor") private var themeColorName = "blue"
+
+    private var themeColor: Color {
+        ThemeColor.resolved(from: themeColorName).color
+    }
+
+    var body: some View {
+        AttributionChipContainer(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "number")
+                    .font(.roundedCaption2)
+                    .foregroundStyle(themeColor)
+
+                Text("Following")
+                    .font(.roundedCaption)
+                    .foregroundStyle(.secondary)
+
+                Text(hashtag)
+                    .font(.roundedCaption.bold())
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .layoutPriority(1)
             }
         }
-        .clipShape(Capsule())
-        .overlay {
-            Capsule()
-                .stroke(themeColor.opacity(0.25), lineWidth: 1)
-        }
-        .contentShape(Capsule())
     }
 }
