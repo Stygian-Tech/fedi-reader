@@ -5,6 +5,7 @@ enum MockStatusFactory {
     static func makeStatus(
         id: String = UUID().uuidString,
         content: String = "<p>Test post content</p>",
+        mediaAttachments: [MediaAttachment] = [],
         hasCard: Bool = false,
         cardURL: String? = nil,
         cardType: CardType = .link,
@@ -54,7 +55,7 @@ enum MockStatusFactory {
             visibility: visibility,
             sensitive: false,
             spoilerText: "",
-            mediaAttachments: [],
+            mediaAttachments: mediaAttachments,
             mentions: [],
             tags: tags,
             emojis: [],

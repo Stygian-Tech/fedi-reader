@@ -208,6 +208,81 @@ struct ConversationSearchHelpersTests {
         #expect(String(stripped.characters) == "Hello #Swift")
     }
 
+    @Test("Conversation preview returns stripped text when text remains")
+    func conversationPreviewReturnsStrippedTextWhenTextRemains() {
+        let me = makeAccount(id: "me", username: "me", acct: "me@local.social", host: "local.social")
+        let alice = makeAccount(id: "alice", username: "alice", acct: "alice@alpha.social", host: "alpha.social")
+        let hiddenHandles = DirectMessageMentionFormatter.hiddenHandles(for: [me, alice])
+        let status = MockStatusFactory.makeStatus(
+            content: "<p>@alice @me Hello there</p>",
+            mediaAttachments: [makeAttachment(type: .image)],
+            visibility: .direct
+        )
+
+        let preview = DirectMessageMentionFormatter.conversationPreview(for: status, hiddenHandles: hiddenHandles)
+
+        #expect(preview == "Hello there")
+    }
+
+    @Test("Conversation preview returns image fallback for image-only message")
+    func conversationPreviewReturnsImageFallback() {
+        let hiddenHandles = makeConversationHiddenHandles()
+        let status = MockStatusFactory.makeStatus(
+            content: "<p>@alice @me</p>",
+            mediaAttachments: [makeAttachment(type: .image)],
+            visibility: .direct
+        )
+
+        let preview = DirectMessageMentionFormatter.conversationPreview(for: status, hiddenHandles: hiddenHandles)
+
+        #expect(preview == "Sent an image")
+    }
+
+    @Test("Conversation preview returns video fallback for video-only message")
+    func conversationPreviewReturnsVideoFallback() {
+        let hiddenHandles = makeConversationHiddenHandles()
+        let status = MockStatusFactory.makeStatus(
+            content: "<p>@alice @me</p>",
+            mediaAttachments: [makeAttachment(type: .gifv)],
+            visibility: .direct
+        )
+
+        let preview = DirectMessageMentionFormatter.conversationPreview(for: status, hiddenHandles: hiddenHandles)
+
+        #expect(preview == "Sent a video")
+    }
+
+    @Test("Conversation preview returns audio fallback for audio-only message")
+    func conversationPreviewReturnsAudioFallback() {
+        let hiddenHandles = makeConversationHiddenHandles()
+        let status = MockStatusFactory.makeStatus(
+            content: "<p>@alice @me</p>",
+            mediaAttachments: [makeAttachment(type: .audio)],
+            visibility: .direct
+        )
+
+        let preview = DirectMessageMentionFormatter.conversationPreview(for: status, hiddenHandles: hiddenHandles)
+
+        #expect(preview == "Sent an audio attachment")
+    }
+
+    @Test("Conversation preview returns generic fallback for mixed attachment message")
+    func conversationPreviewReturnsGenericFallbackForMixedAttachments() {
+        let hiddenHandles = makeConversationHiddenHandles()
+        let status = MockStatusFactory.makeStatus(
+            content: "<p>@alice @me</p>",
+            mediaAttachments: [
+                makeAttachment(type: .image),
+                makeAttachment(type: .unknown)
+            ],
+            visibility: .direct
+        )
+
+        let preview = DirectMessageMentionFormatter.conversationPreview(for: status, hiddenHandles: hiddenHandles)
+
+        #expect(preview == "Sent an attachment")
+    }
+
     private func makeConversation(id: String, accounts: [MastodonAccount]) -> MastodonConversation {
         let sender = accounts.first ?? makeAccount(id: "fallback", username: "fallback", acct: "fallback", host: "local.social")
         let status = MockStatusFactory.makeStatus(
@@ -220,6 +295,25 @@ struct ConversationSearchHelpersTests {
             unread: false,
             accounts: accounts,
             lastStatus: status
+        )
+    }
+
+    private func makeConversationHiddenHandles() -> Set<String> {
+        let me = makeAccount(id: "me", username: "me", acct: "me@local.social", host: "local.social")
+        let alice = makeAccount(id: "alice", username: "alice", acct: "alice@alpha.social", host: "alpha.social")
+        return DirectMessageMentionFormatter.hiddenHandles(for: [me, alice])
+    }
+
+    private func makeAttachment(type: MediaType) -> MediaAttachment {
+        MediaAttachment(
+            id: UUID().uuidString,
+            type: type,
+            url: "https://example.com/\(type.rawValue)",
+            previewUrl: "https://example.com/\(type.rawValue)-preview",
+            remoteUrl: nil,
+            description: nil,
+            blurhash: nil,
+            meta: nil
         )
     }
 
