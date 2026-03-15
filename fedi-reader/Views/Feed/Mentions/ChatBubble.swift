@@ -6,6 +6,7 @@ struct ChatBubble: View {
     let message: ChatMessage
     let account: MastodonAccount
     let isSent: Bool
+    let hiddenMentionHandles: Set<String>
     @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("themeColor") private var themeColorName = "blue"
@@ -28,6 +29,18 @@ struct ChatBubble: View {
     private var isFavoritedByMe: Bool {
         status?.favourited == true
     }
+
+    private var displayPlainText: String {
+        guard let status else { return "" }
+        return DirectMessageMentionFormatter.stripLeadingMentions(
+            from: status.content.htmlToPlainText,
+            hiddenHandles: hiddenMentionHandles
+        )
+    }
+
+    private var showsTextContent: Bool {
+        !displayPlainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     
     var body: some View {
         if let status = status {
@@ -36,18 +49,21 @@ struct ChatBubble: View {
             } label: {
                 VStack(alignment: isSent ? .trailing : .leading, spacing: 6) {
                     // Message content
-                    if #available(iOS 15.0, macOS 12.0, *) {
-                        HashtagLinkText(
-                            content: status.content,
-                            onHashtagTap: { appState.navigate(to: .hashtag($0)) },
-                            emojiLookup: Dictionary(uniqueKeysWithValues: status.emojis.map { ($0.shortcode, $0) })
-                        )
-                        .font(.roundedBody)
-                        .multilineTextAlignment(.leading)
-                    } else {
-                        Text(status.content.htmlToPlainText)
+                    if showsTextContent {
+                        if #available(iOS 15.0, macOS 12.0, *) {
+                            HashtagLinkText(
+                                content: status.content,
+                                onHashtagTap: { appState.navigate(to: .hashtag($0)) },
+                                emojiLookup: Dictionary(uniqueKeysWithValues: status.emojis.map { ($0.shortcode, $0) }),
+                                hiddenMentionHandles: hiddenMentionHandles
+                            )
                             .font(.roundedBody)
                             .multilineTextAlignment(.leading)
+                        } else {
+                            Text(displayPlainText)
+                                .font(.roundedBody)
+                                .multilineTextAlignment(.leading)
+                        }
                     }
                     
                     if !mediaAttachments.isEmpty {
@@ -203,5 +219,4 @@ private struct ChatGifvPlayerView: View {
 }
 
 // MARK: - Tapback View (iMessage-style reaction indicator)
-
 

@@ -157,6 +157,57 @@ struct ConversationSearchHelpersTests {
         #expect(prefix == "@bob@beta.social @alice@alpha.social")
     }
 
+    @Test("Hidden handles match both full and username-only mention variants")
+    func hiddenHandlesIncludeFullAndShortVariants() {
+        let alice = makeAccount(id: "alice", username: "alice", acct: "alice@alpha.social", host: "alpha.social")
+
+        let handles = DirectMessageMentionFormatter.hiddenHandles(for: [alice])
+
+        #expect(handles.contains("alice@alpha.social"))
+        #expect(handles.contains("alice"))
+    }
+
+    @Test("Strips only leading conversation mentions from plain text")
+    func stripsOnlyLeadingConversationMentionsFromPlainText() {
+        let me = makeAccount(id: "me", username: "me", acct: "me@local.social", host: "local.social")
+        let alice = makeAccount(id: "alice", username: "alice", acct: "alice@alpha.social", host: "alpha.social")
+        let hiddenHandles = DirectMessageMentionFormatter.hiddenHandles(for: [me, alice])
+
+        let stripped = DirectMessageMentionFormatter.stripLeadingMentions(
+            from: "@alice @me Hello @carol",
+            hiddenHandles: hiddenHandles
+        )
+
+        #expect(stripped == "Hello @carol")
+    }
+
+    @Test("Keeps unknown leading mentions intact")
+    func keepsUnknownLeadingMentionsIntact() {
+        let alice = makeAccount(id: "alice", username: "alice", acct: "alice@alpha.social", host: "alpha.social")
+        let hiddenHandles = DirectMessageMentionFormatter.hiddenHandles(for: [alice])
+
+        let stripped = DirectMessageMentionFormatter.stripLeadingMentions(
+            from: "@carol Hello there",
+            hiddenHandles: hiddenHandles
+        )
+
+        #expect(stripped == "@carol Hello there")
+    }
+
+    @Test("Strips leading conversation mentions from attributed strings")
+    func stripsLeadingConversationMentionsFromAttributedStrings() {
+        let alice = makeAccount(id: "alice", username: "alice", acct: "alice@alpha.social", host: "alpha.social")
+        let hiddenHandles = DirectMessageMentionFormatter.hiddenHandles(for: [alice])
+        let attributed = AttributedString("@alice Hello #Swift")
+
+        let stripped = DirectMessageMentionFormatter.stripLeadingMentions(
+            from: attributed,
+            hiddenHandles: hiddenHandles
+        )
+
+        #expect(String(stripped.characters) == "Hello #Swift")
+    }
+
     private func makeConversation(id: String, accounts: [MastodonAccount]) -> MastodonConversation {
         let sender = accounts.first ?? makeAccount(id: "fallback", username: "fallback", acct: "fallback", host: "local.social")
         let status = MockStatusFactory.makeStatus(

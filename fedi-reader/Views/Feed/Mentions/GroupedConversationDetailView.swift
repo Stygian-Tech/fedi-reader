@@ -40,6 +40,15 @@ struct GroupedConversationDetailView: View {
     private var isGroupChat: Bool {
         currentGroupedConversation.isGroupChat
     }
+
+    private var hiddenMentionHandles: Set<String> {
+        var accounts = participants
+        if let currentAccount = appState.currentAccount?.mastodonAccount {
+            accounts.append(currentAccount)
+        }
+
+        return DirectMessageMentionFormatter.hiddenHandles(for: accounts)
+    }
     
     // Get the most recent status across all conversations to reply to
     private var mostRecentStatus: Status? {
@@ -96,7 +105,7 @@ struct GroupedConversationDetailView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(groupedMessages) { group in
-                        ChatMessageGroup(group: group)
+                        ChatMessageGroup(group: group, hiddenMentionHandles: hiddenMentionHandles)
                             .id(group.id)
                     }
                 }
@@ -355,5 +364,4 @@ struct GroupedConversationDetailView: View {
 }
 
 // MARK: - Grouped Message
-
 
