@@ -1,19 +1,28 @@
 import Foundation
 
 enum ThreadBuilder {
+    enum ReplyOrdering: Sendable {
+        case chronological
+        case prioritizeAuthor(String?)
+    }
+
     /// Builds a thread tree from a flat array of statuses
     /// Returns root-level threads (statuses that aren't replies, or whose parent isn't in the set)
     /// Uses O(n) pre-grouping to avoid O(n²) filtering on large reply threads
-    nonisolated static func buildThreadTree(from statuses: [Status]) -> [ThreadNode] {
+    nonisolated static func buildThreadTree(
+        from statuses: [Status],
+        replyOrdering: ReplyOrdering = .chronological
+    ) -> [ThreadNode] {
         guard !statuses.isEmpty else { return [] }
         
         let statusMap = Dictionary(uniqueKeysWithValues: statuses.map { ($0.id, $0) })
         let repliesByParentId = Dictionary(grouping: statuses) { $0.inReplyToId ?? "" }
         
         let rootStatuses = findRootStatuses(statuses, statusMap: statusMap)
+            .sorted(by: makeStatusComparator(replyOrdering: replyOrdering))
         
         return rootStatuses.map { root in
-            buildSubtree(root: root, repliesByParentId: repliesByParentId)
+            buildSubtree(root: root, repliesByParentId: repliesByParentId, replyOrdering: replyOrdering)
         }
     }
     
@@ -28,9 +37,16 @@ enum ThreadBuilder {
     }
     
     /// Recursively builds a subtree; uses pre-grouped replies for O(1) child lookup
-    private nonisolated static func buildSubtree(root: Status, repliesByParentId: [String: [Status]]) -> ThreadNode {
-        let directReplies = (repliesByParentId[root.id] ?? []).sorted { $0.createdAt < $1.createdAt }
-        let childNodes = directReplies.map { buildSubtree(root: $0, repliesByParentId: repliesByParentId) }
+    private nonisolated static func buildSubtree(
+        root: Status,
+        repliesByParentId: [String: [Status]],
+        replyOrdering: ReplyOrdering
+    ) -> ThreadNode {
+        let directReplies = (repliesByParentId[root.id] ?? [])
+            .sorted(by: makeStatusComparator(replyOrdering: replyOrdering))
+        let childNodes = directReplies.map {
+            buildSubtree(root: $0, repliesByParentId: repliesByParentId, replyOrdering: replyOrdering)
+        }
         return ThreadNode(status: root, children: childNodes)
     }
     
@@ -65,5 +81,37 @@ enum ThreadBuilder {
             }
         }
         return nil
+    }
+
+    private nonisolated static func makeStatusComparator(
+        replyOrdering: ReplyOrdering
+    ) -> (Status, Status) -> Bool {
+        switch replyOrdering {
+        case .chronological:
+            return chronologicalComparator
+        case let .prioritizeAuthor(authorId):
+            guard let authorId, !authorId.isEmpty else {
+                return chronologicalComparator
+            }
+
+            return { lhs, rhs in
+                let lhsPriority = lhs.account.id == authorId
+                let rhsPriority = rhs.account.id == authorId
+
+                if lhsPriority != rhsPriority {
+                    return lhsPriority && !rhsPriority
+                }
+
+                return chronologicalComparator(lhs, rhs)
+            }
+        }
+    }
+
+    private nonisolated static func chronologicalComparator(_ lhs: Status, _ rhs: Status) -> Bool {
+        if lhs.createdAt != rhs.createdAt {
+            return lhs.createdAt < rhs.createdAt
+        }
+
+        return lhs.id < rhs.id
     }
 }

@@ -95,4 +95,115 @@ struct ThreadBuilderTests {
 
         #expect(roots.map(\.id) == [root.id, orphan.id])
     }
+
+    @Test("buildThreadTree prioritizes configured author within each sibling set")
+    func buildThreadTreePrioritizesConfiguredAuthor() {
+        let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let originalAuthor = MockStatusFactory.makeAccount(id: "author-root", username: "root", displayName: "Root")
+        let otherAuthor = MockStatusFactory.makeAccount(id: "author-other", username: "other", displayName: "Other")
+
+        let root = Status(
+            id: "root",
+            uri: "https://mastodon.social/statuses/root",
+            url: "https://mastodon.social/@root/root",
+            createdAt: baseDate,
+            account: originalAuthor,
+            content: "<p>root</p>",
+            visibility: .direct,
+            sensitive: false,
+            spoilerText: "",
+            mediaAttachments: [],
+            mentions: [],
+            tags: [],
+            emojis: [],
+            reblogsCount: 0,
+            favouritesCount: 0,
+            repliesCount: 0,
+            application: nil,
+            language: "en",
+            reblog: nil,
+            card: nil,
+            poll: nil,
+            quote: nil,
+            favourited: false,
+            reblogged: false,
+            muted: false,
+            bookmarked: false,
+            pinned: false,
+            inReplyToId: nil,
+            inReplyToAccountId: nil
+        )
+
+        let earlierOtherReply = Status(
+            id: "reply-other",
+            uri: "https://mastodon.social/statuses/reply-other",
+            url: "https://mastodon.social/@other/reply-other",
+            createdAt: baseDate.addingTimeInterval(60),
+            account: otherAuthor,
+            content: "<p>reply-other</p>",
+            visibility: .direct,
+            sensitive: false,
+            spoilerText: "",
+            mediaAttachments: [],
+            mentions: [],
+            tags: [],
+            emojis: [],
+            reblogsCount: 0,
+            favouritesCount: 0,
+            repliesCount: 0,
+            application: nil,
+            language: "en",
+            reblog: nil,
+            card: nil,
+            poll: nil,
+            quote: nil,
+            favourited: false,
+            reblogged: false,
+            muted: false,
+            bookmarked: false,
+            pinned: false,
+            inReplyToId: root.id,
+            inReplyToAccountId: nil
+        )
+
+        let laterOriginalReply = Status(
+            id: "reply-original",
+            uri: "https://mastodon.social/statuses/reply-original",
+            url: "https://mastodon.social/@root/reply-original",
+            createdAt: baseDate.addingTimeInterval(120),
+            account: originalAuthor,
+            content: "<p>reply-original</p>",
+            visibility: .direct,
+            sensitive: false,
+            spoilerText: "",
+            mediaAttachments: [],
+            mentions: [],
+            tags: [],
+            emojis: [],
+            reblogsCount: 0,
+            favouritesCount: 0,
+            repliesCount: 0,
+            application: nil,
+            language: "en",
+            reblog: nil,
+            card: nil,
+            poll: nil,
+            quote: nil,
+            favourited: false,
+            reblogged: false,
+            muted: false,
+            bookmarked: false,
+            pinned: false,
+            inReplyToId: root.id,
+            inReplyToAccountId: nil
+        )
+
+        let trees = ThreadBuilder.buildThreadTree(
+            from: [root, earlierOtherReply, laterOriginalReply],
+            replyOrdering: .prioritizeAuthor(originalAuthor.id)
+        )
+
+        #expect(trees.count == 1)
+        #expect(trees.first?.children.map(\.id) == [laterOriginalReply.id, earlierOtherReply.id])
+    }
 }

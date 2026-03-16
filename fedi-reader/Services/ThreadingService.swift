@@ -4,8 +4,11 @@ actor ThreadingService {
     static let shared = ThreadingService()
 
     /// Builds a thread tree from a flat array of statuses
-    func buildThreadTree(from statuses: [Status]) -> [ThreadNode] {
-        ThreadBuilder.buildThreadTree(from: statuses)
+    func buildThreadTree(
+        from statuses: [Status],
+        replyOrdering: ThreadBuilder.ReplyOrdering = .chronological
+    ) -> [ThreadNode] {
+        ThreadBuilder.buildThreadTree(from: statuses, replyOrdering: replyOrdering)
     }
 
     /// Merges multiple thread trees, useful when combining statuses from different sources
