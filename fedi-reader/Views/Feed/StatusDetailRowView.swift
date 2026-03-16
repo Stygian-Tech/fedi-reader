@@ -1,7 +1,13 @@
 import SwiftUI
 
+enum StatusDetailRowStyle {
+    case card
+    case embedded
+}
+
 struct StatusDetailRowView: View {
     let status: Status
+    let style: StatusDetailRowStyle
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
@@ -10,8 +16,17 @@ struct StatusDetailRowView: View {
     @State private var authorAttribution: AuthorAttribution?
     @State private var resolvedAuthorAccount: MastodonAccount?
 
+    init(status: Status, style: StatusDetailRowStyle = .card) {
+        self.status = status
+        self.style = style
+    }
+
     var displayStatus: Status {
         status.displayStatus
+    }
+
+    private var cardShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius, style: .continuous)
     }
 
     private var cardURL: URL? {
@@ -149,8 +164,19 @@ struct StatusDetailRowView: View {
             StatusActionsBar(status: displayStatus, size: .detail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
+        .padding(style == .card ? 8 : 0)
+        .background {
+            if style == .card {
+                cardShape
+                    .fill(.regularMaterial)
+            }
+        }
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: style == .card ? Constants.UI.cardCornerRadius : 0,
+                style: .continuous
+            )
+        )
     }
     
     // MARK: - Boost Attribution

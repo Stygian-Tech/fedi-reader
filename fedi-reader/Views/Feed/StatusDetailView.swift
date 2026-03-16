@@ -5,7 +5,7 @@ struct StatusDetailView: View {
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
 
     @State private var context: StatusContext?
-    @State private var replyTrees: [ThreadNode] = []
+    @State private var replyThreads: [ThreadNode] = []
     @State private var isLoading = true
     @State private var isLoadingRemoteReplies = false
 
@@ -52,89 +52,27 @@ struct StatusDetailView: View {
                     let shouldFetchMoreReplies = shouldFetchRemoteReplies(context: context)
                     
                     if !context.descendants.isEmpty {
-                        // Single card containing reply thread (without parent)
-                        VStack(alignment: .leading, spacing: 0) {
-                            // Header with controls
-                            HStack {
-                                Text("Replies")
-                                    .font(.roundedHeadline)
-                                
-                                if isLoadingRemoteReplies {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                        .padding(.leading, 4)
-                                }
-                                
-                                Spacer()
-                                
-                                // Show expected count if we have more replies
-                                if threadStatus.repliesCount > context.descendants.count {
-                                    Text("\(context.descendants.count) of \(threadStatus.repliesCount)")
-                                        .font(.roundedCaption)
-                                        .foregroundStyle(.secondary)
-                                } else if context.hasMoreReplies == true {
-                                    Text("More available")
-                                        .font(.roundedCaption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                
-                                // Button to fetch remote replies
-                                if shouldFetchMoreReplies && !isLoadingRemoteReplies {
-                                    Button {
-                                        Task {
-                                            await refreshReplies()
-                                        }
-                                    } label: {
-                                        Label("Fetch Remote", systemImage: "arrow.down.circle")
-                                            .font(.roundedCaption)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                }
+                        VStack(alignment: .leading, spacing: 4) {
+                            replyHeader(
+                                discoveredReplyCount: context.descendants.count,
+                                shouldFetchMoreReplies: shouldFetchMoreReplies,
+                                includeHorizontalPadding: true
+                            )
+
+                            ForEach(replyThreads) { thread in
+                                ReplyThreadCard(thread: thread)
                             }
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 8)
-                            
-                            Divider()
-                            
-                            // Display reply thread tree (only descendants, no parent)
-                            CompactThreadView(threads: replyTrees)
-                                .padding(.vertical, 5)
                         }
-                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Constants.UI.cardCornerRadius))
                         .padding(.horizontal)
-                        .padding(.vertical, 5)
+                        .padding(.vertical, 2)
                     } else if shouldFetchMoreReplies || threadStatus.repliesCount > 0 {
                         // Show message if we expect replies but don't have any yet
                         VStack(alignment: .leading, spacing: 0) {
-                            HStack {
-                                Text("Replies")
-                                    .font(.roundedHeadline)
-                                
-                                if isLoadingRemoteReplies {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                        .padding(.leading, 4)
-                                }
-                                
-                                Spacer()
-                                
-                                // Button to fetch remote replies
-                                if !isLoadingRemoteReplies {
-                                    Button {
-                                        Task {
-                                            await refreshReplies()
-                                        }
-                                    } label: {
-                                        Label("Fetch Remote", systemImage: "arrow.down.circle")
-                                            .font(.roundedCaption)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                }
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
+                            replyHeader(
+                                discoveredReplyCount: context.descendants.count,
+                                shouldFetchMoreReplies: shouldFetchMoreReplies,
+                                includeHorizontalPadding: true
+                            )
                             
                             if isLoadingRemoteReplies {
                                 HStack {
@@ -198,13 +136,16 @@ struct StatusDetailView: View {
 
     private func rebuildReplyTrees(from descendants: [Status]) async {
         if descendants.isEmpty {
-            replyTrees = []
+            replyThreads = []
             return
         }
 
-        let trees = await threadingService.buildThreadTree(from: descendants)
+        let trees = await threadingService.buildThreadTree(
+            from: descendants,
+            replyOrdering: .prioritizeAuthor(threadStatus.account.id)
+        )
         guard !Task.isCancelled else { return }
-        replyTrees = trees
+        replyThreads = trees
     }
     
     private func shouldFetchRemoteReplies(context: StatusContext) -> Bool {
@@ -222,5 +163,50 @@ struct StatusDetailView: View {
         } catch {
             isLoadingRemoteReplies = false
         }
+    }
+
+    @ViewBuilder
+    private func replyHeader(
+        discoveredReplyCount: Int,
+        shouldFetchMoreReplies: Bool,
+        includeHorizontalPadding: Bool
+    ) -> some View {
+        HStack {
+            Text("Replies")
+                .font(.roundedHeadline)
+
+            if isLoadingRemoteReplies {
+                ProgressView()
+                    .scaleEffect(0.7)
+                    .padding(.leading, 4)
+            }
+
+            Spacer()
+
+            if threadStatus.repliesCount > discoveredReplyCount {
+                Text("\(discoveredReplyCount) of \(threadStatus.repliesCount)")
+                    .font(.roundedCaption)
+                    .foregroundStyle(.secondary)
+            } else if context?.hasMoreReplies == true {
+                Text("More available")
+                    .font(.roundedCaption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if shouldFetchMoreReplies && !isLoadingRemoteReplies {
+                Button {
+                    Task {
+                        await refreshReplies()
+                    }
+                } label: {
+                    Label("Fetch Remote", systemImage: "arrow.down.circle")
+                        .font(.roundedCaption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, includeHorizontalPadding ? 0 : 11)
+                        .padding(.vertical, 6)
     }
 }
