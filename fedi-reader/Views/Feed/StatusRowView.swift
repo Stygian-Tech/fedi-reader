@@ -7,6 +7,7 @@ struct StatusRowView: View {
     @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
+    @AppStorage("autoPlayGifs") private var autoPlayGifs = false
     @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
     
     @State private var blueskyDescription: String?
@@ -260,26 +261,29 @@ struct StatusRowView: View {
         }
     }
     
+    @ViewBuilder
     private func mediaAttachmentView(_ attachment: MediaAttachment) -> some View {
-        AsyncImage(url: URL(string: attachment.previewUrl ?? attachment.url)) { image in
-            image
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-        } placeholder: {
-            Rectangle()
-                .fill(.tertiary)
-        }
-        .frame(width: 150, height: 150)
-        .clipped()
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(alignment: .bottomTrailing) {
-            if attachment.type == .video || attachment.type == .gifv {
-                Image(systemName: attachment.type == .gifv ? "play.circle" : "video")
-                    .font(.roundedCaption)
-                    .padding(4)
-                    .glassEffect(.clear, in: Circle())
-                    .padding(6)
+        let content = MediaAttachmentThumbnailView(
+            attachment: attachment,
+            size: CGSize(width: 150, height: 150),
+            cornerRadius: 8,
+            autoPlayGifs: autoPlayGifs
+        )
+
+        let playbackPolicy = MediaAttachmentPlaybackPolicy.resolve(
+            for: attachment.type,
+            autoPlayGifs: autoPlayGifs
+        )
+
+        if playbackPolicy == .explicitVideoPlayback, let videoURL = URL(string: attachment.url) {
+            Button {
+                appState.present(sheet: .videoPlayer(url: videoURL))
+            } label: {
+                content
             }
+            .buttonStyle(.plain)
+        } else {
+            content
         }
     }
     

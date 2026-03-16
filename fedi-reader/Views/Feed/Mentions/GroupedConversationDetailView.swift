@@ -10,7 +10,6 @@ struct GroupedConversationDetailView: View {
     @State private var messageText = ""
     @State private var isSending = false
     @FocusState private var isTextFieldFocused: Bool
-    @AppStorage("themeColor") private var themeColorName = "blue"
     
     private var timelineService: TimelineService? {
         timelineWrapper.service
@@ -19,6 +18,8 @@ struct GroupedConversationDetailView: View {
     @State private var statusContexts: [String: StatusContext] = [:]
     @State private var isLoadingThreads = false
     @State private var loadedContextStatusIds = Set<String>()
+    private let headerAvatarSize: CGFloat = 28
+    private let conversationHorizontalInset: CGFloat = 10
     
     private var currentGroupedConversation: GroupedConversation {
         guard let service = timelineService,
@@ -88,7 +89,11 @@ struct GroupedConversationDetailView: View {
                 ChatMessage(status: status, isSent: isSentMessage(status))
             }
 
-        return groupMessages(chronologicalMessages)
+        return ChatMessageGroupingHelper.groupMessages(
+            chronologicalMessages,
+            isGroupChat: isGroupChat,
+            unknownAccount: unknownAccount
+        )
     }
     
     private var canSend: Bool {
@@ -100,75 +105,67 @@ struct GroupedConversationDetailView: View {
         return status.account.id == currentId
     }
 
+    private func maxMessageContentWidth(for containerWidth: CGFloat) -> CGFloat {
+        let reservedHorizontalChrome: CGFloat = (conversationHorizontalInset * 2) + (isGroupChat ? 28 + 6 : 0) + 20
+        let availableWidth = max(containerWidth - reservedHorizontalChrome, 220)
+        let proportionalWidth = max(containerWidth * (isGroupChat ? 0.78 : 0.84), 240)
+        return min(min(availableWidth, proportionalWidth), 520)
+    }
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(groupedMessages) { group in
-                        ChatMessageGroup(group: group, hiddenMentionHandles: hiddenMentionHandles)
+        GeometryReader { geometry in
+            let resolvedMaxMessageContentWidth = maxMessageContentWidth(for: geometry.size.width)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(groupedMessages) { group in
+                            ChatMessageGroup(
+                                group: group,
+                                hiddenMentionHandles: hiddenMentionHandles,
+                                maxContentWidth: resolvedMaxMessageContentWidth
+                            )
                             .id(group.id)
+                        }
                     }
+                    .padding(.horizontal, conversationHorizontalInset)
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 8)
-            }
-            .scrollContentBackground(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            .onAppear {
-                if let lastGroup = groupedMessages.last {
-                    proxy.scrollTo(lastGroup.id, anchor: .bottom)
-                }
-            }
-            .onChange(of: groupedMessages.count) { _, _ in
-                if let lastGroup = groupedMessages.last {
-                    withAnimation {
+                .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
+                .onAppear {
+                    if let lastGroup = groupedMessages.last {
                         proxy.scrollTo(lastGroup.id, anchor: .bottom)
                     }
                 }
-            }
-            .onChange(of: isTextFieldFocused) { _, focused in
-                if focused, let lastGroup = groupedMessages.last {
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        proxy.scrollTo(lastGroup.id, anchor: .bottom)
+                .onChange(of: groupedMessages.count) { _, _ in
+                    if let lastGroup = groupedMessages.last {
+                        withAnimation {
+                            proxy.scrollTo(lastGroup.id, anchor: .bottom)
+                        }
                     }
                 }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                composeBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 4)
+                .onChange(of: isTextFieldFocused) { _, focused in
+                    if focused, let lastGroup = groupedMessages.last {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo(lastGroup.id, anchor: .bottom)
+                        }
+                    }
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    composeBar
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                        .padding(.bottom, 4)
+                }
             }
         }
         .navigationTitle(currentGroupedConversation.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(layoutMode.isCompact ? .hidden : .visible, for: .tabBar)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                if isGroupChat {
-                    // Group chat: show menu with all participants
-                    Menu {
-                        ForEach(participants) { participant in
-                            Button {
-                                appState.navigate(to: .profile(participant))
-                            } label: {
-                                HStack(spacing: 8) {
-                                    CircularMenuAvatarView(url: participant.avatarURL, size: 24)
-                                    Text(participant.displayName)
-                                }
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "person.2.circle")
-                    }
-                } else if let account = participants.first {
-                    // 1:1 chat: direct profile link
-                    Button {
-                        appState.navigate(to: .profile(account))
-                    } label: {
-                        Image(systemName: "person.circle")
-                    }
-                }
+            ToolbarItem(placement: .principal) {
+                conversationHeaderControl
             }
         }
         .task {
@@ -253,7 +250,7 @@ struct GroupedConversationDetailView: View {
                 } else {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(canSend ? ThemeColor.resolved(from: themeColorName).color : .gray)
+                        .foregroundStyle(canSend ? .primary : .secondary)
                 }
             }
             .buttonStyle(.plain)
@@ -296,45 +293,57 @@ struct GroupedConversationDetailView: View {
         }
     }
     
-    private func groupMessages(_ messages: [ChatMessage]) -> [GroupedMessage] {
-        var groups: [GroupedMessage] = []
-        var currentGroup: [ChatMessage] = []
-        var currentSenderId: String?
-        
-        for message in messages {
-            let senderId = message.status?.account.id ?? "unknown"
-            
-            // If same sender and within 5 minutes, add to current group
-            if let lastMessage = currentGroup.last,
-               senderId == currentSenderId,
-               abs(message.createdAt.timeIntervalSince(lastMessage.createdAt)) < 300 {
-                currentGroup.append(message)
-            } else {
-                // Start new group
-                if !currentGroup.isEmpty, let firstMessage = currentGroup.first {
-                    let account = firstMessage.status?.account ?? unknownAccount
-                    groups.append(GroupedMessage(
-                        account: account,
-                        messages: currentGroup,
-                        isSent: firstMessage.isSent
-                    ))
+    @ViewBuilder
+    private var conversationHeaderControl: some View {
+        if isGroupChat {
+            Menu {
+                ForEach(participants) { participant in
+                    Button {
+                        appState.navigate(to: .profile(participant))
+                    } label: {
+                        HStack(spacing: 8) {
+                            CircularMenuAvatarView(url: participant.avatarURL, size: 24)
+                            Text(participant.displayName)
+                        }
+                    }
                 }
-                currentGroup = [message]
-                currentSenderId = senderId
+            } label: {
+                conversationHeaderLabel(showsDisclosure: true)
+            }
+        } else if let account = participants.first {
+            Button {
+                appState.navigate(to: .profile(account))
+            } label: {
+                conversationHeaderLabel(showsDisclosure: false)
+            }
+            .buttonStyle(.plain)
+        } else {
+            Text(currentGroupedConversation.displayName)
+                .font(.roundedHeadline.weight(.semibold))
+                .lineLimit(1)
+        }
+    }
+
+    private func conversationHeaderLabel(showsDisclosure: Bool) -> some View {
+        HStack(spacing: 8) {
+            if isGroupChat {
+                GroupAvatarView(participants: participants, size: headerAvatarSize)
+            } else if let account = participants.first {
+                ProfileAvatarView(url: account.avatarURL, size: headerAvatarSize)
+            }
+
+            Text(currentGroupedConversation.displayName)
+                .font(.roundedHeadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            if showsDisclosure {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
         }
-        
-        // Add final group
-        if !currentGroup.isEmpty, let firstMessage = currentGroup.first {
-            let account = firstMessage.status?.account ?? unknownAccount
-            groups.append(GroupedMessage(
-                account: account,
-                messages: currentGroup,
-                isSent: firstMessage.isSent
-            ))
-        }
-        
-        return groups
+        .frame(maxWidth: 240)
     }
     
     private var unknownAccount: MastodonAccount {
