@@ -19,6 +19,7 @@ private func makeList(id: String, title: String) -> MastodonList {
     MastodonList(id: id, title: title, repliesPolicy: nil, exclusive: nil)
 }
 
+@MainActor
 private func withPreservedTabConfiguration(_ operation: () async -> Void) async {
     let defaults = UserDefaults.standard
     let tabConfigurationKey = "tabConfiguration"
@@ -40,6 +41,38 @@ private func withPreservedTabConfiguration(_ operation: () async -> Void) async 
     }
 
     await operation()
+}
+
+private func withIsolatedUserDefaults(
+    _ operation: (UserDefaults) async -> Void
+) async {
+    let suiteName = "AppStateTests.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        Issue.record("Failed to create isolated UserDefaults suite")
+        return
+    }
+
+    defaults.removePersistentDomain(forName: suiteName)
+    defer {
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    await operation(defaults)
+}
+
+private func makeAccount(
+    id: String = "test.example:account-1",
+    instance: String = "test.example",
+    username: String = "tester"
+) -> Account {
+    Account(
+        id: id,
+        instance: instance,
+        username: username,
+        displayName: "Test User",
+        acct: "\(username)@\(instance)",
+        isActive: true
+    )
 }
 
 @Suite("AppState Tests")
@@ -241,6 +274,22 @@ struct AppStateTests {
         }
     }
 
+    @Test("tab configuration persists reordered visible and hidden tabs across relaunch")
+    func tabConfigurationPersistsAcrossRelaunch() async {
+        await withIsolatedUserDefaults { defaults in
+            let state = AppState(defaults: defaults)
+
+            state.setTabVisibility(.lists, isVisible: true, defaults: defaults)
+            state.setTabVisibility(.explore, isVisible: false, defaults: defaults)
+            state.moveTabs(fromOffsets: IndexSet(integer: 3), toOffset: 0, defaults: defaults)
+
+            let reloadedState = AppState(defaults: defaults)
+
+            #expect(reloadedState.resolvedVisibleTabs() == [.lists, .links, .mentions, .profile])
+            #expect(reloadedState.resolvedHiddenTabs() == [.hashtags, .bookmarks, .explore])
+        }
+    }
+
     @Test("legacy separate lists setting migrates lists into visible tabs")
     func legacySeparateListsSettingMigratesIntoVisibleTabs() async {
         await withPreservedTabConfiguration {
@@ -382,6 +431,72 @@ struct AppStateTests {
         _ = state.synchronizeCurrentAccountListDisplayPreferences(with: rawLists, defaults: defaults)
 
         #expect((defaults.string(forKey: AppState.defaultListIdStorageKey) ?? "") == "")
+    }
+
+    @Test("custom list order persists after reloading preferences for the same account")
+    func customListOrderPersistsAcrossRelaunch() async {
+        await withIsolatedUserDefaults { defaults in
+            let rawLists = [
+                makeList(id: "list-1", title: "Alpha"),
+                makeList(id: "list-2", title: "Beta"),
+                makeList(id: "list-3", title: "Gamma")
+            ]
+            let account = makeAccount()
+
+            let state = AppState(defaults: defaults)
+            state.authService.currentAccount = account
+            state.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+            state.currentAccountListDisplayPreferences = AccountListDisplayPreferences(
+                sortOrder: .custom,
+                hiddenListIDs: [],
+                customVisibleListOrder: ["list-2", "list-3", "list-1"]
+            )
+            state.persistListDisplayPreferencesForCurrentAccount(defaults: defaults)
+
+            let reloadedState = AppState(defaults: defaults)
+            reloadedState.authService.currentAccount = account
+            reloadedState.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+
+            let resolution = reloadedState.resolvedListDisplay(for: rawLists)
+
+            #expect(reloadedState.currentAccountListDisplayPreferences.sortOrder == .custom)
+            #expect(reloadedState.currentAccountListDisplayPreferences.customVisibleListOrder == ["list-2", "list-3", "list-1"])
+            #expect(resolution.visibleListIDs == ["list-2", "list-3", "list-1"])
+        }
+    }
+
+    @Test("non custom list sorts do not overwrite the saved custom order")
+    func nonCustomListSortsDoNotOverwriteSavedCustomOrder() async {
+        await withIsolatedUserDefaults { defaults in
+            let rawLists = [
+                makeList(id: "list-1", title: "Alpha"),
+                makeList(id: "list-2", title: "Beta"),
+                makeList(id: "list-3", title: "Gamma")
+            ]
+            let account = makeAccount(id: "test.example:account-2", username: "tester2")
+
+            let state = AppState(defaults: defaults)
+            state.authService.currentAccount = account
+            state.currentAccountListDisplayPreferences = AccountListDisplayPreferences(
+                sortOrder: .custom,
+                hiddenListIDs: [],
+                customVisibleListOrder: ["list-3", "list-1", "list-2"]
+            )
+            state.persistListDisplayPreferencesForCurrentAccount(defaults: defaults)
+
+            state.updateListDisplaySortOrder(.alphabetical, rawLists: rawLists, defaults: defaults)
+            state.updateListDisplaySortOrder(.reverseAlphabetical, rawLists: rawLists, defaults: defaults)
+            state.updateListDisplaySortOrder(.custom, rawLists: rawLists, defaults: defaults)
+
+            let reloadedState = AppState(defaults: defaults)
+            reloadedState.authService.currentAccount = account
+            reloadedState.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+
+            let resolution = reloadedState.resolvedListDisplay(for: rawLists)
+
+            #expect(reloadedState.currentAccountListDisplayPreferences.customVisibleListOrder == ["list-3", "list-1", "list-2"])
+            #expect(resolution.visibleListIDs == ["list-3", "list-1", "list-2"])
+        }
     }
 
     @Test("feed tabs always place home first")

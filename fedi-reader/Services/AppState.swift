@@ -58,12 +58,12 @@ final class AppState {
     var presentedSafariURL: SafariPresentation?
     var presentedAlert: AlertItem?
     
-    init() {
+    init(defaults: UserDefaults = .standard) {
         Self.logger.info("Initializing AppState")
         self.client = MastodonClient()
         self.authService = AuthService(client: client)
         self.emojiService = EmojiService(client: client)
-        self.tabConfiguration = Self.loadTabConfiguration()
+        self.tabConfiguration = Self.loadTabConfiguration(defaults: defaults)
     }
     
     // MARK: - Account Helpers
