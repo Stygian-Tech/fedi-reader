@@ -711,6 +711,7 @@ enum SheetDestination: Identifiable {
     case shareSheet(url: URL)
     case accountSwitcher
     case safariView(url: URL)
+    case videoPlayer(url: URL)
     
     var id: String {
         switch self {
@@ -721,6 +722,7 @@ enum SheetDestination: Identifiable {
         case .shareSheet: return "share"
         case .accountSwitcher: return "accountSwitcher"
         case .safariView(let url): return "safari-\(url.absoluteString)"
+        case .videoPlayer(let url): return "video-\(url.absoluteString)"
         }
     }
 }

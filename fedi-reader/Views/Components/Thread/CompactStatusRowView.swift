@@ -5,6 +5,7 @@ struct CompactStatusRowView: View {
     let depth: Int
     @Environment(AppState.self) private var appState
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
+    @AppStorage("autoPlayGifs") private var autoPlayGifs = false
     
     var displayStatus: Status {
         status.displayStatus
@@ -74,16 +75,7 @@ struct CompactStatusRowView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(displayStatus.mediaAttachments.prefix(3)) { attachment in
-                            AsyncImage(url: URL(string: attachment.previewUrl ?? attachment.url)) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            } placeholder: {
-                                Rectangle()
-                                    .fill(.tertiary)
-                            }
-                            .frame(width: 100, height: 100)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            mediaAttachmentView(attachment)
                         }
                     }
                 }
@@ -108,8 +100,33 @@ struct CompactStatusRowView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private func mediaAttachmentView(_ attachment: MediaAttachment) -> some View {
+        let content = MediaAttachmentThumbnailView(
+            attachment: attachment,
+            size: CGSize(width: 100, height: 100),
+            cornerRadius: 6,
+            autoPlayGifs: autoPlayGifs
+        )
+
+        let playbackPolicy = MediaAttachmentPlaybackPolicy.resolve(
+            for: attachment.type,
+            autoPlayGifs: autoPlayGifs
+        )
+
+        if playbackPolicy == .explicitVideoPlayback, let videoURL = URL(string: attachment.url) {
+            Button {
+                appState.present(sheet: .videoPlayer(url: videoURL))
+            } label: {
+                content
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
+        }
+    }
 }
 
 // MARK: - Reply Indicator
-
 

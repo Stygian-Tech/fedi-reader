@@ -11,6 +11,7 @@ struct StatusDetailRowView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
+    @AppStorage("autoPlayGifs") private var autoPlayGifs = false
     @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
 
     @State private var authorAttribution: AuthorAttribution?
@@ -101,16 +102,7 @@ struct StatusDetailRowView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(displayStatus.mediaAttachments) { attachment in
-                            AsyncImage(url: URL(string: attachment.previewUrl ?? attachment.url)) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            } placeholder: {
-                                Rectangle()
-                                    .fill(.tertiary)
-                            }
-                            .frame(width: 150, height: 150)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            mediaAttachmentView(attachment)
                         }
                     }
                 }
@@ -185,6 +177,32 @@ struct StatusDetailRowView: View {
         BoostAttributionChip(account: status.account) {
             HapticFeedback.play(.navigation)
             appState.navigate(to: .profile(status.account))
+        }
+    }
+
+    @ViewBuilder
+    private func mediaAttachmentView(_ attachment: MediaAttachment) -> some View {
+        let content = MediaAttachmentThumbnailView(
+            attachment: attachment,
+            size: CGSize(width: 150, height: 150),
+            cornerRadius: 8,
+            autoPlayGifs: autoPlayGifs
+        )
+
+        let playbackPolicy = MediaAttachmentPlaybackPolicy.resolve(
+            for: attachment.type,
+            autoPlayGifs: autoPlayGifs
+        )
+
+        if playbackPolicy == .explicitVideoPlayback, let videoURL = URL(string: attachment.url) {
+            Button {
+                appState.present(sheet: .videoPlayer(url: videoURL))
+            } label: {
+                content
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
         }
     }
 

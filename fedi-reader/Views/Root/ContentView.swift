@@ -111,6 +111,8 @@ struct ContentView: View {
                 .environment(appState)
         case .safariView:
             EmptyView()
+        case .videoPlayer(let url):
+            VideoPlaybackSheet(url: url)
         }
     }
 }

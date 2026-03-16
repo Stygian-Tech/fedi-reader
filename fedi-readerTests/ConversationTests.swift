@@ -63,6 +63,56 @@ struct ConversationTests {
         #expect(group.messages.first?.isSent == true)
     }
 
+    @Test("Groups consecutive same-sender messages even minutes apart")
+    func groupsConsecutiveMessagesRegardlessOfTimeGap() {
+        let sender = MockStatusFactory.makeAccount(id: "sender-1", username: "sender1", displayName: "Sender One")
+        let firstStatus = MockStatusFactory.makeStatus(id: "message-1", account: sender)
+        let laterStatus = MockStatusFactory.makeStatus(id: "message-2", account: sender)
+
+        let messages = [
+            ChatMessage(
+                status: firstStatus.with(createdAt: Date(timeIntervalSince1970: 0)),
+                isSent: false
+            ),
+            ChatMessage(
+                status: laterStatus.with(createdAt: Date(timeIntervalSince1970: 900)),
+                isSent: false
+            )
+        ]
+
+        let groups = ChatMessageGroupingHelper.groupMessages(
+            messages,
+            isGroupChat: true,
+            unknownAccount: MockStatusFactory.makeAccount(id: "unknown")
+        )
+
+        #expect(groups.count == 1)
+        #expect(groups.first?.messages.count == 2)
+    }
+
+    @Test("Starts a new group when another sender interrupts")
+    func startsNewGroupWhenSenderChanges() {
+        let firstSender = MockStatusFactory.makeAccount(id: "sender-1", username: "sender1", displayName: "Sender One")
+        let secondSender = MockStatusFactory.makeAccount(id: "sender-2", username: "sender2", displayName: "Sender Two")
+
+        let messages = [
+            ChatMessage(status: MockStatusFactory.makeStatus(id: "message-1", account: firstSender), isSent: false),
+            ChatMessage(status: MockStatusFactory.makeStatus(id: "message-2", account: secondSender), isSent: false),
+            ChatMessage(status: MockStatusFactory.makeStatus(id: "message-3", account: firstSender), isSent: false)
+        ]
+
+        let groups = ChatMessageGroupingHelper.groupMessages(
+            messages,
+            isGroupChat: true,
+            unknownAccount: MockStatusFactory.makeAccount(id: "unknown")
+        )
+
+        #expect(groups.count == 3)
+        #expect(groups[0].account.id == firstSender.id)
+        #expect(groups[1].account.id == secondSender.id)
+        #expect(groups[2].account.id == firstSender.id)
+    }
+
     // MARK: - Filtering
 
     @Test("Filters private and direct messages only")
@@ -128,5 +178,41 @@ struct ConversationTests {
         let mastodonAccount = account.mastodonAccount
 
         #expect(mastodonAccount.id == "123")
+    }
+}
+
+private extension Status {
+    func with(createdAt: Date) -> Status {
+        Status(
+            id: id,
+            uri: uri,
+            url: url,
+            createdAt: createdAt,
+            account: account,
+            content: content,
+            visibility: visibility,
+            sensitive: sensitive,
+            spoilerText: spoilerText,
+            mediaAttachments: mediaAttachments,
+            mentions: mentions,
+            tags: tags,
+            emojis: emojis,
+            reblogsCount: reblogsCount,
+            favouritesCount: favouritesCount,
+            repliesCount: repliesCount,
+            application: application,
+            language: language,
+            reblog: reblog,
+            card: card,
+            poll: poll,
+            quote: quote,
+            favourited: favourited,
+            reblogged: reblogged,
+            muted: muted,
+            bookmarked: bookmarked,
+            pinned: pinned,
+            inReplyToId: inReplyToId,
+            inReplyToAccountId: inReplyToAccountId
+        )
     }
 }

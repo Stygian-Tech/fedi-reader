@@ -3,6 +3,23 @@ import os
 
 struct GroupAvatarView: View {
     let participants: [MastodonAccount]
+    var size: CGFloat = 56
+
+    private var twoAvatarSize: CGFloat {
+        size * (40 / 56)
+    }
+
+    private var gridSize: CGFloat {
+        size * 0.5
+    }
+
+    private var overlapSpacing: CGFloat {
+        -(size * (16 / 56))
+    }
+
+    private var strokeWidth: CGFloat {
+        max(1, size * (2 / 56))
+    }
     
     var body: some View {
         ZStack {
@@ -11,32 +28,32 @@ struct GroupAvatarView: View {
             
             if avatarsToShow.count == 2 {
                 // Two avatars: diagonal overlap
-                HStack(spacing: -16) {
-                    ProfileAvatarView(url: avatarsToShow[0].avatarURL, size: 40)
-                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                HStack(spacing: overlapSpacing) {
+                    ProfileAvatarView(url: avatarsToShow[0].avatarURL, size: twoAvatarSize)
+                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: strokeWidth))
 
-                    ProfileAvatarView(url: avatarsToShow[1].avatarURL, size: 40)
-                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                    ProfileAvatarView(url: avatarsToShow[1].avatarURL, size: twoAvatarSize)
+                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: strokeWidth))
                 }
-                .frame(width: 56, height: 56)
+                .frame(width: size, height: size)
             } else if avatarsToShow.count >= 3 {
                 // 3-4 avatars: 2x2 grid
-                let gridSize: CGFloat = 28
-                VStack(spacing: -4) {
-                    HStack(spacing: -4) {
+                let gridSpacing = -(size * (4 / 56))
+                VStack(spacing: gridSpacing) {
+                    HStack(spacing: gridSpacing) {
                         ProfileAvatarView(url: avatarsToShow[0].avatarURL, size: gridSize)
-                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1))
+                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: strokeWidth))
 
                         ProfileAvatarView(url: avatarsToShow[1].avatarURL, size: gridSize)
-                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1))
+                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: strokeWidth))
                     }
-                    HStack(spacing: -4) {
+                    HStack(spacing: gridSpacing) {
                         ProfileAvatarView(url: avatarsToShow[2].avatarURL, size: gridSize)
-                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1))
+                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: strokeWidth))
 
                         if avatarsToShow.count > 3 {
                             ProfileAvatarView(url: avatarsToShow[3].avatarURL, size: gridSize)
-                                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1))
+                                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: strokeWidth))
                         } else if participants.count > 3 {
                             // Show +N indicator
                             Circle()
@@ -54,15 +71,14 @@ struct GroupAvatarView: View {
                         }
                     }
                 }
-                .frame(width: 56, height: 56)
+                .frame(width: size, height: size)
             } else {
                 // Fallback: single avatar
-                ProfileAvatarView(url: avatarsToShow.first?.avatarURL, size: 56)
+                ProfileAvatarView(url: avatarsToShow.first?.avatarURL, size: size)
             }
         }
     }
 }
 
 // MARK: - Grouped Conversation Detail View
-
 

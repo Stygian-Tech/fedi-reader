@@ -4,70 +4,58 @@ import os
 struct ChatMessageGroup: View {
     let group: GroupedMessage
     let hiddenMentionHandles: Set<String>
+    let maxContentWidth: CGFloat
     @Environment(AppState.self) private var appState
     
-    private let opposingSideMinimumSpace: CGFloat = 16
+    private let opposingSideMinimumSpace: CGFloat = 20
+    private let avatarSize: CGFloat = 28
+    private let messageTextInset: CGFloat = 14
+    private let metadataBottomOffset: CGFloat = 18
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
+
+    private var showsIncomingAvatar: Bool {
+        !group.isSent && group.isGroupChat
+    }
     
     var body: some View {
         if group.isSent {
-            // Sent messages (right-aligned)
             HStack(alignment: .bottom, spacing: 6) {
                 Spacer(minLength: opposingSideMinimumSpace)
                 
-                // Messages
                 VStack(alignment: .trailing, spacing: 4) {
-                    // Chat bubbles
-                    ForEach(group.messages) { message in
+                    ForEach(Array(group.messages.enumerated()), id: \.element.id) { index, message in
                         ChatBubble(
                             message: message,
                             account: group.account,
                             isSent: true,
-                            hiddenMentionHandles: hiddenMentionHandles
+                            hiddenMentionHandles: hiddenMentionHandles,
+                            showsMetadata: shouldShowMetadata(for: index)
                         )
                     }
                 }
+                .frame(maxWidth: maxContentWidth, alignment: .trailing)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                
-                // Avatar (only shown for first message in group)
-                if group.messages.first != nil {
-                    Button {
-                        if let currentAccount = appState.currentAccount?.mastodonAccount {
-                            appState.navigate(to: .profile(currentAccount))
-                        }
-                    } label: {
-                        ProfileAvatarView(url: group.account.avatarURL, size: 28)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    // Spacer to align messages
-                    Circle()
-                        .fill(Color.clear)
-                        .frame(width: 28, height: 28)
-                }
             }
             .padding(.vertical, 4)
         } else {
-            // Received messages (left-aligned)
             HStack(alignment: .bottom, spacing: 6) {
-                // Avatar (only shown for first message in group)
-                if group.messages.first != nil {
+                if showsIncomingAvatar {
                     Button {
                         appState.navigate(to: .profile(group.account))
                     } label: {
-                        ProfileAvatarView(url: group.account.avatarURL, size: 28)
+                        ProfileAvatarView(url: group.account.avatarURL, size: avatarSize)
                     }
                     .buttonStyle(.plain)
-                } else {
-                    // Spacer to align messages
-                    Circle()
-                        .fill(Color.clear)
-                        .frame(width: 28, height: 28)
+                    .padding(.bottom, metadataBottomOffset)
                 }
                 
-                // Messages
                 VStack(alignment: .leading, spacing: 4) {
-                    // Account name (only for first message)
-                    if !group.messages.isEmpty {
+                    if group.isGroupChat && !group.messages.isEmpty {
                         HStack(spacing: 4) {
                             Button {
                                 appState.navigate(to: .profile(group.account))
@@ -81,24 +69,37 @@ struct ChatMessageGroup: View {
                             }
                             .buttonStyle(.plain)
                         }
+                        .padding(.leading, messageTextInset)
                     }
                     
                     // Chat bubbles
-                    ForEach(group.messages) { message in
+                    ForEach(Array(group.messages.enumerated()), id: \.element.id) { index, message in
                         ChatBubble(
                             message: message,
                             account: group.account,
                             isSent: false,
-                            hiddenMentionHandles: hiddenMentionHandles
+                            hiddenMentionHandles: hiddenMentionHandles,
+                            showsMetadata: shouldShowMetadata(for: index)
                         )
                     }
                 }
+                .frame(maxWidth: maxContentWidth, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 
                 Spacer(minLength: opposingSideMinimumSpace)
             }
             .padding(.vertical, 4)
         }
+    }
+
+    private func shouldShowMetadata(for index: Int) -> Bool {
+        guard group.messages.indices.contains(index) else { return true }
+        guard index < group.messages.index(before: group.messages.endIndex) else { return true }
+        return timestampKey(for: group.messages[index]) != timestampKey(for: group.messages[index + 1])
+    }
+
+    private func timestampKey(for message: ChatMessage) -> String {
+        Self.timestampFormatter.string(from: message.createdAt)
     }
 }
 
