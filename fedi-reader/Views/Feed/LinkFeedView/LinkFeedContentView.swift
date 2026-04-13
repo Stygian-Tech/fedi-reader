@@ -298,7 +298,10 @@ struct LinkFeedContentView: View {
             if retainedLists.isEmpty, !cachedLists.isEmpty {
                 retainedLists = cachedLists
             }
-            appState.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
+            appState.synchronizeCurrentAccountListDisplayPreferences(
+                with: rawLists,
+                allowEmptyListSet: true
+            )
             syncRetainedLists(with: liveLists, allowEmpty: false)
             // Attempt to restore scroll to last seen item when returning
             attemptRestoreScrollIfNeeded()

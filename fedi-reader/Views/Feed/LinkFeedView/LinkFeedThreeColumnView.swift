@@ -285,7 +285,10 @@ struct LinkFeedThreeColumnView: View {
             if retainedLists.isEmpty, !cachedLists.isEmpty {
                 retainedLists = cachedLists
             }
-            appState.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
+            appState.synchronizeCurrentAccountListDisplayPreferences(
+                with: rawLists,
+                allowEmptyListSet: true
+            )
             syncRetainedLists(with: liveLists, allowEmpty: false)
             attemptRestoreScrollIfNeeded()
         }

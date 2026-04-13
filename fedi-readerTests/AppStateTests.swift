@@ -433,6 +433,96 @@ struct AppStateTests {
         #expect((defaults.string(forKey: AppState.defaultListIdStorageKey) ?? "") == "")
     }
 
+    @Test("synchronize with empty lists does not wipe preferences or reconcile feed selection")
+    func synchronizeWithEmptyListsPreservesPreferencesAndDefaultFeed() async {
+        await withIsolatedUserDefaults { defaults in
+            let account = makeAccount()
+            let state = AppState(defaults: defaults)
+            state.authService.currentAccount = account
+            state.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+            state.currentAccountListDisplayPreferences = AccountListDisplayPreferences(
+                sortOrder: .custom,
+                hiddenListIDs: [],
+                customVisibleListOrder: ["list-2", "list-3", "list-1"]
+            )
+            state.persistListDisplayPreferencesForCurrentAccount(defaults: defaults)
+            state.selectedListId = "list-2"
+            defaults.set("list-2", forKey: AppState.defaultListIdStorageKey)
+
+            _ = state.synchronizeCurrentAccountListDisplayPreferences(
+                with: [],
+                allowEmptyListSet: true,
+                defaults: defaults
+            )
+
+            #expect(state.currentAccountListDisplayPreferences.sortOrder == .custom)
+            #expect(state.currentAccountListDisplayPreferences.customVisibleListOrder == ["list-2", "list-3", "list-1"])
+            #expect(state.selectedListId == "list-2")
+            #expect(defaults.string(forKey: AppState.defaultListIdStorageKey) == "list-2")
+
+            let reloaded = AppState(defaults: defaults)
+            reloaded.authService.currentAccount = account
+            reloaded.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+            #expect(reloaded.currentAccountListDisplayPreferences.customVisibleListOrder == ["list-2", "list-3", "list-1"])
+        }
+    }
+
+    @Test("updateListDisplaySortOrder persists when raw lists are not loaded yet")
+    func updateListDisplaySortOrderPersistsWhenRawListsEmpty() async {
+        await withIsolatedUserDefaults { defaults in
+            let account = makeAccount()
+            let state = AppState(defaults: defaults)
+            state.authService.currentAccount = account
+            state.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+
+            state.updateListDisplaySortOrder(.reverseAlphabetical, rawLists: [], defaults: defaults)
+
+            let reloaded = AppState(defaults: defaults)
+            reloaded.authService.currentAccount = account
+            reloaded.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+            #expect(reloaded.currentAccountListDisplayPreferences.sortOrder == .reverseAlphabetical)
+        }
+    }
+
+    @Test("setListVisibility persists hidden list IDs when raw lists are not loaded yet")
+    func setListVisibilityPersistsWhenRawListsEmpty() async {
+        await withIsolatedUserDefaults { defaults in
+            let account = makeAccount()
+            let state = AppState(defaults: defaults)
+            state.authService.currentAccount = account
+            state.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+
+            state.setListVisibility(listID: "list-x", isVisible: false, rawLists: [], defaults: defaults)
+
+            let reloaded = AppState(defaults: defaults)
+            reloaded.authService.currentAccount = account
+            reloaded.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+            #expect(reloaded.currentAccountListDisplayPreferences.hiddenListIDs.contains("list-x"))
+        }
+    }
+
+    @Test("setListVisibility persists hidden lists across relaunch when catalog is available")
+    func setListVisibilityPersistsAcrossRelaunchWithCatalog() async {
+        await withIsolatedUserDefaults { defaults in
+            let rawLists = [
+                makeList(id: "list-1", title: "Alpha"),
+                makeList(id: "list-2", title: "Beta")
+            ]
+            let account = makeAccount()
+            let state = AppState(defaults: defaults)
+            state.authService.currentAccount = account
+            state.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+            state.setListVisibility(listID: "list-1", isVisible: false, rawLists: rawLists, defaults: defaults)
+
+            let reloaded = AppState(defaults: defaults)
+            reloaded.authService.currentAccount = account
+            reloaded.loadListDisplayPreferencesForCurrentAccount(defaults: defaults)
+            #expect(reloaded.currentAccountListDisplayPreferences.hiddenListIDs.contains("list-1"))
+            let resolution = reloaded.resolvedListDisplay(for: rawLists)
+            #expect(resolution.visibleListIDs == ["list-2"])
+        }
+    }
+
     @Test("custom list order persists after reloading preferences for the same account")
     func customListOrderPersistsAcrossRelaunch() async {
         await withIsolatedUserDefaults { defaults in

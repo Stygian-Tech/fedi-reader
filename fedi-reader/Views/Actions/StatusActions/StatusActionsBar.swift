@@ -3,11 +3,12 @@ import SwiftUI
 struct StatusActionsBar: View {
     let status: Status
     let size: StatusActionsBarSize
+    /// Shrinks icons, count labels, and spacing when nested (e.g. deep reply threads). `1` preserves default sizing.
+    let layoutScale: CGFloat
     let shouldIgnoreTap: (() -> Bool)?
     
     @Environment(AppState.self) private var appState
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
-    @Environment(ReadLaterManager.self) private var readLaterManager
     
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
     
@@ -47,10 +48,6 @@ struct StatusActionsBar: View {
         localBookmarked ?? displayStatus.bookmarked ?? false
     }
     
-    private var statusURL: URL? {
-        displayStatus.card?.linkURL ?? URL(string: displayStatus.url ?? "")
-    }
-
     private var isTapSuppressed: Bool {
         shouldIgnoreTap?() == true
     }
@@ -58,10 +55,12 @@ struct StatusActionsBar: View {
     init(
         status: Status,
         size: StatusActionsBarSize,
+        layoutScale: CGFloat = 1.0,
         shouldIgnoreTap: (() -> Bool)? = nil
     ) {
         self.status = status
         self.size = size
+        self.layoutScale = min(max(layoutScale, 0.5), 1.5)
         self.shouldIgnoreTap = shouldIgnoreTap
     }
     
@@ -118,18 +117,38 @@ struct StatusActionsBar: View {
     }
     
     private var iconFont: Font {
+        if layoutScale < 1 {
+            return .rounded(size: iconBasePointSize * layoutScale, weight: .regular)
+        }
         switch size {
         case .compact: return .roundedHeadline
         case .standard: return .roundedHeadline
         case .detail: return .roundedTitle3
         }
     }
+
+    private var iconBasePointSize: CGFloat {
+        switch size {
+        case .compact, .standard: return 17
+        case .detail: return 20
+        }
+    }
     
     private var countFont: Font {
+        if layoutScale < 1 {
+            return .rounded(size: countBasePointSize * layoutScale, weight: .regular)
+        }
         switch size {
         case .compact: return .roundedCaption
         case .standard: return .roundedCaption
         case .detail: return .roundedSubheadline
+        }
+    }
+
+    private var countBasePointSize: CGFloat {
+        switch size {
+        case .compact, .standard: return 12
+        case .detail: return 15
         }
     }
 
@@ -142,11 +161,16 @@ struct StatusActionsBar: View {
     }
     
     private var rowSpacing: CGFloat {
+        let base: CGFloat
         switch size {
-        case .compact: return 12
-        case .standard: return 14
-        case .detail: return 18
+        case .compact: base = 12
+        case .standard: base = 14
+        case .detail: base = 18
         }
+        if layoutScale < 1 {
+            return max(8, base * layoutScale)
+        }
+        return base
     }
 
     private var actionButtons: some View {
@@ -266,7 +290,6 @@ struct StatusActionsBar: View {
 
     private var trailingActions: some View {
         HStack(spacing: rowSpacing) {
-            // Bookmark
             actionButton(
                 icon: isBookmarked ? "bookmark.fill" : "bookmark",
                 count: nil,
@@ -278,56 +301,6 @@ struct StatusActionsBar: View {
                 await toggleBookmark()
             }
 
-            // Read Later (if configured and URL available)
-            if readLaterManager.hasConfiguredServices, let url = statusURL {
-                Menu {
-                    if let primary = readLaterManager.primaryService, let serviceType = primary.service {
-                        Button {
-                            guard !isTapSuppressed else { return }
-                            HapticFeedback.play(.confirmation)
-                            Task {
-                                try? await readLaterManager.save(
-                                    url: url,
-                                    title: displayStatus.card?.decodedTitle,
-                                    to: serviceType
-                                )
-                            }
-                        } label: {
-                            Label("Save to \(serviceType.displayName)", systemImage: serviceType.iconName)
-                        }
-                    }
-                    
-                    Menu {
-                        ForEach(readLaterManager.configuredServices, id: \.id) { config in
-                            if let serviceType = config.service {
-                                Button {
-                                    guard !isTapSuppressed else { return }
-                                    HapticFeedback.play(.confirmation)
-                                    Task {
-                                        try? await readLaterManager.save(
-                                            url: url,
-                                            title: displayStatus.card?.decodedTitle,
-                                            to: serviceType
-                                        )
-                                    }
-                                } label: {
-                                    Label(serviceType.displayName, systemImage: serviceType.iconName)
-                                }
-                            }
-                        }
-                    } label: {
-                        Label("Save to...", systemImage: "bookmark.circle")
-                    }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "tray.and.arrow.down")
-                            .font(iconFont)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-            
             // Share
             ShareLink(item: URL(string: displayStatus.url ?? "") ?? URL(string: "https://example.com")!) {
                 Image(systemName: "square.and.arrow.up")

@@ -64,15 +64,19 @@ struct ListDisplaySettingsView: View {
         }
         .onAppear {
             editMode = ListDisplaySettingsFeatures.editMode(isCustomSortOrder: isCustomSortOrder)
-            if !rawLists.isEmpty {
-                appState.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
-            }
+            appState.synchronizeCurrentAccountListDisplayPreferences(
+                with: rawLists,
+                allowEmptyListSet: true
+            )
         }
         .onChange(of: isCustomSortOrder) { _, newValue in
             editMode = ListDisplaySettingsFeatures.editMode(isCustomSortOrder: newValue)
         }
         .onChange(of: liveLists) { _, newLists in
-            appState.synchronizeCurrentAccountListDisplayPreferences(with: newLists)
+            appState.synchronizeCurrentAccountListDisplayPreferences(
+                with: newLists,
+                allowEmptyListSet: true
+            )
         }
     }
 

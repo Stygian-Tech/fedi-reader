@@ -4,7 +4,6 @@ struct StatusRowView: View {
     let status: Status
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
-    @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
     @AppStorage("autoPlayGifs") private var autoPlayGifs = false
@@ -481,7 +480,6 @@ struct StatusRowView: View {
     
     @ViewBuilder
     private var contextMenuContent: some View {
-        // Bookmark
         Button {
             Task {
                 await toggleBookmark()
@@ -492,48 +490,9 @@ struct StatusRowView: View {
                 systemImage: isBookmarked ? "bookmark.fill" : "bookmark"
             )
         }
-        
-        // Read Later (if configured and URL available)
-        if readLaterManager.hasConfiguredServices, let url = statusURL {
-            Divider()
-            
-            if let primary = readLaterManager.primaryService, let serviceType = primary.service {
-                Button {
-                    Task {
-                        try? await readLaterManager.save(
-                            url: url,
-                            title: displayStatus.card?.decodedTitle,
-                            to: serviceType
-                        )
-                    }
-                } label: {
-                    Label("Save to \(serviceType.displayName)", systemImage: serviceType.iconName)
-                }
-            }
-            
-            Menu {
-                ForEach(readLaterManager.configuredServices, id: \.id) { config in
-                    if let serviceType = config.service {
-                        Button {
-                            Task {
-                                try? await readLaterManager.save(
-                                    url: url,
-                                    title: displayStatus.card?.decodedTitle,
-                                    to: serviceType
-                                )
-                            }
-                        } label: {
-                            Label(serviceType.displayName, systemImage: serviceType.iconName)
-                        }
-                    }
-                }
-            } label: {
-                Label("Save to...", systemImage: "bookmark.circle")
-            }
-        }
-        
+
         Divider()
-        
+
         // Reply
         Button {
             appState.present(sheet: .compose(replyTo: displayStatus))

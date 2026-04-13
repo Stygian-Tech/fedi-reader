@@ -4,7 +4,6 @@ struct StatusActionsToolbar: View {
     let status: Status
     
     @Environment(AppState.self) private var appState
-    @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     
     @AppStorage("showQuoteBoost") private var showQuoteBoost = true
@@ -61,8 +60,7 @@ struct StatusActionsToolbar: View {
             ) {
                 await toggleFavorite()
             }
-            
-            // Bookmark
+
             toolbarButton(
                 icon: isBookmarked ? "bookmark.fill" : "bookmark",
                 label: "Bookmark",
@@ -71,36 +69,6 @@ struct StatusActionsToolbar: View {
                 hapticEvent: .confirmation
             ) {
                 await toggleBookmark()
-            }
-            
-            // Read Later (if configured)
-            if readLaterManager.hasConfiguredServices, let url = displayStatus.card?.linkURL {
-                Menu {
-                    ForEach(readLaterManager.configuredServices) { config in
-                        if let serviceType = config.service {
-                            Button {
-                                HapticFeedback.play(.confirmation)
-                                Task {
-                                    try? await readLaterManager.save(
-                                        url: url,
-                                        title: displayStatus.card?.decodedTitle,
-                                        to: serviceType
-                                    )
-                                }
-                            } label: {
-                                Label(serviceType.displayName, systemImage: serviceType.iconName)
-                            }
-                        }
-                    }
-                } label: {
-                    toolbarItemLabel(
-                        icon: "tray.and.arrow.down",
-                        label: "Save",
-                        foreground: themeColor
-                    )
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
             }
         }
         .frame(maxWidth: .infinity)
@@ -351,7 +319,6 @@ struct StatusActionsToolbar: View {
     }
     .padding()
     .environment(AppState())
-    .environment(ReadLaterManager())
     .environment(TimelineServiceWrapper())
 }
 

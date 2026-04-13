@@ -23,7 +23,6 @@ struct LinkStatusRow: View {
     @Environment(AppState.self) private var appState
     @Environment(LinkFilterService.self) private var linkFilterService
     @Environment(\.openURL) private var openURL
-    @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
     @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
@@ -554,42 +553,6 @@ struct LinkStatusRow: View {
                 isBookmarked ? "Remove Bookmark" : "Bookmark",
                 systemImage: isBookmarked ? "bookmark.fill" : "bookmark"
             )
-        }
-
-        if readLaterManager.hasConfiguredServices {
-            if let primary = readLaterManager.primaryService, let serviceType = primary.service {
-                Button {
-                    HapticFeedback.play(.stateChange)
-                    Task {
-                        try? await readLaterManager.save(
-                            url: linkStatus.primaryURL,
-                            title: linkStatus.title,
-                            to: serviceType
-                        )
-                    }
-                } label: {
-                    Label("Save to \(serviceType.displayName)", systemImage: "bookmark")
-                }
-            }
-
-            Menu {
-                ForEach(readLaterManager.configuredServices, id: \.id) { config in
-                    Button {
-                        HapticFeedback.play(.stateChange)
-                        Task {
-                            try? await readLaterManager.save(
-                                url: linkStatus.primaryURL,
-                                title: linkStatus.title,
-                                to: config.service!
-                            )
-                        }
-                    } label: {
-                        Label(config.service!.displayName, systemImage: config.service!.iconName)
-                    }
-                }
-            } label: {
-                Label("Save to...", systemImage: "bookmark.circle")
-            }
         }
 
         Divider()

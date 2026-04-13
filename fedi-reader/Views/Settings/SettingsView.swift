@@ -74,7 +74,10 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .tint(selectedThemeColor)
         .onAppear {
-            _ = appState.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
+            _ = appState.synchronizeCurrentAccountListDisplayPreferences(
+                with: rawLists,
+                allowEmptyListSet: true
+            )
         }
         .onChange(of: lists.map(\.id)) { _, visibleListIDs in
             if !defaultListId.isEmpty, !visibleListIDs.contains(defaultListId) {

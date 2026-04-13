@@ -38,13 +38,21 @@ struct ListDisplayEditorSections: View {
                     Text("No visible lists.")
                         .foregroundStyle(.secondary)
                 } else if resolution.normalizedPreferences.sortOrder == .custom {
-                    ForEach(resolution.visibleLists) { list in
-                        listVisibilityRow(for: list, isVisible: true)
+                    // Remount when the *set* of visible IDs changes (e.g. un-hide) so List re-attaches
+                    // reorder handles; order-only changes keep the same sorted identity so drag isn't disrupted.
+                    Group {
+                        ForEach(resolution.visibleLists) { list in
+                            listVisibilityRow(for: list, isVisible: true)
+                                .id(Self.rowIdentity(listID: list.id, inVisibleSection: true))
+                        }
+                        .onMove(perform: moveVisibleLists)
                     }
-                    .onMove(perform: moveVisibleLists)
+                    .id(Self.sortedVisibleListIDsIdentity(resolution.visibleLists))
+                    .animation(nil, value: Self.sortedVisibleListIDsIdentity(resolution.visibleLists))
                 } else {
                     ForEach(resolution.visibleLists) { list in
                         listVisibilityRow(for: list, isVisible: true)
+                            .id(Self.rowIdentity(listID: list.id, inVisibleSection: true))
                     }
                 }
             }
@@ -57,6 +65,7 @@ struct ListDisplayEditorSections: View {
             } else {
                 ForEach(resolution.hiddenLists) { list in
                     listVisibilityRow(for: list, isVisible: false)
+                        .id(Self.rowIdentity(listID: list.id, inVisibleSection: false))
                 }
             }
         }
@@ -71,6 +80,15 @@ struct ListDisplayEditorSections: View {
         )
     }
 
+    private static func sortedVisibleListIDsIdentity(_ lists: [MastodonList]) -> String {
+        lists.map(\.id).sorted().joined(separator: "\u{1e}")
+    }
+
+    /// Stable per-section identity so rows moved between Hidden and Visible are not cross-faded as the same view.
+    private static func rowIdentity(listID: String, inVisibleSection: Bool) -> String {
+        "\(listID)\u{1e}\(inVisibleSection ? "visible" : "hidden")"
+    }
+
     private func listVisibilityRow(for list: MastodonList, isVisible: Bool) -> some View {
         HStack(spacing: 12) {
             Text(list.title)
@@ -78,7 +96,11 @@ struct ListDisplayEditorSections: View {
             Spacer(minLength: 0)
 
             Button {
-                setVisibility(for: list, isVisible: !isVisible)
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    setVisibility(for: list, isVisible: !isVisible)
+                }
             } label: {
                 Image(systemName: isVisible ? "minus.circle" : "plus.circle")
                     .foregroundStyle(isVisible ? Color.red : Color.accentColor)

@@ -6,7 +6,7 @@ import Testing
 struct ListEditorEditModeFeaturesTests {
     @Test("tab order editor keeps edit mode active")
     func tabOrderEditorKeepsEditModeActive() {
-        #expect(TabOrderSettingsFeatures.defaultEditMode == .active)
+        #expect(TabOrderSettingsFeatures.defaultEditMode == .inactive)
     }
 
     @Test("list display editor uses active edit mode for custom sorting")

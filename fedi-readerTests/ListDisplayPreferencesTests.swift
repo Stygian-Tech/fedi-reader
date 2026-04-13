@@ -98,6 +98,21 @@ struct ListDisplayPreferencesTests {
         #expect(resolution.normalizedPreferences.customVisibleListOrder == ["3", "1"])
     }
 
+    @Test("empty list catalog leaves saved preferences unchanged")
+    func emptyListCatalogPreservesSavedPreferences() {
+        let preferences = AccountListDisplayPreferences(
+            sortOrder: .custom,
+            hiddenListIDs: ["2"],
+            customVisibleListOrder: ["3", "1", "2"]
+        )
+
+        let resolution = AccountListDisplayResolver.resolve(lists: [], preferences: preferences)
+
+        #expect(resolution.visibleLists.isEmpty)
+        #expect(resolution.hiddenLists.isEmpty)
+        #expect(resolution.normalizedPreferences == preferences)
+    }
+
     @Test("missing list identifiers are pruned during normalization")
     func missingListIdentifiersArePruned() {
         let lists = [
