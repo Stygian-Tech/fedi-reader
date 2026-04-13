@@ -85,13 +85,17 @@ struct ListsTabRootView: View {
             await loadLists()
         }
         .onAppear {
-            if !rawLists.isEmpty {
-                appState.synchronizeCurrentAccountListDisplayPreferences(with: rawLists)
-            }
+            appState.synchronizeCurrentAccountListDisplayPreferences(
+                with: rawLists,
+                allowEmptyListSet: true
+            )
             navigateToPendingListIfNeeded()
         }
         .onChange(of: liveLists) { _, newLists in
-            appState.synchronizeCurrentAccountListDisplayPreferences(with: newLists)
+            appState.synchronizeCurrentAccountListDisplayPreferences(
+                with: newLists,
+                allowEmptyListSet: true
+            )
             navigateToPendingListIfNeeded()
         }
     }
@@ -134,13 +138,19 @@ struct ListsTabRootView: View {
                 .foregroundStyle(.secondary)
         } else if editable {
             if resolution.normalizedPreferences.sortOrder == .custom {
-                ForEach(resolution.visibleLists) { list in
-                    editableVisibleListRow(for: list)
+                Group {
+                    ForEach(resolution.visibleLists) { list in
+                        editableVisibleListRow(for: list)
+                            .id(ListsTabRootView.editableRowIdentity(listID: list.id))
+                    }
+                    .onMove(perform: moveVisibleLists)
                 }
-                .onMove(perform: moveVisibleLists)
+                .id(ListsTabRootView.sortedVisibleListIDsIdentity(resolution.visibleLists))
+                .animation(nil, value: ListsTabRootView.sortedVisibleListIDsIdentity(resolution.visibleLists))
             } else {
                 ForEach(resolution.visibleLists) { list in
                     editableVisibleListRow(for: list)
+                        .id(ListsTabRootView.editableRowIdentity(listID: list.id))
                 }
             }
         } else {
@@ -152,6 +162,14 @@ struct ListsTabRootView: View {
         }
     }
 
+    private static func sortedVisibleListIDsIdentity(_ lists: [MastodonList]) -> String {
+        lists.map(\.id).sorted().joined(separator: "\u{1e}")
+    }
+
+    private static func editableRowIdentity(listID: String) -> String {
+        "\(listID)\u{1e}listsTab-editable"
+    }
+
     private func editableVisibleListRow(for list: MastodonList) -> some View {
         HStack(spacing: 12) {
             Text(list.title)
@@ -159,11 +177,15 @@ struct ListsTabRootView: View {
             Spacer(minLength: 0)
 
             Button {
-                appState.setListVisibility(
-                    listID: list.id,
-                    isVisible: false,
-                    rawLists: rawLists
-                )
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    appState.setListVisibility(
+                        listID: list.id,
+                        isVisible: false,
+                        rawLists: rawLists
+                    )
+                }
             } label: {
                 Image(systemName: "minus.circle")
                     .foregroundStyle(Color.red)

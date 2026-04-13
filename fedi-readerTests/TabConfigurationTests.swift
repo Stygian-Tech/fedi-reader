@@ -9,7 +9,7 @@ struct TabConfigurationTests {
             TabConfiguration.defaultConfiguration.visibleTabs == [.links, .explore, .mentions, .profile]
         )
         #expect(
-            TabConfiguration.defaultConfiguration.hiddenTabs == [.lists, .bookmarks]
+            TabConfiguration.defaultConfiguration.hiddenTabs == [.lists, .hashtags, .bookmarks]
         )
     }
 
@@ -49,6 +49,7 @@ struct TabConfigurationTests {
         let normalized = configuration.normalized()
 
         #expect(normalized.visibleTabs == [.explore, .links, .mentions, .profile])
+        #expect(normalized.hiddenTabs == [.lists, .bookmarks, .hashtags])
     }
 
     @Test("normalization appends missing tabs to the hidden list")
@@ -61,6 +62,6 @@ struct TabConfigurationTests {
         let normalized = configuration.normalized()
 
         #expect(normalized.visibleTabs == [.links, .explore, .profile])
-        #expect(normalized.hiddenTabs == [.lists, .mentions, .bookmarks])
+        #expect(normalized.hiddenTabs == [.lists, .hashtags, .mentions, .bookmarks])
     }
 }

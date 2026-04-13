@@ -40,6 +40,15 @@ enum AccountListDisplayResolver {
         lists: [MastodonList],
         preferences: AccountListDisplayPreferences
     ) -> AccountListDisplayResolution {
+        // Empty catalog: lists not loaded yet or no response — do not treat as authoritative for pruning IDs.
+        if lists.isEmpty {
+            return AccountListDisplayResolution(
+                visibleLists: [],
+                hiddenLists: [],
+                normalizedPreferences: preferences
+            )
+        }
+
         let existingListIDs = Set(lists.map(\.id))
         let hiddenListIDs = orderedUniqueIDs(
             preferences.hiddenListIDs.filter { existingListIDs.contains($0) }

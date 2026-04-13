@@ -48,7 +48,7 @@ private struct ReplyThreadNodeDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            StatusDetailRowView(status: node.status, style: .embedded)
+            StatusDetailRowView(status: node.status, style: .embedded, replyThreadDepth: depth)
 
             if !node.children.isEmpty {
                 ReplyThreadGroup(depth: depth) {

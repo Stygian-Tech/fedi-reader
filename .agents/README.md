@@ -6,7 +6,7 @@ This directory holds project-specific context for AI agents. Structure follows t
 |-----------|---------|
 | `rules/` | Behavioral guidelines (Linear workflow, etc.) |
 | `context/` | Static reference (architecture, conventions, file layout) |
-| `skills/` | Executable capabilities ([agentskills.io](https://agentskills.io) compliant) |
+| `skills/` | Optional repo-local [agentskills.io](https://agentskills.io) packages. The shared **linear-workflow** skill is not vendored here; load it via MyContext MCP (`ctx://skill/linear-workflow`) or the URL in [AGENTS.md](../AGENTS.md) GATE step 0. |
 
 **Entry point:** Root [AGENTS.md](../AGENTS.md) is the single source of truth for all agents. Read it first.
 **Linear policy:** Linear is the source of truth for planning, status, blockers, and verification. Agents must keep it up to date throughout the task.
@@ -15,4 +15,4 @@ This directory holds project-specific context for AI agents. Structure follows t
 **Assignment policy:** Assign issues created by an agent to the human Linear user by default. In this workspace that is currently `Sam Clemente`. If the workspace setup changes later, resolve the correct non-agent human user before filing or updating the issue.
 **Split-issue commenting policy:** Once work is tracked in a sub-issue or separate issue, ongoing comments for that work go on that issue itself. Keep the parent issue to split notices and high-level coordination.
 
-**Cursor compatibility:** `.cursor/rules/` references AGENTS.md for always-apply rules.
+**Cursor compatibility:** `.cursor/rules/` references AGENTS.md for always-apply rules. Enable the **MyContextProtocol** MCP server in Cursor when you want GATE step 0 to use `fetch_mcp_resource` instead of opening the raw GitHub skill file.

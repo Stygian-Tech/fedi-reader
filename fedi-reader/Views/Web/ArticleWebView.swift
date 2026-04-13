@@ -20,7 +20,6 @@ struct ArticleWebView: View {
     
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
-    @Environment(ReadLaterManager.self) private var readLaterManager
     @Environment(TimelineServiceWrapper.self) private var timelineWrapper
     @Environment(\.layoutMode) private var layoutMode
 
@@ -133,32 +132,11 @@ struct ArticleWebView: View {
                     } label: {
                         Label("Copy Link", systemImage: "doc.on.doc")
                     }
-                    
-                    if readLaterManager.hasConfiguredServices {
-                        Divider()
-
-                        ForEach(readLaterManager.configuredServices, id: \.id) { config in
-                            if let serviceType = config.service {
-                                Button {
-                                    HapticFeedback.play(.action)
-                                    Task {
-                                        try? await readLaterManager.save(
-                                            url: url,
-                                            title: pageTitle,
-                                            to: serviceType
-                                        )
-                                    }
-                                } label: {
-                                    Label("Save to \(serviceType.displayName)", systemImage: serviceType.iconName)
-                                }
-                            }
-                        }
-                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel("More options")
-                .accessibilityHint("Open in Safari, share, copy link, or save to read later")
+                .accessibilityHint("Open in Safari, share, or copy link")
             }
             #if os(iOS)
             if let status, layoutMode == .compact {

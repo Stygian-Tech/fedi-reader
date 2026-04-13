@@ -8,6 +8,8 @@ enum StatusDetailRowStyle {
 struct StatusDetailRowView: View {
     let status: Status
     let style: StatusDetailRowStyle
+    /// Nesting depth within an embedded reply thread (`0` for the root reply in a card or any non-embedded row).
+    let replyThreadDepth: Int
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @AppStorage("showHandleInFeed") private var showHandleInFeed = false
@@ -17,9 +19,10 @@ struct StatusDetailRowView: View {
     @State private var authorAttribution: AuthorAttribution?
     @State private var resolvedAuthorAccount: MastodonAccount?
 
-    init(status: Status, style: StatusDetailRowStyle = .card) {
+    init(status: Status, style: StatusDetailRowStyle = .card, replyThreadDepth: Int = 0) {
         self.status = status
         self.style = style
+        self.replyThreadDepth = replyThreadDepth
     }
 
     var displayStatus: Status {
@@ -153,7 +156,7 @@ struct StatusDetailRowView: View {
                 }
             }
 
-            StatusActionsBar(status: displayStatus, size: .detail)
+            StatusActionsBar(status: displayStatus, size: .detail, layoutScale: replyActionsLayoutScale)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(style == .card ? 8 : 0)
@@ -169,6 +172,12 @@ struct StatusDetailRowView: View {
                 style: .continuous
             )
         )
+    }
+
+    /// Tighter action controls as replies nest (narrower usable width inside padded thread groups).
+    private var replyActionsLayoutScale: CGFloat {
+        guard style == .embedded, replyThreadDepth > 0 else { return 1.0 }
+        return max(0.78, 1.0 - 0.07 * CGFloat(replyThreadDepth))
     }
     
     // MARK: - Boost Attribution

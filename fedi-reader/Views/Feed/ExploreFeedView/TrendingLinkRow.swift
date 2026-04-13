@@ -16,7 +16,6 @@ struct TrendingLinkRow: View {
     let link: TrendingLink
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
-    @Environment(ReadLaterManager.self) private var readLaterManager
     @AppStorage("articleViewerPreference") private var articleViewerPreferenceRaw = ArticleViewerPreference.inApp.rawValue
 
     var body: some View {
@@ -61,24 +60,6 @@ struct TrendingLinkRow: View {
                     #endif
                 } label: {
                     Label("Copy Link", systemImage: "doc.on.doc")
-                }
-
-                if readLaterManager.hasConfiguredServices {
-                    Divider()
-
-                    if let primary = readLaterManager.primaryService, let serviceType = primary.service {
-                        Button {
-                            Task {
-                                try? await readLaterManager.save(
-                                    url: url,
-                                    title: link.decodedTitle,
-                                    to: serviceType
-                                )
-                            }
-                        } label: {
-                            Label("Save to \(serviceType.displayName)", systemImage: "bookmark")
-                        }
-                    }
                 }
             }
         }

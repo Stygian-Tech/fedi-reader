@@ -102,16 +102,22 @@ final class AppState {
             return
         }
 
-        guard let data = defaults.data(forKey: storageKey),
-              let preferences = try? Self.listDisplayPreferencesDecoder.decode(
-                  AccountListDisplayPreferences.self,
-                  from: data
-              ) else {
+        guard let data = defaults.data(forKey: storageKey) else {
             currentAccountListDisplayPreferences = AccountListDisplayPreferences()
             return
         }
 
-        currentAccountListDisplayPreferences = preferences
+        do {
+            currentAccountListDisplayPreferences = try Self.listDisplayPreferencesDecoder.decode(
+                AccountListDisplayPreferences.self,
+                from: data
+            )
+        } catch {
+            Self.logger.error(
+                "Failed to decode list display preferences for key \(storageKey, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+            currentAccountListDisplayPreferences = AccountListDisplayPreferences()
+        }
     }
 
     func persistListDisplayPreferencesForCurrentAccount(defaults: UserDefaults = .standard) {
@@ -145,6 +151,13 @@ final class AppState {
     ) -> AccountListDisplayResolution {
         let resolution = resolvedListDisplay(for: rawLists)
         guard !rawLists.isEmpty || allowEmptyListSet else {
+            return resolution
+        }
+
+        if rawLists.isEmpty {
+            // Still persist: user mutations (e.g. sort order) call synchronize before lists are loaded;
+            // skipping persist here left disk stale and relaunch reverted to alphabetical/default.
+            persistListDisplayPreferencesForCurrentAccount(defaults: defaults)
             return resolution
         }
 
@@ -260,8 +273,16 @@ final class AppState {
         rawLists: [MastodonList],
         defaults: UserDefaults = .standard
     ) {
-        currentAccountListDisplayPreferences.sortOrder = sortOrder
-        _ = synchronizeCurrentAccountListDisplayPreferences(with: rawLists, defaults: defaults)
+        var prefs = currentAccountListDisplayPreferences
+        prefs.sortOrder = sortOrder
+        currentAccountListDisplayPreferences = prefs
+        // Persist before synchronize so a write always lands even if list sync short-circuits.
+        persistListDisplayPreferencesForCurrentAccount(defaults: defaults)
+        _ = synchronizeCurrentAccountListDisplayPreferences(
+            with: rawLists,
+            allowEmptyListSet: true,
+            defaults: defaults
+        )
     }
 
     func setListVisibility(
@@ -270,20 +291,26 @@ final class AppState {
         rawLists: [MastodonList],
         defaults: UserDefaults = .standard
     ) {
+        var prefs = currentAccountListDisplayPreferences
         if isVisible {
-            currentAccountListDisplayPreferences.hiddenListIDs.removeAll { $0 == listID }
-            if currentAccountListDisplayPreferences.sortOrder == .custom,
-               !currentAccountListDisplayPreferences.customVisibleListOrder.contains(listID) {
-                currentAccountListDisplayPreferences.customVisibleListOrder.append(listID)
+            prefs.hiddenListIDs.removeAll { $0 == listID }
+            if prefs.sortOrder == .custom,
+               !prefs.customVisibleListOrder.contains(listID) {
+                prefs.customVisibleListOrder.append(listID)
             }
         } else {
-            if !currentAccountListDisplayPreferences.hiddenListIDs.contains(listID) {
-                currentAccountListDisplayPreferences.hiddenListIDs.append(listID)
+            if !prefs.hiddenListIDs.contains(listID) {
+                prefs.hiddenListIDs.append(listID)
             }
-            currentAccountListDisplayPreferences.customVisibleListOrder.removeAll { $0 == listID }
+            prefs.customVisibleListOrder.removeAll { $0 == listID }
         }
-
-        _ = synchronizeCurrentAccountListDisplayPreferences(with: rawLists, defaults: defaults)
+        currentAccountListDisplayPreferences = prefs
+        persistListDisplayPreferencesForCurrentAccount(defaults: defaults)
+        _ = synchronizeCurrentAccountListDisplayPreferences(
+            with: rawLists,
+            allowEmptyListSet: true,
+            defaults: defaults
+        )
     }
 
     func moveVisibleLists(
@@ -294,9 +321,16 @@ final class AppState {
     ) {
         var reorderedVisibleIDs = visibleListIDs(from: rawLists)
         moveIDs(&reorderedVisibleIDs, fromOffsets: fromOffsets, toOffset: toOffset)
-        currentAccountListDisplayPreferences.sortOrder = .custom
-        currentAccountListDisplayPreferences.customVisibleListOrder = reorderedVisibleIDs
-        _ = synchronizeCurrentAccountListDisplayPreferences(with: rawLists, defaults: defaults)
+        var prefs = currentAccountListDisplayPreferences
+        prefs.sortOrder = .custom
+        prefs.customVisibleListOrder = reorderedVisibleIDs
+        currentAccountListDisplayPreferences = prefs
+        persistListDisplayPreferencesForCurrentAccount(defaults: defaults)
+        _ = synchronizeCurrentAccountListDisplayPreferences(
+            with: rawLists,
+            allowEmptyListSet: true,
+            defaults: defaults
+        )
     }
 
     private func reconcileVisibleFeedSelection(

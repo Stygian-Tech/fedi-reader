@@ -125,7 +125,11 @@ struct ProfileSummaryView: View {
 
     private var shouldShowFollowButton: Bool {
         guard let currentAccount = appState.currentAccount else { return false }
-        return currentAccount.id != account.id
+        // Stored Account.id is often "instance:apiId"; Mastodon API ids match mastodonAccount.id.
+        if currentAccount.mastodonAccount.id == account.id { return false }
+        if currentAccount.id == account.id { return false }
+        if currentAccount.acct.caseInsensitiveCompare(account.acct) == .orderedSame { return false }
+        return true
     }
 
     private var followButtonLabel: String {
@@ -143,6 +147,9 @@ struct ProfileSummaryView: View {
 
     @ViewBuilder
     private var followButton: some View {
+        let followDisabled =
+            isLoadingRelationship || isUpdatingRelationship || relationship == nil
+
         Button {
             Task {
                 await toggleFollowState()
@@ -157,12 +164,37 @@ struct ProfileSummaryView: View {
                 Text(followButtonLabel)
                     .font(.roundedSubheadline.weight(.semibold))
             }
+            .foregroundStyle(followButtonForeground)
+            .shadow(color: followButtonGlowColor, radius: 6, x: 0, y: 0)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
             .frame(minWidth: 110)
+            .glassEffect(.clear, in: Capsule())
         }
-        .buttonStyle(.borderedProminent)
-        .tint(relationship?.following == true || relationship?.requested == true ? .secondary : .accentColor)
-        .disabled(isLoadingRelationship || isUpdatingRelationship || relationship == nil)
+        .buttonStyle(.plain)
+        .opacity(followDisabled ? 0.55 : 1)
+        .disabled(followDisabled)
         .accessibilityIdentifier("profile-follow-button")
+    }
+
+    private var followButtonForeground: Color {
+        if relationship?.requested == true {
+            return .orange
+        }
+        if relationship?.following == true {
+            return .secondary
+        }
+        return Color.accentColor
+    }
+
+    private var followButtonGlowColor: Color {
+        if relationship?.requested == true {
+            return Color.orange.opacity(0.45)
+        }
+        if relationship?.following == true {
+            return .clear
+        }
+        return Color.accentColor.opacity(0.45)
     }
 
     private func statItem(count: Int, label: String) -> some View {
