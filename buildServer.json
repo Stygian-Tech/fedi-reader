@@ -12,7 +12,7 @@
 	"argv": [
 		"/opt/homebrew/bin/xcode-build-server"
 	],
-	"workspace": "/Users/sam/Developer/Git/Stygian Tech/iOS Applications/fedi-reader/fedi-reader.xcodeproj/project.xcworkspace",
+	"workspace": "/Users/sam/Developer/Git/Stygian Tech/ios-apps/fedi-reader/fedi-reader.xcodeproj/project.xcworkspace",
 	"build_root": "/Users/sam/Library/Developer/Xcode/DerivedData/fedi-reader-agbqyxupgtkfgzcfwqitcxdlphnn",
 	"scheme": "fedi-reader",
 	"kind": "xcode"
